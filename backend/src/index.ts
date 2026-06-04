@@ -6,7 +6,6 @@ import passport from "passport";
 import { Env } from "./config/env.config";
 import { HTTPSTATUS } from "./config/http.config";
 import { errorHandler } from "./middlewares/errorHandler.middleware";
-import { BadRequestException } from "./utils/app-error";
 import { asyncHandler } from "./middlewares/asyncHandler.middlerware";
 import connctDatabase from "./config/database.config";
 import authRoutes from "./routes/auth.route";
@@ -37,10 +36,10 @@ app.use(
 
 app.get(
   "/",
-  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-    throw new BadRequestException("This is a test error");
+  asyncHandler(async (_req: Request, res: Response, _next: NextFunction) => {
     res.status(HTTPSTATUS.OK).json({
-      message: "Hello Subcribe to the channel",
+      status: "ok",
+      service: "cashloom-api",
     });
   })
 );
@@ -56,7 +55,11 @@ app.use(errorHandler);
 app.listen(Env.PORT, async () => {
   await connctDatabase();
 
-  if (Env.NODE_ENV === "development") {
+  // Crons drive recurring transactions + monthly reports. Previously gated to
+  // "development", so both scheduled features were silently dead in production.
+  // (If scaled to multiple instances, guard the recurrence job with an
+  // idempotency check — see ROADMAP high-value bet #2.)
+  if (Env.NODE_ENV !== "test") {
     await initializeCrons();
   }
 

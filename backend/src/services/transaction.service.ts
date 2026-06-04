@@ -201,7 +201,7 @@ export const deleteTransactionService = async (
   userId: string,
   transactionId: string
 ) => {
-  const deleted = await TransactionModel.findByIdAndDelete({
+  const deleted = await TransactionModel.findOneAndDelete({
     _id: transactionId,
     userId,
   });
@@ -233,27 +233,23 @@ export const bulkTransactionService = async (
   transactions: CreateTransactionType[]
 ) => {
   try {
-    const bulkOps = transactions.map((tx) => ({
-      insertOne: {
-        document: {
-          ...tx,
-          userId,
-          isRecurring: false,
-          nextRecurringDate: null,
-          recurringInterval: null,
-          lastProcesses: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      },
+    // insertMany runs schema setters (amount → convertToCents) + defaults.
+    // The previous bulkWrite/insertOne bypassed setters and stored raw dollars
+    // where cents belong, corrupting every imported amount by 100x.
+    // (Also fixes the `lastProcesses` typo — the field is `lastProcessed`.)
+    const docs = transactions.map((tx) => ({
+      ...tx,
+      userId,
+      isRecurring: false,
+      nextRecurringDate: null,
+      recurringInterval: null,
+      lastProcessed: null,
     }));
 
-    const result = await TransactionModel.bulkWrite(bulkOps, {
-      ordered: true,
-    });
+    const inserted = await TransactionModel.insertMany(docs);
 
     return {
-      insertedCount: result.insertedCount,
+      insertedCount: inserted.length,
       success: true,
     };
   } catch (error) {
