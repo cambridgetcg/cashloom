@@ -47,7 +47,8 @@ export const registerService = async (body: RegisterSchemaType) => {
 
 export const loginService = async (body: LoginSchemaType) => {
   const { email, password } = body;
-  const user = await UserModel.findOne({ email });
+  // Password is select:false on the schema, so opt it back in just here.
+  const user = await UserModel.findOne({ email }).select("+password");
   if (!user) throw new NotFoundException("Email/password not found");
 
   const isPasswordValid = await user.comparePassword(password);

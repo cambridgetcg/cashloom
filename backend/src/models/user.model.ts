@@ -32,7 +32,9 @@ const userSchema = new Schema<UserDocument>(
     },
     password: {
       type: String,
-      select: true,
+      // Not loaded by default — no query accidentally returns the hash.
+      // Login opts back in with .select("+password").
+      select: false,
       required: true,
     },
   },
