@@ -2,6 +2,20 @@
 
 *Generated 2026-06-04 from a module-by-module deep-dive (auth · user · transaction · analytics · report · client-UX · cross-cutting). Lens: less fees · more value · less work · peace of mind. Find the optimum.*
 
+## Progress — shipped so far (2026-06-04, local commits)
+
+Worked the list top-value first. Done + verified (tsc clean, tests green), committed locally:
+
+- **Do-first data bugs** — CSV import no longer stores amounts 100× too small (`insertMany` runs the cents setter); single-delete scoped to owner (closed the IDOR); `lastProcessed` typo fixed.
+- **Honest surfaces** — deleted the fake billing tab + stubs, the dead Google buttons, and mock data; root `/` returns `{status:"ok"}` instead of throwing.
+- **Safety floor** — helmet, `trust proxy`, body-size limit, and rate limits on `/auth` + the costly AI/import routes (generous for honest use, caps abuse + AI spend).
+- **Clearer UI** — per-page tab titles, helpful empty states, title typo + meta/noscript fixed, mobile menu now readable by screen readers.
+- **#1 bet — AI Import (whole, end-to-end):** paste a bank/card statement or CSV → Gemini reads it → review the rows → save (reuses bulk import). Backend + client modal + 9 tests on the parsing.
+
+Still open, top value next: per-import **dedupe/idempotency** (#2 — stops double-imports), **password reset** via Resend (#3), persist **AI insights** in-app (#4), CI workflow, dep bumps.
+
+**On money:** the fake billing was cut (it was fiction — see §5). The chosen revenue direction is a **fair-money model** — free to try + a limited-but-generous free tier + a fair paid tier via a **merchant-of-record** (they handle VAT/sales-tax + PCI). Waiting on a processor pick before building it; no exploit loophole when it lands.
+
 ## 1. State of CashLoom
 
 A personal income/expense tracker — Express 5 + MongoDB backend, React 19 + Redux Toolkit client — imported 2026-06-04 from a 2025-07 contractor build. The happy paths are real and reasonably organized (transactions, analytics aggregations, Gemini receipt-scan + insights, scheduled email reports), but it's a tutorial-grade scaffold straddling two half-finished designs: it ships UI for refresh-tokens, OAuth, and billing that have **no backend**, and it hides or breaks features that *do* work. **The single biggest lever: getting messy real-world money data IN cleanly and correctly.** Today the primary bulk path silently corrupts every imported amount by 100×, and forces hand-mapping real bank CSVs can't satisfy — while a Gemini pipeline that could eat raw statements already sits in the repo, used only for single receipts.
