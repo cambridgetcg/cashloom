@@ -80,6 +80,12 @@ export const processReportJob = async () => {
                     sentDate: now,
                     period: report.period,
                     status: ReportStatusEnum.SENT,
+                    // Keep the report content so it can be shown in-app later,
+                    // not just emailed once and discarded.
+                    summary: report.summary,
+                    insights: Array.isArray(report.insights)
+                      ? report.insights
+                      : [],
                     createdAt: now,
                     updatedAt: now,
                   },
