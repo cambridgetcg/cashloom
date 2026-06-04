@@ -8,7 +8,7 @@ import { NotFoundException } from "../utils/app-error";
 import { calculateNextReportDate } from "../utils/helper";
 import { UpdateReportSettingType } from "../validators/report.validator";
 import { convertToDollarUnit } from "../utils/format-currency";
-import { format } from "date-fns";
+import { differenceInCalendarDays, format, subDays } from "date-fns";
 import { genAI, genAIModel } from "../config/google-ai.config";
 import { createUserContent } from "@google/genai";
 import { reportInsightPrompt } from "../utils/prompt";
@@ -184,6 +184,58 @@ export const generateReportService = async (
 
   const periodLabel = `${format(fromDate, "MMMM d")} - ${format(toDate, "d, yyyy")}`;
 
+  // Pull the previous equal-length period (the span just before this one) so
+  // the AI coach can speak to real change ("spending up 18% vs last month"),
+  // not just judge one period alone. One cheap aggregation, no new AI spend.
+  const spanDays = differenceInCalendarDays(toDate, fromDate) + 1;
+  const prevFrom = subDays(fromDate, spanDays);
+  const prevTo = subDays(fromDate, 1);
+
+  const [prev] = await TransactionModel.aggregate([
+    {
+      $match: {
+        userId: new mongoose.Types.ObjectId(userId),
+        date: { $gte: prevFrom, $lte: prevTo },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalIncome: {
+          $sum: {
+            $cond: [
+              { $eq: ["$type", TransactionTypeEnum.INCOME] },
+              { $abs: "$amount" },
+              0,
+            ],
+          },
+        },
+        totalExpenses: {
+          $sum: {
+            $cond: [
+              { $eq: ["$type", TransactionTypeEnum.EXPENSE] },
+              { $abs: "$amount" },
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  const prevIncome = prev?.totalIncome || 0;
+  const prevExpenses = prev?.totalExpenses || 0;
+
+  const comparison =
+    prevIncome > 0 || prevExpenses > 0
+      ? {
+          periodLabel: `${format(prevFrom, "MMM d")} – ${format(prevTo, "MMM d, yyyy")}`,
+          income: prevIncome,
+          expenses: prevExpenses,
+          balance: prevIncome - prevExpenses,
+        }
+      : undefined;
+
   const insights = await generateInsightsAI({
     totalIncome,
     totalExpenses,
@@ -191,6 +243,7 @@ export const generateReportService = async (
     savingsRate,
     categories: byCategory,
     periodLabel: periodLabel,
+    comparison,
   });
 
   return {
@@ -217,6 +270,7 @@ async function generateInsightsAI({
   savingsRate,
   categories,
   periodLabel,
+  comparison,
 }: {
   totalIncome: number;
   totalExpenses: number;
@@ -224,6 +278,12 @@ async function generateInsightsAI({
   savingsRate: number;
   categories: Record<string, { amount: number; percentage: number }>;
   periodLabel: string;
+  comparison?: {
+    periodLabel: string;
+    income: number;
+    expenses: number;
+    balance: number;
+  };
 }) {
   try {
     const prompt = reportInsightPrompt({
@@ -233,6 +293,14 @@ async function generateInsightsAI({
       savingsRate: Number(savingsRate.toFixed(1)),
       categories,
       periodLabel,
+      comparison: comparison
+        ? {
+            periodLabel: comparison.periodLabel,
+            income: convertToDollarUnit(comparison.income),
+            expenses: convertToDollarUnit(comparison.expenses),
+            balance: convertToDollarUnit(comparison.balance),
+          }
+        : undefined,
     });
 
     const result = await genAI.models.generateContent({

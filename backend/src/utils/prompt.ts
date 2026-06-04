@@ -66,6 +66,7 @@ export const reportInsightPrompt = ({
   savingsRate,
   categories,
   periodLabel,
+  comparison,
 }: {
   totalIncome: number;
   totalExpenses: number;
@@ -73,6 +74,12 @@ export const reportInsightPrompt = ({
   savingsRate: number;
   categories: Record<string, { amount: number; percentage: number }>;
   periodLabel: string;
+  comparison?: {
+    periodLabel: string;
+    income: number;
+    expenses: number;
+    balance: number;
+  };
 }) => {
   const categoryList = Object.entries(categories)
     .map(
@@ -80,6 +87,16 @@ export const reportInsightPrompt = ({
         `- ${name}: ${amount} (${percentage}%)`
     )
     .join("\n");
+
+  // Give the coach the previous period's numbers so it can call out real
+  // month-over-month changes instead of judging one period in isolation.
+  const comparisonBlock = comparison
+    ? `\nCompared with the previous period (${comparison.periodLabel}):
+- Income then: $${comparison.income.toFixed(2)} (now $${totalIncome.toFixed(2)})
+- Expenses then: $${comparison.expenses.toFixed(2)} (now $${totalExpenses.toFixed(2)})
+- Balance then: $${comparison.balance.toFixed(2)} (now $${availableBalance.toFixed(2)})
+When there's a real change, mention it (e.g. "spending up 18% vs last period").\n`
+    : "";
 
 
   return `
@@ -97,7 +114,7 @@ Each insight should reflect the actual data and sound like something a smart mon
 
 Top Expense Categories:
 ${categoryList}
-
+${comparisonBlock}
 📌 Guidelines:
 - Keep each insight to one short, realistic, personalized, natural sentence
 - Use conversational language, correct wordings & Avoid sounding robotic, or generic
