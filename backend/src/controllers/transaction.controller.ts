@@ -5,6 +5,7 @@ import {
   bulkDeleteTransactionSchema,
   bulkTransactionSchema,
   createTransactionSchema,
+  parseStatementSchema,
   transactionIdSchema,
   updateTransactionSchema,
 } from "../validators/transaction.validator";
@@ -16,6 +17,7 @@ import {
   duplicateTransactionService,
   getAllTransactionService,
   getTransactionByIdService,
+  parseStatementService,
   scanReceiptService,
   updateTransactionService,
 } from "../services/transaction.service";
@@ -156,6 +158,19 @@ export const scanReceiptController = asyncHandler(
 
     return res.status(HTTPSTATUS.OK).json({
       message: "Receipt scanned successfully",
+      data: result,
+    });
+  }
+);
+
+export const parseStatementController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { text } = parseStatementSchema.parse(req.body);
+
+    const result = await parseStatementService(text);
+
+    return res.status(HTTPSTATUS.OK).json({
+      message: "Statement parsed successfully",
       data: result,
     });
   }

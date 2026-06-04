@@ -1,5 +1,6 @@
 import axios from "axios";
 import TransactionModel, {
+  PaymentMethodEnum,
   TransactionTypeEnum,
 } from "../models/transaction.model";
 import { BadRequestException, NotFoundException } from "../utils/app-error";
@@ -10,7 +11,7 @@ import {
 } from "../validators/transaction.validator";
 import { genAI, genAIModel } from "../config/google-ai.config";
 import { createPartFromBase64, createUserContent } from "@google/genai";
-import { receiptPrompt } from "../utils/prompt";
+import { receiptPrompt, statementPrompt } from "../utils/prompt";
 
 export const createTransactionService = async (
   body: CreateTransactionType,
@@ -314,5 +315,66 @@ export const scanReceiptService = async (
     };
   } catch (error) {
     return { error: "Receipt scanning  service unavailable" };
+  }
+};
+
+// Parse pasted bank/card statement or CSV text into transactions the user can
+// review. Nothing is written here — the client sends the chosen rows to
+// /bulk-transaction after the user confirms. Rows are normalised to the shape
+// bulk import accepts (positive amount, ISO date, valid enums) so the confirm
+// step doesn't trip validation.
+export const parseStatementService = async (text: string) => {
+  try {
+    const result = await genAI.models.generateContent({
+      model: genAIModel,
+      contents: [createUserContent([statementPrompt, text])],
+      config: {
+        temperature: 0,
+        topP: 1,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const response = result.text;
+    const cleanedText = response?.replace(/```(?:json)?\n?/g, "").trim();
+    if (!cleanedText) return { transactions: [], count: 0 };
+
+    const parsed = JSON.parse(cleanedText);
+    const rows = Array.isArray(parsed) ? parsed : [];
+    const validMethods = Object.values(PaymentMethodEnum) as string[];
+
+    const transactions = rows
+      .map((r: any) => {
+        if (!r || typeof r.title !== "string" || !r.title.trim()) return null;
+        const amount = Number(r.amount);
+        if (!(amount > 0)) return null;
+        const d = new Date(r.date);
+        if (isNaN(d.getTime())) return null;
+
+        return {
+          title: r.title.trim(),
+          amount,
+          date: d.toISOString(),
+          description:
+            typeof r.description === "string" ? r.description : undefined,
+          category:
+            typeof r.category === "string" && r.category.trim()
+              ? r.category.trim().toLowerCase()
+              : "uncategorized",
+          type:
+            r.type === TransactionTypeEnum.INCOME
+              ? TransactionTypeEnum.INCOME
+              : TransactionTypeEnum.EXPENSE,
+          paymentMethod: validMethods.includes(r.paymentMethod)
+            ? r.paymentMethod
+            : PaymentMethodEnum.BANK_TRANSFER,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 300); // same ceiling as bulk import
+
+    return { transactions, count: transactions.length };
+  } catch (error) {
+    return { error: "Statement parsing service unavailable" };
   }
 };

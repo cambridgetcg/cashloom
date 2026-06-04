@@ -32,6 +32,33 @@ Example valid response:
 }
 `;
 
+export const statementPrompt = `
+You are a financial assistant. The user pasted raw text from a bank or card
+statement, or CSV rows. Extract every real transaction and return them as a
+JSON array, where each item matches this exact format:
+{
+  "title": "string",            // Merchant / payee / short description
+  "amount": number,             // ALWAYS a positive number (no sign)
+  "date": "YYYY-MM-DD",         // ISO date
+  "description": "string",      // Optional short note (max 30 words)
+  "category": "string",         // Best guess: groceries, transport, salary, rent, utilities, etc.
+  "type": "INCOME" | "EXPENSE", // INCOME = money in (credit/deposit), EXPENSE = money out (debit/withdrawal)
+  "paymentMethod": "string"     // One of: ${Object.values(PaymentMethodEnum).join(",")}
+}
+
+Rules:
+1. amount is ALWAYS positive — put the direction in "type" (credit/deposit/refund/salary = INCOME; debit/purchase/withdrawal/fee = EXPENSE).
+2. date must be valid (YYYY-MM-DD). Infer the year from context if a row omits it.
+3. Skip any row with no clear amount or date.
+4. If paymentMethod is unclear, use "BANK_TRANSFER".
+5. Skip headers, summaries, and opening/closing balance lines — only real transactions.
+6. If you find no transactions, return [].
+
+Return ONLY the JSON array. No markdown, no explanation.
+
+Statement text:
+`;
+
 export const reportInsightPrompt = ({
   totalIncome,
   totalExpenses,

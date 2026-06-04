@@ -67,6 +67,17 @@ export const bulkTransactionSchema = z.object({
     ),
 });
 
+export const parseStatementSchema = z.object({
+  text: z
+    .string()
+    .trim()
+    .min(1, "Paste some statement text first")
+    .max(
+      20000,
+      "That's a lot — paste up to 20,000 characters at a time"
+    ),
+});
+
 export const createTransactionSchema = baseTransactionSchema;
 export const updateTransactionSchema = baseTransactionSchema.partial();
 

@@ -7,6 +7,7 @@ import {
   duplicateTransactionController,
   getAllTransactionController,
   getTransactionByIdController,
+  parseStatementController,
   scanReceiptController,
   updateTransactionController,
 } from "../controllers/transaction.controller";
@@ -39,6 +40,12 @@ transactionRoutes.post(
   aiScanLimiter,
   upload.single("receipt"),
   scanReceiptController
+);
+
+transactionRoutes.post(
+  "/parse-statement",
+  aiScanLimiter, // Gemini call — same cost guard as receipt scan
+  parseStatementController
 );
 
 transactionRoutes.post(
