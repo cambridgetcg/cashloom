@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "react-router-dom";
-import { AUTH_ROUTES } from "@/routes/common/routePath";
+import { AUTH_ROUTES, PROTECTED_ROUTES } from "@/routes/common/routePath";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
@@ -16,6 +16,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useRegisterMutation } from "@/features/auth/authAPI";
+import { useAppDispatch } from "@/app/hook";
+import { setCredentials } from "@/features/auth/authSlice";
 
 const schema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -27,6 +29,7 @@ type FormValues = z.infer<typeof schema>;
 
 const SignUpForm = () => {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [register, { isLoading }] = useRegisterMutation();
 
   const form = useForm<FormValues>({
@@ -36,13 +39,14 @@ const SignUpForm = () => {
   const onSubmit = (values: FormValues) => {
     register(values)
       .unwrap()
-      .then(() => {
+      .then((data) => {
         form.reset();
-        toast.success("Sign up successful");
-        navigate(AUTH_ROUTES.SIGN_IN);
+        // Signup now returns a token — log straight in, no second login.
+        dispatch(setCredentials(data));
+        toast.success("Welcome to CashLoom");
+        navigate(PROTECTED_ROUTES.OVERVIEW);
       })
       .catch((error) => {
-        console.log(error);
         toast.error(error.data?.message || "Failed to sign up");
       });
   };

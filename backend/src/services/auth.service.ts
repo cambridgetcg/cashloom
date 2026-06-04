@@ -17,17 +17,24 @@ export const registerService = async (body: RegisterSchemaType) => {
   const session = await mongoose.startSession();
 
   try {
+    // withTransaction's callback return isn't propagated, so capture what we
+    // need in the outer scope instead of returning from inside.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let newUser: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let reportSetting: any;
+
     await session.withTransaction(async () => {
       const existingUser = await UserModel.findOne({ email }).session(session);
       if (existingUser) throw new UnauthorizedException("User already exists");
 
-      const newUser = new UserModel({
+      newUser = new UserModel({
         ...body,
       });
 
       await newUser.save({ session });
 
-      const reportSetting = new ReportSettingModel({
+      reportSetting = new ReportSettingModel({
         userId: newUser._id,
         frequency: ReportFrequencyEnum.MONTHLY,
         isEnabled: true,
@@ -35,9 +42,23 @@ export const registerService = async (body: RegisterSchemaType) => {
         lastSentDate: null,
       });
       await reportSetting.save({ session });
-
-      return { user: newUser.omitPassword() };
     });
+
+    if (!newUser) throw new UnauthorizedException("Registration failed");
+
+    // Issue a token now so signup logs the user straight in — no second login.
+    const { token, expiresAt } = signJwtToken({ userId: newUser.id });
+
+    return {
+      user: newUser.omitPassword(),
+      accessToken: token,
+      expiresAt,
+      reportSetting: {
+        _id: reportSetting?._id,
+        frequency: reportSetting?.frequency,
+        isEnabled: reportSetting?.isEnabled,
+      },
+    };
   } catch (error) {
     throw error;
   } finally {

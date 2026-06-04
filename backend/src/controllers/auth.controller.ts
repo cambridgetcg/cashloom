@@ -8,11 +8,15 @@ export const registerController = asyncHandler(
   async (req: Request, res: Response) => {
     const body = registerSchema.parse(req.body);
 
-    const result = await registerService(body);
+    const { user, accessToken, expiresAt, reportSetting } =
+      await registerService(body);
 
     return res.status(HTTPSTATUS.CREATED).json({
       message: "User registered successfully",
-      data: result,
+      user,
+      accessToken,
+      expiresAt,
+      reportSetting,
     });
   }
 );
