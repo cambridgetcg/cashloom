@@ -46,6 +46,8 @@ interface DataTableProps<TData> {
   searchPlaceholder?: string;
   showSearch?: boolean;
   filters?: FilterOption[];
+  emptyTitle?: string;
+  emptyDescription?: string;
   className?: string;
   onSearch?: (term: string) => void;
   onFilterChange?: (filters: Record<string, string>) => void;
@@ -70,6 +72,8 @@ export function DataTable<TData>({
   searchPlaceholder = "Search...",
   showSearch = true,
   filters = [],
+  emptyTitle = "Nothing here yet",
+  emptyDescription = "New entries will show up here once you add them.",
   className,
   onSearch,
   onFilterChange,
@@ -257,7 +261,7 @@ export function DataTable<TData>({
                     colSpan={columns.length}
                     className="text-center h-24"
                   >
-                    <EmptyState title="No records found" description="" />
+                    <EmptyState title={emptyTitle} description={emptyDescription} />
                   </TableCell>
                 </TableRow>
               )}
