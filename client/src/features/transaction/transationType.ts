@@ -102,6 +102,13 @@ export interface BulkImportTransactionPayload {
   transactions: BulkTransactionType[];
 }
 
+export interface BulkImportResult {
+  message?: string;
+  insertedCount: number;
+  skippedCount: number;
+  success: boolean;
+}
+
 export interface ParsedStatementRow {
   title: string;
   amount: number;

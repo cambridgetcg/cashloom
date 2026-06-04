@@ -12,6 +12,7 @@ import { genAI, genAIModel } from "../config/google-ai.config";
 import { createPartFromBase64, createUserContent } from "@google/genai";
 import { receiptPrompt, statementPrompt } from "../utils/prompt";
 import { normalizeParsedRows } from "../utils/parse-statement";
+import { splitNewRows, transactionKey } from "../utils/dedupe";
 
 export const createTransactionService = async (
   body: CreateTransactionType,
@@ -233,29 +234,49 @@ export const bulkTransactionService = async (
   userId: string,
   transactions: CreateTransactionType[]
 ) => {
-  try {
-    // insertMany runs schema setters (amount → convertToCents) + defaults.
-    // The previous bulkWrite/insertOne bypassed setters and stored raw dollars
-    // where cents belong, corrupting every imported amount by 100x.
-    // (Also fixes the `lastProcesses` typo — the field is `lastProcessed`.)
-    const docs = transactions.map((tx) => ({
-      ...tx,
-      userId,
-      isRecurring: false,
-      nextRecurringDate: null,
-      recurringInterval: null,
-      lastProcessed: null,
-    }));
+  // Guard the import paths from silently doubling data: skip any incoming row
+  // that already exists for this user with the same title + day + amount
+  // (e.g. re-importing an overlapping bank month, or a double-submit). We only
+  // scan the date span of this batch, so the lookup stays cheap.
+  const times = transactions.map((t) => new Date(t.date).getTime());
+  const minDate = new Date(Math.min(...times));
+  const maxDate = new Date(Math.max(...times));
 
-    const inserted = await TransactionModel.insertMany(docs);
+  const existing = await TransactionModel.find({
+    userId,
+    date: { $gte: minDate, $lte: maxDate },
+  }).select("title date amount");
 
-    return {
-      insertedCount: inserted.length,
-      success: true,
-    };
-  } catch (error) {
-    throw error;
+  const existingKeys = new Set(
+    existing.map((e) => transactionKey(e.title, e.date, e.amount))
+  );
+
+  const { toInsert, skippedCount } = splitNewRows(transactions, existingKeys);
+
+  if (toInsert.length === 0) {
+    return { insertedCount: 0, skippedCount, success: true };
   }
+
+  // insertMany runs schema setters (amount → convertToCents) + defaults.
+  // The previous bulkWrite/insertOne bypassed setters and stored raw dollars
+  // where cents belong, corrupting every imported amount by 100x.
+  // (Also fixes the `lastProcesses` typo — the field is `lastProcessed`.)
+  const docs = toInsert.map((tx) => ({
+    ...tx,
+    userId,
+    isRecurring: false,
+    nextRecurringDate: null,
+    recurringInterval: null,
+    lastProcessed: null,
+  }));
+
+  const inserted = await TransactionModel.insertMany(docs);
+
+  return {
+    insertedCount: inserted.length,
+    skippedCount,
+    success: true,
+  };
 };
 
 export const scanReceiptService = async (

@@ -122,9 +122,14 @@ const ConfirmationStep = ({
 
     bulkImportTransaction(payload)
       .unwrap()
-      .then(() => {
+      .then((res) => {
         updateProgress(100);
-        toast.success("Imported transactions successfully");
+        const skipped = res?.skippedCount ?? 0;
+        toast.success(
+          skipped > 0
+            ? `Imported ${res.insertedCount} · skipped ${skipped} already there`
+            : "Imported transactions successfully"
+        );
       })
       .catch((error) => {
         resetProgress();

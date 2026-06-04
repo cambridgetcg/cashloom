@@ -75,8 +75,14 @@ const AiImportModal = () => {
     };
     bulkImportTransaction(payload)
       .unwrap()
-      .then(() => {
-        toast.success(`Added ${rows.length} transactions`);
+      .then((res) => {
+        const added = res?.insertedCount ?? rows.length;
+        const skipped = res?.skippedCount ?? 0;
+        toast.success(
+          skipped > 0
+            ? `Added ${added} · skipped ${skipped} already there`
+            : `Added ${added} transactions`
+        );
         handleClose();
       })
       .catch((error) => {
