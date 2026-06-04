@@ -101,3 +101,22 @@ export interface BulkTransactionType {
 export interface BulkImportTransactionPayload {
   transactions: BulkTransactionType[];
 }
+
+export interface ParsedStatementRow {
+  title: string;
+  amount: number;
+  date: string;
+  description?: string;
+  category: string;
+  type: _TransactionType;
+  paymentMethod: PaymentMethodType;
+}
+
+export interface ParseStatementResponse {
+  message: string;
+  data: {
+    transactions?: ParsedStatementRow[];
+    count?: number;
+    error?: string;
+  };
+}

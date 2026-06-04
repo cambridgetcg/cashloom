@@ -6,6 +6,7 @@ import {
   GetAllTransactionParams,
   GetAllTransactionResponse,
   GetSingleTransactionResponse,
+  ParseStatementResponse,
   UpdateTransactionPayload,
 } from "./transationType";
 
@@ -25,6 +26,14 @@ export const transactionApi = apiClient.injectEndpoints({
         url: "/transaction/scan-receipt",
         method: "POST",
         body: formData,
+      }),
+    }),
+
+    parseStatement: builder.mutation<ParseStatementResponse, { text: string }>({
+      query: (body) => ({
+        url: "/transaction/parse-statement",
+        method: "POST",
+        body,
       }),
     }),
 
@@ -116,6 +125,7 @@ export const {
   useCreateTransactionMutation,
   useGetAllTransactionsQuery,
   useAiScanReceiptMutation,
+  useParseStatementMutation,
   useGetSingleTransactionQuery,
   useDuplicateTransactionMutation,
   useUpdateTransactionMutation,
