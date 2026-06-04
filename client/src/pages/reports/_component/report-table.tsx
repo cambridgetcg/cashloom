@@ -32,6 +32,8 @@ const ReportTable = () => {
       columns={reportColumns}
       isLoading={isFetching}
       showSearch={false}
+      emptyTitle="No reports yet"
+      emptyDescription="Your scheduled reports will appear here once they run."
       className="[&_td]:!w-[5%]"
       pagination={pagination}
       onPageChange={handlePageChange}
