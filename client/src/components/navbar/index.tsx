@@ -5,7 +5,12 @@ import { PROTECTED_ROUTES } from "@/routes/common/routePath";
 import { cn } from "@/lib/utils";
 import Logo from "../logo/logo";
 import { Button } from "../ui/button";
-import { Sheet, SheetContent } from "../ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
+} from "../ui/sheet";
 import { UserNav } from "./user-nav";
 import LogoutDialog from "./logout-dialog";
 import { useTypedSelector } from "@/app/hook";
@@ -88,6 +93,10 @@ const Navbar = () => {
             {/* Mobile Navigation */}
             <Sheet open={isOpen} onOpenChange={setIsOpen}>
               <SheetContent side="left" className="bg-white">
+                <SheetTitle className="sr-only">Menu</SheetTitle>
+                <SheetDescription className="sr-only">
+                  Main navigation links
+                </SheetDescription>
                 <nav aria-label="Main" className="flex flex-col gap-y-2 pt-9">
                   {routes?.map((route) => (
                     <Button
