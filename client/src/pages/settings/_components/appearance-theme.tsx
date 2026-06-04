@@ -1,33 +1,20 @@
-import { useState } from "react"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Button } from "@/components/ui/button"
 import { useTheme } from "@/context/theme-provider"
 
 export function AppearanceTheme() {
   const { theme, setTheme } = useTheme()
-
-  const [selectedTheme, setSelectedTheme] = useState(theme)
-
-
-  const handleThemeChange = (value: "light" | "dark") => {
-    setSelectedTheme(value)
-  }
-
-  const handleUpdateTheme = () => {
-    setTheme(selectedTheme)
-  }
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <h4 className="text-sm font-medium">Theme</h4>
         <p className="text-sm text-muted-foreground">
-          Select the theme for the dashboard.
+          Select the theme for the dashboard. Changes apply right away.
         </p>
         <RadioGroup
-          value={selectedTheme}
-          onValueChange={handleThemeChange}
+          value={theme}
+          onValueChange={(value) => setTheme(value as "light" | "dark")}
           className="flex flex-col md:flex-row items-start md:items-center gap-5 max-w-md pt-2"
         >
           <div>
@@ -80,11 +67,6 @@ export function AppearanceTheme() {
           </div>
         </RadioGroup>
       </div>
-      <Button
-      type="button"
-      className="mt-4 text-white"
-      onClick={handleUpdateTheme}
-      >Update preferences</Button>
     </div>
   )
 }
