@@ -1,8 +1,8 @@
 import { ColumnDef } from "@tanstack/react-table";
-import { Button } from "@/components/ui/button";
-import { Clock, RefreshCw } from "lucide-react";
+import { Clock } from "lucide-react";
 import { _REPORT_STATUS, ReportStatusType } from "@/constant";
 import { ReportType } from "@/features/report/reportType";
+import ReportDetailDialog from "./report-detail-dialog";
 
 export const reportColumns: ColumnDef<ReportType>[] = [
   {
@@ -60,15 +60,7 @@ export const reportColumns: ColumnDef<ReportType>[] = [
     id: "actions",
     header: "Actions",
     size: 100,
-    cell: () => (
-      <div className="flex gap-1">
-        <Button size="sm" variant="outline" className="font-normal">
-          <RefreshCw className="h-4 w-4" />
-          Resend
-        </Button>
-        <div></div>
-      </div>
-    ),
+    cell: ({ row }) => <ReportDetailDialog report={row.original} />,
   },
 
   {
