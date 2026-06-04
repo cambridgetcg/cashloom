@@ -8,10 +8,9 @@ const envConfig = () => ({
   MONGO_URI: getEnv("MONGO_URI"),
 
   JWT_SECRET: getEnv("JWT_SECRET", "secert_jwt"),
-  JWT_EXPIRES_IN: getEnv("JWT_EXPIRES_IN", "15m") as string,
-
-  JWT_REFRESH_SECRET: getEnv("JWT_REFRESH_SECRET", "secert_jwt_refresh"),
-  JWT_REFRESH_EXPIRES_IN: getEnv("JWT_REFRESH_EXPIRES_IN", "7d") as string,
+  // Long-lived token: there's no refresh endpoint, so a short expiry just
+  // dumps the user mid-session. 7 days is the coherent single-token path.
+  JWT_EXPIRES_IN: getEnv("JWT_EXPIRES_IN", "7d") as string,
 
   GEMINI_API_KEY: getEnv("GEMINI_API_KEY"),
 
