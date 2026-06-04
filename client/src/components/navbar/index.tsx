@@ -62,22 +62,23 @@ const Navbar = () => {
             </div>
 
             {/* Navigation*/}
-            <nav className="hidden md:flex items-center gap-x-2 overflow-x-auto">
+            <nav aria-label="Main" className="hidden md:flex items-center gap-x-2 overflow-x-auto">
               {routes?.map((route) => (
                 <Button
+                  key={route.href}
                   size="sm"
                   variant="ghost"
                   className={cn(
                     `w-full lg:w-auto font-normal py-4.5
                      hover:text-white border-none
                      text-white/60 focus:bg-white/30
-                     transtion !bg-transparent !text-[14.5px]
+                     transition !bg-transparent !text-[14.5px]
                      `,
                     pathname === route.href && "text-white"
                   )}
                   asChild
                 >
-                  <NavLink key={route.href} to={route.href}>
+                  <NavLink to={route.href}>
                     {route.label}
                   </NavLink>
                 </Button>
@@ -87,21 +88,22 @@ const Navbar = () => {
             {/* Mobile Navigation */}
             <Sheet open={isOpen} onOpenChange={setIsOpen}>
               <SheetContent side="left" className="bg-white">
-                <nav className="flex flex-col gap-y-2 pt-9">
+                <nav aria-label="Main" className="flex flex-col gap-y-2 pt-9">
                   {routes?.map((route) => (
                     <Button
+                      key={route.href}
                       size="sm"
                       variant="ghost"
                       className={cn(
                         `w-full font-normal py-4.5
                        hover:bg-white/10 hover:text-black border-none
                        text-black/70 focus:bg-white/30
-                       transtion !bg-transparent justify-start`,
+                       transition !bg-transparent justify-start`,
                         pathname === route.href && "!bg-black/10 text-black"
                       )}
                       asChild
                     >
-                      <NavLink key={route.href} to={route.href}>
+                      <NavLink to={route.href}>
                         {route.label}
                       </NavLink>
                     </Button>
