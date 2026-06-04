@@ -265,7 +265,6 @@ export const scanReceiptService = async (
   try {
     if (!file.path) throw new BadRequestException("failed to upload file");
 
-    console.log(file.path);
 
     const responseData = await axios.get(file.path, {
       responseType: "arraybuffer",

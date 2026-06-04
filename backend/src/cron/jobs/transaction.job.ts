@@ -13,7 +13,7 @@ export const processRecurringTransactions = async () => {
       nextRecurringDate: { $lte: now },
     }).cursor();
 
-    console.log("Starting recurring proccess");
+    console.log("Starting recurring process");
 
     for await (const tx of transactionCursor) {
       const nextDate = calculateNextOccurrence(
@@ -25,7 +25,6 @@ export const processRecurringTransactions = async () => {
       try {
         await session.withTransaction(
           async () => {
-            // console.log(tx, "transaction");
             await TransactionModel.create(
               [
                 {
@@ -63,7 +62,7 @@ export const processRecurringTransactions = async () => {
         processedCount++;
       } catch (error: any) {
         failedCount++;
-        console.log(`Failed reccurring tx: ${tx._id}`, error);
+        console.log(`Failed recurring tx: ${tx._id}`, error);
       } finally {
         await session.endSession();
       }
