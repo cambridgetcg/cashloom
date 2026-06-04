@@ -2,6 +2,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { Env } from "./env.config";
 import multer from "multer";
+import { publicIdFromUrl } from "../utils/cloudinary-url";
 
 cloudinary.config({
   cloud_name: Env.CLOUDINARY_CLOUD_NAME,
@@ -35,3 +36,17 @@ export const upload = multer({
     cb(null, true);
   },
 });
+
+// Best-effort removal of a stored image by its URL — used to clean up a
+// replaced avatar so old assets don't pile up. Never throws; a failed cleanup
+// must not break the user action that triggered it.
+export const deleteImageByUrl = async (url?: string | null) => {
+  if (!url) return;
+  const publicId = publicIdFromUrl(url);
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId);
+  } catch {
+    // swallow — cleanup is best-effort
+  }
+};
