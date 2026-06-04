@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { asyncHandler } from "../middlewares/asyncHandler.middlerware";
+import { asyncHandler } from "../middlewares/asyncHandler.middleware";
 import { HTTPSTATUS } from "../config/http.config";
 import {
   generateReportService,

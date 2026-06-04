@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { asyncHandler } from "../middlewares/asyncHandler.middlerware";
+import { asyncHandler } from "../middlewares/asyncHandler.middleware";
 import { HTTPSTATUS } from "../config/http.config";
 import {
   bulkDeleteTransactionSchema,
@@ -155,7 +155,7 @@ export const scanReceiptController = asyncHandler(
     const result = await scanReceiptService(file);
 
     return res.status(HTTPSTATUS.OK).json({
-      message: "Reciept scanned successfully",
+      message: "Receipt scanned successfully",
       data: result,
     });
   }

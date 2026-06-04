@@ -4,7 +4,7 @@ import { UserDocument } from "../../models/user.model";
 import mongoose from "mongoose";
 import { generateReportService } from "../../services/report.service";
 import ReportModel, { ReportStatusEnum } from "../../models/report.model";
-import { calulateNextReportDate } from "../../utils/helper";
+import { calculateNextReportDate } from "../../utils/helper";
 import { sendReportEmail } from "../../mailers/report.mailer";
 
 export const processReportJob = async () => {
@@ -93,7 +93,7 @@ export const processReportJob = async () => {
                   update: {
                     $set: {
                       lastSentDate: now,
-                      nextReportDate: calulateNextReportDate(now),
+                      nextReportDate: calculateNextReportDate(now),
                       updatedAt: now,
                     },
                   },
@@ -123,7 +123,7 @@ export const processReportJob = async () => {
                   update: {
                     $set: {
                       lastSentDate: null,
-                      nextReportDate: calulateNextReportDate(now),
+                      nextReportDate: calculateNextReportDate(now),
                       updatedAt: now,
                     },
                   },

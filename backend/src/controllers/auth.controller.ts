@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { HTTPSTATUS } from "../config/http.config";
-import { asyncHandler } from "../middlewares/asyncHandler.middlerware";
+import { asyncHandler } from "../middlewares/asyncHandler.middleware";
 import { loginSchema, registerSchema } from "../validators/auth.validator";
 import { loginService, registerService } from "../services/auth.service";
 

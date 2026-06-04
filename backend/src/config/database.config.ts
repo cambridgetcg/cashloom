@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { Env } from "./env.config";
 
-const connctDatabase = async () => {
+const connectDatabase = async () => {
   try {
     await mongoose.connect(Env.MONGO_URI, {
       serverSelectionTimeoutMS: 8000,
@@ -15,4 +15,4 @@ const connctDatabase = async () => {
   }
 };
 
-export default connctDatabase;
+export default connectDatabase;

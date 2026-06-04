@@ -20,15 +20,15 @@ export const createTransactionService = async (
   const currentDate = new Date();
 
   if (body.isRecurring && body.recurringInterval) {
-    const calulatedDate = calculateNextOccurrence(
+    const calculatedDate = calculateNextOccurrence(
       body.date,
       body.recurringInterval
     );
 
     nextRecurringDate =
-      calulatedDate < currentDate
+      calculatedDate < currentDate
         ? calculateNextOccurrence(currentDate, body.recurringInterval)
-        : calulatedDate;
+        : calculatedDate;
   }
 
   const transaction = await TransactionModel.create({
@@ -85,7 +85,7 @@ export const getAllTransactionService = async (
   const { pageSize, pageNumber } = pagination;
   const skip = (pageNumber - 1) * pageSize;
 
-  const [transations, totalCount] = await Promise.all([
+  const [transactions, totalCount] = await Promise.all([
     TransactionModel.find(filterConditions)
       .skip(skip)
       .limit(pageSize)
@@ -96,7 +96,7 @@ export const getAllTransactionService = async (
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return {
-    transations,
+    transactions,
     pagination: {
       pageSize,
       pageNumber,
@@ -171,12 +171,12 @@ export const updateTransactionService = async (
   let nextRecurringDate: Date | undefined;
 
   if (isRecurring && recurringInterval) {
-    const calulatedDate = calculateNextOccurrence(date, recurringInterval);
+    const calculatedDate = calculateNextOccurrence(date, recurringInterval);
 
     nextRecurringDate =
-      calulatedDate < now
+      calculatedDate < now
         ? calculateNextOccurrence(now, recurringInterval)
-        : calulatedDate;
+        : calculatedDate;
   }
 
   existingTransaction.set({
@@ -220,10 +220,10 @@ export const bulkDeleteTransactionService = async (
   });
 
   if (result.deletedCount === 0)
-    throw new NotFoundException("No transations found");
+    throw new NotFoundException("No transactions found");
 
   return {
-    sucess: true,
+    success: true,
     deletedCount: result.deletedCount,
   };
 };
@@ -294,13 +294,13 @@ export const scanReceiptService = async (
 
     if (!cleanedText)
       return {
-        error: "Could not read reciept  content",
+        error: "Could not read receipt  content",
       };
 
     const data = JSON.parse(cleanedText);
 
     if (!data.amount || !data.date) {
-      return { error: "Reciept missing required information" };
+      return { error: "Receipt missing required information" };
     }
 
     return {
@@ -314,6 +314,6 @@ export const scanReceiptService = async (
       receiptUrl: file.path,
     };
   } catch (error) {
-    return { error: "Reciept scanning  service unavailable" };
+    return { error: "Receipt scanning  service unavailable" };
   }
 };

@@ -8,7 +8,7 @@ import {
 import ReportSettingModel, {
   ReportFrequencyEnum,
 } from "../models/report-setting.model";
-import { calulateNextReportDate } from "../utils/helper";
+import { calculateNextReportDate } from "../utils/helper";
 import { signJwtToken } from "../utils/jwt";
 
 export const registerService = async (body: RegisterSchemaType) => {
@@ -31,7 +31,7 @@ export const registerService = async (body: RegisterSchemaType) => {
         userId: newUser._id,
         frequency: ReportFrequencyEnum.MONTHLY,
         isEnabled: true,
-        nextReportDate: calulateNextReportDate(),
+        nextReportDate: calculateNextReportDate(),
         lastSentDate: null,
       });
       await reportSetting.save({ session });

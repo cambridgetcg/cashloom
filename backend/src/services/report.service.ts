@@ -5,7 +5,7 @@ import TransactionModel, {
   TransactionTypeEnum,
 } from "../models/transaction.model";
 import { NotFoundException } from "../utils/app-error";
-import { calulateNextReportDate } from "../utils/helper";
+import { calculateNextReportDate } from "../utils/helper";
 import { UpdateReportSettingType } from "../validators/report.validator";
 import { convertToDollarUnit } from "../utils/format-currency";
 import { format } from "date-fns";
@@ -64,7 +64,7 @@ export const updateReportSettingService = async (
     const currentNextReportDate = existingReportSetting.nextReportDate;
     const now = new Date();
     if (!currentNextReportDate || currentNextReportDate <= now) {
-      nextReportDate = calulateNextReportDate(
+      nextReportDate = calculateNextReportDate(
         existingReportSetting.lastSentDate
       );
     } else {

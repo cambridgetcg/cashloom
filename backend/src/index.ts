@@ -6,8 +6,8 @@ import passport from "passport";
 import { Env } from "./config/env.config";
 import { HTTPSTATUS } from "./config/http.config";
 import { errorHandler } from "./middlewares/errorHandler.middleware";
-import { asyncHandler } from "./middlewares/asyncHandler.middlerware";
-import connctDatabase from "./config/database.config";
+import { asyncHandler } from "./middlewares/asyncHandler.middleware";
+import connectDatabase from "./config/database.config";
 import authRoutes from "./routes/auth.route";
 import { passportAuthenticateJwt } from "./config/passport.config";
 import userRoutes from "./routes/user.route";
@@ -53,7 +53,7 @@ app.use(`${BASE_PATH}/analytics`, passportAuthenticateJwt, analyticsRoutes);
 app.use(errorHandler);
 
 app.listen(Env.PORT, async () => {
-  await connctDatabase();
+  await connectDatabase();
 
   // Crons drive recurring transactions + monthly reports. Previously gated to
   // "development", so both scheduled features were silently dead in production.
