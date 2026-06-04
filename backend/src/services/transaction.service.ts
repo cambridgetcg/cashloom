@@ -1,6 +1,5 @@
 import axios from "axios";
 import TransactionModel, {
-  PaymentMethodEnum,
   TransactionTypeEnum,
 } from "../models/transaction.model";
 import { BadRequestException, NotFoundException } from "../utils/app-error";
@@ -12,6 +11,7 @@ import {
 import { genAI, genAIModel } from "../config/google-ai.config";
 import { createPartFromBase64, createUserContent } from "@google/genai";
 import { receiptPrompt, statementPrompt } from "../utils/prompt";
+import { normalizeParsedRows } from "../utils/parse-statement";
 
 export const createTransactionService = async (
   body: CreateTransactionType,
@@ -340,38 +340,7 @@ export const parseStatementService = async (text: string) => {
     if (!cleanedText) return { transactions: [], count: 0 };
 
     const parsed = JSON.parse(cleanedText);
-    const rows = Array.isArray(parsed) ? parsed : [];
-    const validMethods = Object.values(PaymentMethodEnum) as string[];
-
-    const transactions = rows
-      .map((r: any) => {
-        if (!r || typeof r.title !== "string" || !r.title.trim()) return null;
-        const amount = Number(r.amount);
-        if (!(amount > 0)) return null;
-        const d = new Date(r.date);
-        if (isNaN(d.getTime())) return null;
-
-        return {
-          title: r.title.trim(),
-          amount,
-          date: d.toISOString(),
-          description:
-            typeof r.description === "string" ? r.description : undefined,
-          category:
-            typeof r.category === "string" && r.category.trim()
-              ? r.category.trim().toLowerCase()
-              : "uncategorized",
-          type:
-            r.type === TransactionTypeEnum.INCOME
-              ? TransactionTypeEnum.INCOME
-              : TransactionTypeEnum.EXPENSE,
-          paymentMethod: validMethods.includes(r.paymentMethod)
-            ? r.paymentMethod
-            : PaymentMethodEnum.BANK_TRANSFER,
-        };
-      })
-      .filter(Boolean)
-      .slice(0, 300); // same ceiling as bulk import
+    const transactions = normalizeParsedRows(parsed);
 
     return { transactions, count: transactions.length };
   } catch (error) {
