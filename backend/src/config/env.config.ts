@@ -25,3 +25,11 @@ const envConfig = () => ({
 });
 
 export const Env = envConfig();
+
+// Never let the known public-repo default sign tokens in production — that
+// would let anyone forge a login. Fail fast instead of shipping it.
+if (Env.NODE_ENV === "production" && Env.JWT_SECRET === "secert_jwt") {
+  throw new Error(
+    "JWT_SECRET must be set to a strong secret in production (the default is public)."
+  );
+}
