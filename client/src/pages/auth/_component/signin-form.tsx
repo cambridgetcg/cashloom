@@ -101,6 +101,12 @@ const SignInForm = ({
                 </FormItem>
               )}
             />
+            <Link
+              to={AUTH_ROUTES.FORGOT_PASSWORD}
+              className="text-sm underline underline-offset-4 self-end"
+            >
+              Forgot password?
+            </Link>
           </div>
           <Button disabled={isLoading} type="submit" className="w-full">
             {isLoading && <Loader className="h-4 w-4 animate-spin" />}

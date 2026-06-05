@@ -6,6 +6,8 @@ import { AUTH_ROUTES } from "@/routes/common/routePath";
 const AUTH_TITLES: Record<string, string> = {
   [AUTH_ROUTES.SIGN_IN]: "Sign in",
   [AUTH_ROUTES.SIGN_UP]: "Sign up",
+  [AUTH_ROUTES.FORGOT_PASSWORD]: "Forgot password",
+  [AUTH_ROUTES.RESET_PASSWORD]: "Reset password",
 };
 
 const BaseLayout = () => {
