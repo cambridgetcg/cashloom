@@ -249,7 +249,8 @@ export const chartAnalyticsService = async (
   userId: string,
   dateRangePreset?: DateRangePreset,
   customFrom?: Date,
-  customTo?: Date
+  customTo?: Date,
+  timezone?: string
 ) => {
   const range = getDateRange(dateRangePreset, customFrom, customTo);
   const { from, to, value: rangeValue } = range;
@@ -271,9 +272,13 @@ export const chartAnalyticsService = async (
     {
       $group: {
         _id: {
+          // Bucket each transaction by its day in the viewer's timezone, so a
+          // late-night purchase lands on the right calendar day (not shifted
+          // by UTC). timezone is the browser's IANA zone; omit -> UTC.
           $dateToString: {
             format: "%Y-%m-%d",
             date: "$date",
+            ...(timezone ? { timezone } : {}),
           },
         },
 

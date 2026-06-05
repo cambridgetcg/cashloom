@@ -15,7 +15,14 @@ export const analyticsApi = apiClient.injectEndpoints({
       query: ({preset, from, to}) => ({
         url: "/analytics/chart",
         method: "GET",
-        params: {preset, from, to}
+        // Send the browser's timezone so the daily chart buckets each
+        // transaction on its correct local day, not the UTC day.
+        params: {
+          preset,
+          from,
+          to,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
       }),
       providesTags: ["analytics"],
     }),

@@ -36,7 +36,7 @@ export const summaryAnalyticsController = asyncHandler(
 export const chartAnalyticsController = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user?._id;
-    const { preset, from, to } = req.query;
+    const { preset, from, to, timezone } = req.query;
 
     const filter = {
       dateRangePreset: preset as DateRangePreset,
@@ -48,7 +48,8 @@ export const chartAnalyticsController = asyncHandler(
       userId,
       filter.dateRangePreset,
       filter.customFrom,
-      filter.customTo
+      filter.customTo,
+      typeof timezone === "string" ? timezone : undefined
     );
 
     return res.status(HTTPSTATUS.OK).json({
