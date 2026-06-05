@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.*
+.git
+.gitignore
+*.test.ts
+*.integration.test.ts
+*.md
+.DS_Store
