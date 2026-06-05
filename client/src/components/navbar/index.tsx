@@ -56,6 +56,7 @@ const Navbar = () => {
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Open menu"
                 className="inline-flex md:hidden !cursor-pointer
                !bg-white/10 !text-white hover:bg-white/10"
                 onClick={() => setIsOpen(true)}
