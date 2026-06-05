@@ -60,6 +60,7 @@ export const processReportJob = async () => {
                 insights: report.insights,
               },
               frequency: setting.frequency!,
+              currency: user.currency,
             });
             emailSent = true;
           } catch (error) {

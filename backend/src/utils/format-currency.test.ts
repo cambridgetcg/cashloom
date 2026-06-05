@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { convertToCents, convertToDollarUnit } from "./format-currency";
+import {
+  convertToCents,
+  convertToDollarUnit,
+  formatCurrency,
+} from "./format-currency";
 
 // The money primitive every balance, chart, and AI report trusts.
 // Amounts are stored as integer cents (schema setter on Transaction.amount)
@@ -22,6 +26,17 @@ describe("currency cents round-trip", () => {
     // 19.99 * 100 === 1998.9999999999998 in JS; Math.round rescues it.
     expect(convertToCents(19.99)).toBe(1999);
     expect(Number.isInteger(convertToCents(19.99))).toBe(true);
+  });
+});
+
+describe("formatCurrency", () => {
+  it("defaults to USD", () => {
+    expect(formatCurrency(1234.5)).toContain("$");
+  });
+
+  it("honours the chosen currency symbol (report email uses the user's)", () => {
+    expect(formatCurrency(1234.5, "GBP")).toContain("£");
+    expect(formatCurrency(1234.5, "EUR")).toContain("€");
   });
 });
 

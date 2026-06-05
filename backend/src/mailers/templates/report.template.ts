@@ -4,7 +4,8 @@ import { capitalizeFirstLetter } from "../../utils/helper";
 
 export const getReportEmailTemplate = (
   reportData: ReportType & { username: string },
-  frequency: string
+  frequency: string,
+  currency: string = "USD"
 ) => {
   const {
     username,
@@ -22,7 +23,7 @@ export const getReportEmailTemplate = (
   const categoryList = topSpendingCategories
     .map(
       (cat: any) => `<li>
-      ${cat.name} - ${formatCurrency(cat.amount)} (${cat.percent}%)
+      ${cat.name} - ${formatCurrency(cat.amount, currency)} (${cat.percent}%)
       </li>
     `
     )
@@ -60,15 +61,15 @@ export const getReportEmailTemplate = (
                  <table width="100%" style="border-collapse: collapse;">
                    <tr>
                      <td style="padding: 8px 0; font-size: 16px;"><strong>Total Income:</strong></td>
-                     <td style="text-align: right; font-size: 16px;">${formatCurrency(totalIncome)}</td>
+                     <td style="text-align: right; font-size: 16px;">${formatCurrency(totalIncome, currency)}</td>
                    </tr>
                    <tr>
                      <td style="padding: 8px 0; font-size: 16px;"><strong>Total Expenses:</strong></td>
-                     <td style="text-align: right; font-size: 16px;">${formatCurrency(totalExpenses)}</td>
+                     <td style="text-align: right; font-size: 16px;">${formatCurrency(totalExpenses, currency)}</td>
                    </tr>
                    <tr>
                      <td style="padding: 8px 0; font-size: 16px;"><strong>Available Balance:</strong></td>
-                     <td style="text-align: right; font-size: 16px;">${formatCurrency(availableBalance)}</td>
+                     <td style="text-align: right; font-size: 16px;">${formatCurrency(availableBalance, currency)}</td>
                    </tr>
                    <tr>
                      <td style="padding: 8px 0; font-size: 16px;"><strong>Savings Rate:</strong></td>
