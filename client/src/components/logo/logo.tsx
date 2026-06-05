@@ -8,7 +8,7 @@ const Logo = (props: { url?: string }) => {
     <div className="text-white rounded w-8 h-8 border border-[#00C951] flex items-center justify-center">
         <img className="rounded w-full h-full" src={LogoDark} />
     </div>
-    <span className="font-semibold text-lg">Cashloom</span>
+    <span className="font-semibold text-lg">CashLoom</span>
   </Link>
   )
 }
