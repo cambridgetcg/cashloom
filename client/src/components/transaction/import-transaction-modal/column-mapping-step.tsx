@@ -72,8 +72,6 @@ const ColumnMappingStep = ({
     }
   };
 
-  console.log(mappings, "mapping");
-
   const validateMappings = () => {
     const newErrors: Record<string, string> = {};
     const usedFields = new Set<string>();
@@ -91,7 +89,6 @@ const ColumnMappingStep = ({
         Object.entries(mappings).filter(([_, field]) => field !== "Skip")
       );
 
-      console.log(finalMappings, "maning");
       onComplete(finalMappings);
     }
   };

@@ -156,8 +156,6 @@ const TransactionForm = (props: {
 
   // Handle form submission
   const onSubmit = (values: FormValues) => {
-    // if (isCreating || isUpdating) return;
-    console.log("Form submitted:", values);
     const payload = {
       title: values.title,
       type: values.type,
@@ -364,7 +362,6 @@ const TransactionForm = (props: {
                         mode="single"
                         selected={field.value}
                         onSelect={(date) => {
-                          console.log(date);
                           field.onChange(date); // This updates the form value
                         }}
                         disabled={(date) => date < new Date("2023-01-01")}

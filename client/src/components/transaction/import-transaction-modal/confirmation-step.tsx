@@ -98,7 +98,6 @@ const ConfirmationStep = ({
   const handleImport = () => {
     const { transactions, hasValidationErrors } =
       getAssignFieldToMappedTransactions();
-    console.log(transactions, "transactions");
 
     if (hasErrors || hasValidationErrors) return;
 
@@ -117,8 +116,6 @@ const ConfirmationStep = ({
     }, 250);
 
     const payload = { transactions: transactions as BulkTransactionType[] };
-
-    console.log(payload, "payload");
 
     bulkImportTransaction(payload)
       .unwrap()
@@ -192,8 +189,6 @@ const ConfirmationStep = ({
   };
 
   const hasErrors = Object.keys(errors).length > 0;
-
-  console.log(errors, "errors");
 
   return (
     <div className="space-y-6">

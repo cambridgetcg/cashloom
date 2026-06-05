@@ -51,7 +51,6 @@ const TransactionTable = (props: {
   };
 
   const handleSearch = (value: string) => {
-    console.log(debouncedTerm);
     setSearchTerm(value);
   };
 
