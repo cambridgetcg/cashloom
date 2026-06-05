@@ -13,7 +13,27 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
+
+const CURRENCIES = [
+  { code: "USD", label: "US Dollar ($)" },
+  { code: "EUR", label: "Euro (€)" },
+  { code: "GBP", label: "British Pound (£)" },
+  { code: "CAD", label: "Canadian Dollar (C$)" },
+  { code: "AUD", label: "Australian Dollar (A$)" },
+  { code: "JPY", label: "Japanese Yen (¥)" },
+  { code: "INR", label: "Indian Rupee (₹)" },
+  { code: "SGD", label: "Singapore Dollar (S$)" },
+  { code: "NZD", label: "NZ Dollar (NZ$)" },
+  { code: "CHF", label: "Swiss Franc (CHF)" },
+];
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAppDispatch, useTypedSelector } from "@/app/hook";
 import { Loader } from "lucide-react";
@@ -28,6 +48,7 @@ const accountFormSchema = z.object({
     })
     .optional(),
   profilePicture: z.string(),
+  currency: z.string(),
 });
 
 type AccountFormValues = z.infer<typeof accountFormSchema>;
@@ -46,6 +67,7 @@ export function AccountForm() {
     defaultValues: {
       name: user?.name || "",
       profilePicture: user?.profilePicture || "",
+      currency: user?.currency || "USD",
     },
   });
 
@@ -55,6 +77,7 @@ export function AccountForm() {
 
     const formData = new FormData();
     formData.append("name", values.name || "");
+    formData.append("currency", values.currency);
     if (file) formData.append("profilePicture", file);
 
     updateUserMutation(formData)
@@ -65,6 +88,7 @@ export function AccountForm() {
             user: {
               profilePicture: response.data.profilePicture,
               name: response.data.name,
+              currency: response.data.currency,
             },
           })
         );
@@ -131,6 +155,33 @@ export function AccountForm() {
               <FormControl>
                 <Input placeholder="Your name" {...field} />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="currency"
+          render={({ field }) => (
+            <FormItem className="max-w-xs">
+              <FormLabel>Display currency</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pick a currency" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {CURRENCIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The symbol your amounts are shown with across the app.
+              </p>
               <FormMessage />
             </FormItem>
           )}

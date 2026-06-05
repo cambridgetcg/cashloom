@@ -12,6 +12,7 @@ interface User {
   name: string;
   email: string;
   profilePicture: string;
+  currency?: string;
 }
 
 interface ReportSetting {

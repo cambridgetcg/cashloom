@@ -1,13 +1,23 @@
+// App-wide display currency (the i18n pattern — set once from the logged-in
+// user, read by every formatCurrency call so the whole app shows their
+// currency without threading it through each call site). Not FX: amounts are
+// shown as entered, just with the right symbol.
+let activeCurrency = "USD";
+
+export const setActiveCurrency = (currency?: string) => {
+  if (currency) activeCurrency = currency;
+};
+
 export const formatCurrency = (value: number,
-  options: { 
-    currency?: string; 
+  options: {
+    currency?: string;
     decimalPlaces?: number;
     compact?: boolean;
     showSign?: boolean;
     isExpense?: boolean;
   } = {}
 ):string => {
-  const { currency = 'USD', decimalPlaces = 2, compact = false, showSign = false, isExpense = false } = options;
+  const { currency = activeCurrency, decimalPlaces = 2, compact = false, showSign = false, isExpense = false } = options;
 
   const displayValue = isExpense ? -Math.abs(value) : value;
   

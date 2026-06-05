@@ -8,9 +8,11 @@ import BaseLayout from "@/layouts/base-layout";
 import AuthRoute from "./authRoute";
 import ProtectedRoute from "./protectedRoute";
 import useAuthExpiration from "@/hooks/use-auth-expiration";
+import useSyncCurrency from "@/hooks/use-sync-currency";
 
 function AppRoutes() {
   useAuthExpiration();
+  useSyncCurrency();
   return (
     <BrowserRouter>
       <Routes>

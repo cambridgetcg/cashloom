@@ -24,6 +24,7 @@ export const updateUserService = async (
 
   user.set({
     name: body.name,
+    ...(body.currency && { currency: body.currency }),
   });
 
   await user.save();
