@@ -6,6 +6,8 @@ export interface UserDocument extends Document {
   email: string;
   password: string;
   profilePicture: string | null;
+  resetPasswordToken?: string | null;
+  resetPasswordExpires?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   comparePassword: (password: string) => Promise<boolean>;
@@ -36,6 +38,18 @@ const userSchema = new Schema<UserDocument>(
       // Login opts back in with .select("+password").
       select: false,
       required: true,
+    },
+    // Password-reset: we store only the token HASH + an expiry, both hidden
+    // by default. Reset opts in with .select("+resetPasswordToken ...").
+    resetPasswordToken: {
+      type: String,
+      select: false,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      select: false,
+      default: null,
     },
   },
   {

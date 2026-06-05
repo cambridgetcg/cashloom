@@ -1,8 +1,18 @@
 import { Request, Response } from "express";
 import { HTTPSTATUS } from "../config/http.config";
 import { asyncHandler } from "../middlewares/asyncHandler.middleware";
-import { loginSchema, registerSchema } from "../validators/auth.validator";
-import { loginService, registerService } from "../services/auth.service";
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+} from "../validators/auth.validator";
+import {
+  forgotPasswordService,
+  loginService,
+  registerService,
+  resetPasswordService,
+} from "../services/auth.service";
 
 export const registerController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -36,5 +46,21 @@ export const loginController = asyncHandler(
       expiresAt,
       reportSetting,
     });
+  }
+);
+
+export const forgotPasswordController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email } = forgotPasswordSchema.parse(req.body);
+    const result = await forgotPasswordService(email);
+    return res.status(HTTPSTATUS.OK).json(result);
+  }
+);
+
+export const resetPasswordController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { token, password } = resetPasswordSchema.parse(req.body);
+    const result = await resetPasswordService(token, password);
+    return res.status(HTTPSTATUS.OK).json(result);
   }
 );

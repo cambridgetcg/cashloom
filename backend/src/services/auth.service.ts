@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import UserModel from "../models/user.model";
-import { NotFoundException, UnauthorizedException } from "../utils/app-error";
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from "../utils/app-error";
 import {
   LoginSchemaType,
   RegisterSchemaType,
@@ -10,6 +14,11 @@ import ReportSettingModel, {
 } from "../models/report-setting.model";
 import { calculateNextReportDate } from "../utils/helper";
 import { signJwtToken } from "../utils/jwt";
+import { generateResetToken, hashResetToken } from "../utils/reset-token";
+import { sendPasswordResetEmail } from "../mailers/password-reset.mailer";
+import { Env } from "../config/env.config";
+
+const RESET_TOKEN_TTL_MIN = 30;
 
 export const registerService = async (body: RegisterSchemaType) => {
   const { email } = body;
@@ -92,4 +101,61 @@ export const loginService = async (body: LoginSchemaType) => {
     expiresAt,
     reportSetting,
   };
+};
+
+export const forgotPasswordService = async (email: string) => {
+  const user = await UserModel.findOne({ email: email.toLowerCase() });
+
+  // Always respond the same way — never reveal whether an email is registered.
+  if (user) {
+    const { token, tokenHash } = generateResetToken();
+    user.resetPasswordToken = tokenHash;
+    user.resetPasswordExpires = new Date(
+      Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000
+    );
+    await user.save();
+
+    const resetUrl = `${Env.FRONTEND_ORIGIN}/reset-password?token=${token}`;
+
+    try {
+      await sendPasswordResetEmail({
+        email: user.email,
+        username: user.name,
+        resetUrl,
+        expiresInMinutes: RESET_TOKEN_TTL_MIN,
+      });
+    } catch (error) {
+      // If the email can't be sent, don't leave a live token dangling.
+      user.resetPasswordToken = null;
+      user.resetPasswordExpires = null;
+      await user.save();
+      throw error;
+    }
+  }
+
+  return {
+    message: "If that email is registered, a reset link is on its way.",
+  };
+};
+
+export const resetPasswordService = async (token: string, password: string) => {
+  const tokenHash = hashResetToken(token);
+
+  const user = await UserModel.findOne({
+    resetPasswordToken: tokenHash,
+    resetPasswordExpires: { $gt: new Date() },
+  });
+
+  if (!user) {
+    throw new BadRequestException("This reset link is invalid or has expired.");
+  }
+
+  // Setting password marks it modified → the pre-save hook hashes it.
+  // Clearing the token makes the link single-use.
+  user.password = password;
+  user.resetPasswordToken = null;
+  user.resetPasswordExpires = null;
+  await user.save();
+
+  return { message: "Your password has been reset. You can sign in now." };
 };
