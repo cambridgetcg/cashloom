@@ -1,0 +1,22 @@
+# CashLoom API — Fly.io deploy config. Secrets set via `fly secrets set` (never here).
+app = "cashloom-api"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8000"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Always keep one machine up — node-cron runs recurring tx + monthly reports
+  # in-process, so the app can't scale to zero.
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
