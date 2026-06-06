@@ -1,0 +1,32 @@
+name: Deploy client (Cloudflare Pages)
+
+# Auto-deploy the client to Cloudflare Pages on every push to main that touches
+# the client. Build bakes in the live API URL; secrets come from repo settings.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "client/**"
+      - ".github/workflows/deploy-client.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Build
+        run: bun run build
+        env:
+          VITE_API_URL: https://cashloom-api.fly.dev/api
+          VITE_REDUX_PERSIST_SECRET_KEY: ${{ secrets.VITE_REDUX_PERSIST_SECRET_KEY }}
+      - name: Deploy to Cloudflare Pages
+        run: bunx wrangler pages deploy dist --project-name=cashloom --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
