@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +20,7 @@ import { ParsedStatementRow } from "@/features/transaction/transationType";
 // Paste a bank/card statement or CSV rows → AI reads them into transactions →
 // you check the list → save. Nothing is written until you confirm. Saving
 // reuses the existing bulk-import endpoint.
-const AiImportModal = () => {
+const AiImportModal = ({ trigger }: { trigger?: ReactNode }) => {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [rows, setRows] = useState<ParsedStatementRow[] | null>(null);
@@ -95,15 +96,18 @@ const AiImportModal = () => {
       open={open}
       onOpenChange={(o) => (o ? setOpen(true) : handleClose())}
     >
-      <Button
-        variant="outline"
-        className="!shadow-none !cursor-pointer !border-gray-500
-         !text-white !bg-transparent"
-        onClick={() => setOpen(true)}
-      >
-        <Sparkles className="!w-5 !h-5" />
-        AI Import
-      </Button>
+      <DialogTrigger asChild>
+        {trigger ?? (
+          <Button
+            variant="outline"
+            className="!shadow-none !cursor-pointer !border-gray-500
+             !text-white !bg-transparent"
+          >
+            <Sparkles className="!w-5 !h-5" />
+            AI Import
+          </Button>
+        )}
+      </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Import from a statement</DialogTitle>
