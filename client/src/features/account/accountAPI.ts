@@ -3,6 +3,7 @@ import {
   CreateAccountBody,
   CreateAccountResponse,
   GetAllAccountsResponse,
+  GetNetWorthResponse,
   SyncAccountResponse,
   SyncAllAccountsResponse,
   UpdateAccountPayload,
@@ -21,6 +22,17 @@ export const accountApi = accountApiClient.injectEndpoints({
     getAllAccounts: builder.query<GetAllAccountsResponse, void>({
       query: () => ({
         url: "/account/all",
+        method: "GET",
+      }),
+      providesTags: ["accounts"],
+    }),
+
+    // Treasury header total. Rides the same "accounts" tag as the list, so
+    // every sync/create/update mutation below refetches the net worth for
+    // free — no extra invalidation wiring.
+    getNetWorth: builder.query<GetNetWorthResponse, void>({
+      query: () => ({
+        url: "/valuation/net-worth",
         method: "GET",
       }),
       providesTags: ["accounts"],
@@ -66,6 +78,7 @@ export const accountApi = accountApiClient.injectEndpoints({
 
 export const {
   useGetAllAccountsQuery,
+  useGetNetWorthQuery,
   useCreateAccountMutation,
   useUpdateAccountMutation,
   useSyncAccountMutation,

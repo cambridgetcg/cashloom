@@ -1,13 +1,4 @@
-import {
-  BanknoteIcon,
-  BitcoinIcon,
-  CreditCardIcon,
-  GiftIcon,
-  LandmarkIcon,
-  LucideIcon,
-  PlusIcon,
-  WalletIcon,
-} from "lucide-react";
+import { PlusIcon, WalletIcon } from "lucide-react";
 import PageLayout from "@/components/page-layout";
 import { EmptyState } from "@/components/empty-state";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -18,16 +9,9 @@ import { AccountType, RailType } from "@/features/account/accountType";
 import AccountCard from "./_component/account-card";
 import AddAccountDialog from "./_component/add-account-dialog";
 import SyncAllButton from "./_component/sync-all-button";
-
-// Display order + labels for the rail sections.
-const RAIL_SECTIONS: { rail: RailType; label: string; Icon: LucideIcon }[] = [
-  { rail: "STRIPE", label: "Stripe", Icon: CreditCardIcon },
-  { rail: "BANK", label: "Bank", Icon: LandmarkIcon },
-  { rail: "CRYPTO", label: "Crypto", Icon: BitcoinIcon },
-  { rail: "CASH", label: "Cash", Icon: BanknoteIcon },
-  { rail: "PLATFORM_CREDIT", label: "Platform credit", Icon: WalletIcon },
-  { rail: "GIFT_CARD", label: "Gift cards", Icon: GiftIcon },
-];
+// RAIL_SECTIONS (display order + labels + icons) lives with the treasury
+// header so both consumers share it without a circular import.
+import TreasuryHeader, { RAIL_SECTIONS } from "./_component/treasury-header";
 
 const AccountsSkeleton = () => (
   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -72,6 +56,7 @@ export default function Accounts() {
         </div>
       }
     >
+      <TreasuryHeader />
       <Card className="border-0 shadow-none">
         <CardContent className="pt-2 space-y-8">
           {isLoading ? (

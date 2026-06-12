@@ -100,3 +100,69 @@ export interface SyncAllAccountsResponse {
   message: string;
   results: SyncAllResultItem[];
 }
+
+// ---- GET /valuation/net-worth (treasury header) ----
+// Every money field below is SERVER-rendered: *Minor fields are integer
+// minor-unit decimal STRINGS — wei-safe, never parseFloat — and every
+// "formatted" sibling is produced server-side with formatMinor. The client
+// renders these strings verbatim and performs ZERO money math.
+
+export interface NetWorthGroup {
+  rail: RailType;
+  currency: string;
+  // Minor-unit scale of this group (2 fiat, 8 BTC, 18 ETH...).
+  decimals: number;
+  // Integer minor-unit decimal string — wei-safe, never parseFloat this.
+  balanceMinor: string;
+  formatted: string;
+  // Decimal-string rate kept for auditability; null when the group is unpriced.
+  rate: string | null;
+  rateSource: "frankfurter" | "coingecko" | "identity" | null;
+  rateAsOf: string | null;
+  rateStale: boolean;
+  // Integer minor-unit decimal string in the home currency — never parseFloat.
+  homeValueMinor: string | null;
+  homeValueFormatted: string | null;
+}
+
+export interface NetWorthByRail {
+  rail: RailType;
+  // Integer minor-unit decimal string in the home currency — never parseFloat.
+  homeValueMinor: string;
+  homeValueFormatted: string;
+  accountCount: number;
+}
+
+export interface UnconvertedEntry {
+  currency: string;
+  // Integer minor-unit decimal string — wei-safe, never parseFloat this.
+  balanceMinor: string;
+  decimals: number;
+  // Redacted reason from the rate layer (never an upstream payload echo).
+  reason: string;
+}
+
+export interface NetWorth {
+  home: string;
+  homeDecimals: number;
+  // Integer minor-unit decimal string in the home currency — never parseFloat.
+  totalHomeMinor: string;
+  totalFormatted: string;
+  // false when anything landed in unconverted[] — the total excludes it.
+  complete: boolean;
+  // true when any quote was served stale (upstream rate outage).
+  stale: boolean;
+  asOf: string;
+  groups: NetWorthGroup[];
+  byRail: NetWorthByRail[];
+  unconverted: UnconvertedEntry[];
+  // Redacted reasons from the rate layer.
+  warnings: string[];
+  // FCA-posture microcopy — always rendered.
+  disclaimer: string;
+}
+
+export interface GetNetWorthResponse {
+  message: string;
+  netWorth: NetWorth;
+}
