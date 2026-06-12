@@ -22,6 +22,7 @@ describe("createAccountSchema.credentialRef", () => {
       "STRIPE_RESTRICTED_KEY",
       "STRIPE_RESTRICTED_KEY_2",
       "GOCARDLESS_SECRET_ID",
+      "ALCHEMY_API_KEY",
     ]) {
       const parsed = createAccountSchema.parse({
         ...baseBody,
@@ -47,6 +48,9 @@ describe("createAccountSchema.credentialRef", () => {
       "STRIPE-DASHED",
       "XSTRIPE_KEY",
       "STRIPE_", // prefix alone is not a variable name
+      "ALCHEMY_", // same rule for the ALCHEMY_* namespace
+      "ALCHEMYX_FOO", // a namespace is a prefix-plus-underscore, not a substring
+      "alchemy_api_key",
     ]) {
       expect(() =>
         createAccountSchema.parse({ ...baseBody, credentialRef: ref })
