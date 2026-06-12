@@ -12,6 +12,7 @@ export const isAuthRoute = (pathname: string): boolean => {
   export const PROTECTED_ROUTES = {
     NotFound: "/not-found",
     OVERVIEW: "/overview",
+    ACCOUNTS: "/accounts",
     TRANSACTIONS: "/transactions",
     REPORTS: "/reports",
     SETTINGS: "/settings",

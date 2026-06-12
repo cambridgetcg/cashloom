@@ -4,6 +4,7 @@ import SignUp from "@/pages/auth/sign-up";
 import ForgotPassword from "@/pages/auth/forgot-password";
 import ResetPassword from "@/pages/auth/reset-password";
 import Dashboard from "@/pages/dashboard";
+import Accounts from "@/pages/accounts";
 import Transactions from "@/pages/transactions";
 import Reports from "@/pages/reports";
 import Settings from "@/pages/settings";
@@ -21,6 +22,7 @@ export const authenticationRoutePaths = [
 export const protectedRoutePaths = [
   { path: PROTECTED_ROUTES.NotFound, element: <NotFound /> },
   { path: PROTECTED_ROUTES.OVERVIEW, element: <Dashboard /> },
+  { path: PROTECTED_ROUTES.ACCOUNTS, element: <Accounts /> },
   { path: PROTECTED_ROUTES.TRANSACTIONS, element: <Transactions /> },
   { path: PROTECTED_ROUTES.REPORTS, element: <Reports /> },
   { path: PROTECTED_ROUTES.SETTINGS, 
