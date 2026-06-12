@@ -12,7 +12,7 @@ import { genAI, genAIModel } from "../config/google-ai.config";
 import { createPartFromBase64, createUserContent } from "@google/genai";
 import { receiptPrompt, statementPrompt } from "../utils/prompt";
 import { normalizeParsedRows } from "../utils/parse-statement";
-import { splitNewRows, transactionKey } from "../utils/dedupe";
+import { dedupeKey, splitNewRows } from "../utils/dedupe";
 
 export const createTransactionService = async (
   body: CreateTransactionType,
@@ -245,11 +245,9 @@ export const bulkTransactionService = async (
   const existing = await TransactionModel.find({
     userId,
     date: { $gte: minDate, $lte: maxDate },
-  }).select("title date amount");
+  }).select("title date amount accountId externalId");
 
-  const existingKeys = new Set(
-    existing.map((e) => transactionKey(e.title, e.date, e.amount))
-  );
+  const existingKeys = new Set(existing.map((e) => dedupeKey(e)));
 
   const { toInsert, skippedCount } = splitNewRows(transactions, existingKeys);
 

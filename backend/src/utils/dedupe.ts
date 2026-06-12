@@ -16,17 +16,43 @@ export const transactionKey = (
     amount
   ).toFixed(2)}`;
 
+// A connector row carries a stable id from the rail (Stripe balance-txn id,
+// bank transactionId, on-chain txhash) — when present we dedupe on
+// {account, externalId}, which is authoritative and exact, so re-syncing the
+// same rail transaction never doubles it. Scoping by accountId means the same
+// externalId on two different accounts doesn't collide.
+export const externalKey = (accountId: string, externalId: string): string =>
+  `ext|${accountId}|${externalId}`;
+
+// The dedupe key for a row: the rail's authoritative {account, externalId} when
+// both are present, otherwise the day|title|amount heuristic. This keeps
+// manual/AI/CSV rows (which have no rail id) behaving exactly as before.
+export const dedupeKey = (row: {
+  title: string;
+  date: Date | string;
+  amount: number;
+  accountId?: unknown;
+  externalId?: string | null;
+}): string =>
+  row.externalId != null && row.externalId !== "" && row.accountId != null
+    ? externalKey(String(row.accountId), String(row.externalId))
+    : transactionKey(row.title, row.date, row.amount);
+
 // Split incoming rows into the ones to insert vs a count of those skipped
 // because a matching key already exists. Pure + side-effect free so it's easy
 // to test without a database.
 export const splitNewRows = <
-  T extends { title: string; date: Date | string; amount: number }
+  T extends {
+    title: string;
+    date: Date | string;
+    amount: number;
+    accountId?: unknown;
+    externalId?: string | null;
+  }
 >(
   incoming: T[],
   existingKeys: Set<string>
 ): { toInsert: T[]; skippedCount: number } => {
-  const toInsert = incoming.filter(
-    (t) => !existingKeys.has(transactionKey(t.title, t.date, t.amount))
-  );
+  const toInsert = incoming.filter((t) => !existingKeys.has(dedupeKey(t)));
   return { toInsert, skippedCount: incoming.length - toInsert.length };
 };

@@ -27,9 +27,14 @@ const envConfig = () => ({
 export const Env = envConfig();
 
 // Never let the known public-repo default sign tokens in production — that
-// would let anyone forge a login. Fail fast instead of shipping it.
-if (Env.NODE_ENV === "production" && Env.JWT_SECRET === "secert_jwt") {
-  throw new Error(
-    "JWT_SECRET must be set to a strong secret in production (the default is public)."
-  );
+// would let anyone forge a login — and don't accept a trivially weak secret
+// either. Fail fast at boot rather than shipping a forgeable-token deploy.
+// (Treasury context: this app is the proposer/bookkeeper; money-moving secrets
+// must never live in its env at all — see project design notes.)
+if (Env.NODE_ENV === "production") {
+  if (Env.JWT_SECRET === "secert_jwt" || Env.JWT_SECRET.length < 32) {
+    throw new Error(
+      "JWT_SECRET must be a strong secret (>= 32 chars) in production — the default is public."
+    );
+  }
 }

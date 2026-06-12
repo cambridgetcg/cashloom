@@ -28,6 +28,16 @@ export enum PaymentMethodEnum {
   OTHER = "OTHER",
 }
 
+// Where a transaction came from. CONNECTOR rows carry a stable externalId from
+// the rail and dedupe on it; AI_IMPORT/CSV/MANUAL rows have no rail id and fall
+// back to the day|title|amount heuristic (see utils/dedupe).
+export enum TransactionSourceEnum {
+  CONNECTOR = "CONNECTOR",
+  AI_IMPORT = "AI_IMPORT",
+  CSV = "CSV",
+  MANUAL = "MANUAL",
+}
+
 export interface TransactionDocument extends Document {
   userId: mongoose.Types.ObjectId;
   type: keyof typeof TransactionTypeEnum;
@@ -43,6 +53,13 @@ export interface TransactionDocument extends Document {
   date: Date;
   status: keyof typeof TransactionStatusEnum;
   paymentMethod: keyof typeof PaymentMethodEnum;
+  // Which Account (rail/wallet/bank) this transaction belongs to. Null for the
+  // legacy single-user tracker rows that predate connectors.
+  accountId?: mongoose.Types.ObjectId;
+  source: keyof typeof TransactionSourceEnum;
+  // The rail's own id for this transaction (Stripe balance-txn id, bank
+  // transactionId, on-chain txhash). Null for manual/AI/CSV rows.
+  externalId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -111,11 +128,37 @@ const transactionSchema = new Schema<TransactionDocument>(
       enum: Object.values(PaymentMethodEnum),
       default: PaymentMethodEnum.CASH,
     },
+    accountId: {
+      type: Schema.Types.ObjectId,
+      ref: "Account",
+      default: null,
+    },
+    source: {
+      type: String,
+      enum: Object.values(TransactionSourceEnum),
+      default: TransactionSourceEnum.MANUAL,
+    },
+    externalId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
     toJSON: { virtuals: true, getters: true },
     toObject: { virtuals: true, getters: true },
+  }
+);
+
+// A connector row is uniquely identified by its account + the rail's own id, so
+// re-syncing the same rail transaction can never double it. Partial: only rows
+// that actually carry an externalId are constrained — manual/AI/CSV rows
+// (externalId null) are exempt and keep the day|title|amount heuristic dedupe.
+transactionSchema.index(
+  { userId: 1, accountId: 1, externalId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { externalId: { $type: "string" } },
   }
 );
 
