@@ -42,6 +42,11 @@ const PAYMENT_METHOD_BY_CONNECTOR: Record<
 > = {
   stripe: PaymentMethodEnum.CARD,
   gocardless: PaymentMethodEnum.BANK_TRANSFER,
+  // Explicit OTHER for the crypto observers rather than leaning on the silent
+  // fallback: an on-chain transfer is neither card nor bank money, and no new
+  // enum member is warranted for it.
+  esplora: PaymentMethodEnum.OTHER,
+  alchemy: PaymentMethodEnum.OTHER,
 };
 
 // Defensive scrub for error text that leaves the service. Connectors already
@@ -50,10 +55,21 @@ const PAYMENT_METHOD_BY_CONNECTOR: Record<
 // redacted as a second line of defence.
 const SECRET_PATTERN = /(sk|rk)_[a-z]+_\w+/gi;
 
+// Alchemy keys ride in the URL PATH (https://eth-mainnet.g.alchemy.com/v2/<key>)
+// and their shape is an arbitrary token SECRET_PATTERN cannot match. The
+// PRIMARY control is the alchemy connector's rpcPost wrapper, which never
+// embeds URLs or bodies in error messages (enforced by its secret-absence
+// tests); this pattern is a belt-and-braces backstop that redacts any
+// /v2/<token> path that slips through. Deliberately NOT a greedy generic
+// token pattern — that would mangle legitimate messages.
+const ALCHEMY_URL_KEY_PATTERN = /\/v2\/[A-Za-z0-9_-]{16,}/g;
+
 const safeErrorMessage = (error: unknown): string => {
   const message =
     error instanceof Error && error.message ? error.message : "Sync failed";
-  return message.replace(SECRET_PATTERN, "[redacted]");
+  return message
+    .replace(SECRET_PATTERN, "[redacted]")
+    .replace(ALCHEMY_URL_KEY_PATTERN, "/v2/[redacted]");
 };
 
 export interface SyncAccountResult {

@@ -29,10 +29,19 @@ const envConfig = () => ({
   // connectors/credentials.ts, which resolves these from process.env at call
   // time). The Stripe key is a RESTRICTED key (rk_...) scoped to
   // balance:read + balance_transactions:read; the GoCardless pair is the
-  // Bank Account Data secret id/key. None of these can move money.
+  // Bank Account Data secret id/key. The Alchemy key must be a READ-ONLY
+  // scoped key: its value lives ONLY in the gitignored .env / fly secrets —
+  // the DB stores the pointer-only credentialRef "ALCHEMY_API_KEY", never the
+  // value (SECURITY-ROTATION leak lesson). Esplora is a keyless public
+  // indexer: ESPLORA_BASE_URL is an optional base-URL override
+  // (mempool.space/api is shape-compatible), not a credential. None of these
+  // can move money. These entries are fly-secrets BOOKKEEPING — the
+  // connectors read process.env at call time, never this object.
   STRIPE_RESTRICTED_KEY: getEnv("STRIPE_RESTRICTED_KEY", ""),
   GOCARDLESS_SECRET_ID: getEnv("GOCARDLESS_SECRET_ID", ""),
   GOCARDLESS_SECRET_KEY: getEnv("GOCARDLESS_SECRET_KEY", ""),
+  ALCHEMY_API_KEY: getEnv("ALCHEMY_API_KEY", ""),
+  ESPLORA_BASE_URL: getEnv("ESPLORA_BASE_URL", ""),
 });
 
 export const Env = envConfig();

@@ -2,6 +2,8 @@ import { BadRequestException } from "../utils/app-error";
 import { RailConnector } from "./types";
 import { createStripeConnector } from "./stripe.connector";
 import { gocardlessConnector } from "./gocardless.connector";
+import { esploraConnector } from "./esplora.connector";
+import { alchemyConnector } from "./alchemy.connector";
 
 // The connector registry: Account.connectorType → RailConnector. Entries are
 // FACTORIES because some rails need per-account construction (Stripe pins the
@@ -26,6 +28,11 @@ registerConnector("stripe", (accountCurrency: string) =>
   createStripeConnector(accountCurrency)
 );
 registerConnector("gocardless", gocardlessConnector);
+// Crypto observers (singletons — both rails are single-currency, BTC/8 and
+// ETH/18 hard-coded in the connectors). Esplora is keyless; Alchemy resolves
+// its READ-ONLY key from an ALCHEMY_* credentialRef at call time.
+registerConnector("esplora", esploraConnector);
+registerConnector("alchemy", alchemyConnector);
 
 // Resolve the connector for an account. BadRequest (not 500) on an unknown
 // type: it means the Account document carries a connectorType nothing here
