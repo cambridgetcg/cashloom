@@ -19,6 +19,7 @@ import reportRoutes from "./routes/report.route";
 import { getDateRange } from "./utils/date";
 import analyticsRoutes from "./routes/analytics.route";
 import accountRoutes from "./routes/account.route";
+import connectRoutes from "./routes/connect.route";
 
 const app = express();
 const BASE_PATH = Env.BASE_PATH;
@@ -75,6 +76,7 @@ app.use(`${BASE_PATH}/auth`, authLimiter, authRoutes);
 app.use(`${BASE_PATH}/user`, passportAuthenticateJwt, userRoutes);
 app.use(`${BASE_PATH}/transaction`, passportAuthenticateJwt, transactionRoutes);
 app.use(`${BASE_PATH}/account`, passportAuthenticateJwt, accountRoutes);
+app.use(`${BASE_PATH}/connect`, passportAuthenticateJwt, connectRoutes);
 app.use(`${BASE_PATH}/report`, passportAuthenticateJwt, reportRoutes);
 app.use(`${BASE_PATH}/analytics`, passportAuthenticateJwt, analyticsRoutes);
 

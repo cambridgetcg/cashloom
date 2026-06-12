@@ -22,6 +22,17 @@ const envConfig = () => ({
   RESEND_MAILER_SENDER: getEnv("RESEND_MAILER_SENDER", ""),
 
   FRONTEND_ORIGIN: getEnv("FRONTEND_ORIGIN", "localhost"),
+
+  // READ-ONLY connector credentials, set via `fly secrets set ...`. OPTIONAL
+  // on purpose: a missing key must not stop boot — the connector fails
+  // per-call with a message naming the unset variable instead (see
+  // connectors/credentials.ts, which resolves these from process.env at call
+  // time). The Stripe key is a RESTRICTED key (rk_...) scoped to
+  // balance:read + balance_transactions:read; the GoCardless pair is the
+  // Bank Account Data secret id/key. None of these can move money.
+  STRIPE_RESTRICTED_KEY: getEnv("STRIPE_RESTRICTED_KEY", ""),
+  GOCARDLESS_SECRET_ID: getEnv("GOCARDLESS_SECRET_ID", ""),
+  GOCARDLESS_SECRET_KEY: getEnv("GOCARDLESS_SECRET_KEY", ""),
 });
 
 export const Env = envConfig();
