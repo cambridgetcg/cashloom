@@ -21,6 +21,7 @@ import analyticsRoutes from "./routes/analytics.route";
 import accountRoutes from "./routes/account.route";
 import connectRoutes from "./routes/connect.route";
 import valuationRoutes from "./routes/valuation.route";
+import walletRoutes from "./routes/wallet.route";
 
 const app = express();
 const BASE_PATH = Env.BASE_PATH;
@@ -83,6 +84,7 @@ app.use(`${BASE_PATH}/analytics`, passportAuthenticateJwt, analyticsRoutes);
 // Auth lives AT THE MOUNT (house invariant) — the route file itself carries
 // no auth, so it is only ever reachable behind the JWT gate attached here.
 app.use(`${BASE_PATH}/valuation`, passportAuthenticateJwt, valuationRoutes);
+app.use(`${BASE_PATH}/wallet`, passportAuthenticateJwt, walletRoutes);
 
 app.use(errorHandler);
 
