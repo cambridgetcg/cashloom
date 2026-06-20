@@ -7,11 +7,12 @@ frontend:
         - npm install --legacy-peer-deps
     build:
       commands:
+        - cd client
         - npm run build
   artifacts:
-    baseDirectory: dist
+    baseDirectory: client/dist
     files:
       - '**/*'
   cache:
     paths:
-      - node_modules/**/*
+      - client/node_modules/**/*
