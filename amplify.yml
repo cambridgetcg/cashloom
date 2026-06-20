@@ -3,7 +3,7 @@ frontend:
   phases:
     preBuild:
       commands:
-        - cd client && npm install
+        - cd client && npm install --legacy-peer-deps
     build:
       commands:
         - cd client && npm run build
