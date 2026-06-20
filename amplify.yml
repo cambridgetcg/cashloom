@@ -3,10 +3,11 @@ frontend:
   phases:
     preBuild:
       commands:
-        - cd client && npm install --legacy-peer-deps
+        - cd client
+        - npm install --legacy-peer-deps
     build:
       commands:
-        - cd client && npm run build
+        - npm run build
   artifacts:
     baseDirectory: client/dist
     files:
