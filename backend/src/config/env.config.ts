@@ -12,13 +12,13 @@ const envConfig = () => ({
   // dumps the user mid-session. 7 days is the coherent single-token path.
   JWT_EXPIRES_IN: getEnv("JWT_EXPIRES_IN", "7d") as string,
 
-  GEMINI_API_KEY: getEnv("GEMINI_API_KEY"),
+  GEMINI_API_KEY: getEnv("GEMINI_API_KEY", ""),
 
-  CLOUDINARY_CLOUD_NAME: getEnv("CLOUDINARY_CLOUD_NAME"),
-  CLOUDINARY_API_KEY: getEnv("CLOUDINARY_API_KEY"),
-  CLOUDINARY_API_SECRET: getEnv("CLOUDINARY_API_SECRET"),
+  CLOUDINARY_CLOUD_NAME: getEnv("CLOUDINARY_CLOUD_NAME", ""),
+  CLOUDINARY_API_KEY: getEnv("CLOUDINARY_API_KEY", ""),
+  CLOUDINARY_API_SECRET: getEnv("CLOUDINARY_API_SECRET", ""),
 
-  RESEND_API_KEY: getEnv("RESEND_API_KEY"),
+  RESEND_API_KEY: getEnv("RESEND_API_KEY", ""),
   RESEND_MAILER_SENDER: getEnv("RESEND_MAILER_SENDER", ""),
 
   FRONTEND_ORIGIN: getEnv("FRONTEND_ORIGIN", "localhost"),
