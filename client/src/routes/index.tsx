@@ -1,4 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Suspense } from "react";
+import { Loader2 } from "lucide-react";
 import {
   authenticationRoutePaths,
   protectedRoutePaths,
@@ -15,6 +17,7 @@ function AppRoutes() {
   useSyncCurrency();
   return (
     <BrowserRouter>
+      <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
       <Routes>
         <Route path="/" element={<AuthRoute />}>
           <Route element={<BaseLayout />}>
@@ -51,6 +54,7 @@ function AppRoutes() {
         {/* Catch-all for undefined routes */}
         <Route path="*" element={<>404</>} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

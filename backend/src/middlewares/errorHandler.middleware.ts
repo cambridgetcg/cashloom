@@ -5,6 +5,7 @@ import { HTTPSTATUS } from "../config/http.config";
 import { AppError } from "../utils/app-error";
 import { ErrorCodeEnum } from "../enums/error-code.enum";
 import { MulterError } from "multer";
+import { logger } from "../utils/logger";
 
 const formatZodError = (res: Response, error: z.ZodError) => {
   const errors = error?.issues?.map((err) => ({
@@ -39,7 +40,7 @@ export const errorHandler: ErrorRequestHandler = (
   res,
   next
 ): any => {
-  console.log("Error occurred on PATH:", req.path, "Error:", error);
+  logger.error(`Error on ${req.path}: ${error?.name || "UnknownError"}`);
 
   if (error instanceof ZodError) {
     return formatZodError(res, error);

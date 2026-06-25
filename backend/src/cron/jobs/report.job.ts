@@ -6,6 +6,7 @@ import { generateReportService } from "../../services/report.service";
 import ReportModel, { ReportStatusEnum } from "../../models/report.model";
 import { calculateNextReportDate } from "../../utils/helper";
 import { sendReportEmail } from "../../mailers/report.mailer";
+import { logger } from "../../utils/logger";
 
 export const processReportJob = async () => {
   const now = new Date();
@@ -29,12 +30,12 @@ export const processReportJob = async () => {
       .populate<{ userId: UserDocument }>("userId")
       .cursor();
 
-    console.log("Running report ");
+    logger.info("Running report");
 
     for await (const setting of reportSettingCursor) {
       const user = setting.userId as UserDocument;
       if (!user) {
-        console.log(`User not found for setting: ${setting._id}`);
+        logger.info(`User not found for setting: ${setting._id}`);
         continue;
       }
 
@@ -64,7 +65,7 @@ export const processReportJob = async () => {
             });
             emailSent = true;
           } catch (error) {
-            console.log(`Email failed for ${user.id}`);
+            logger.error(`Email failed for ${user.id}`);
           }
         }
 
@@ -149,15 +150,15 @@ export const processReportJob = async () => {
 
         processedCount++;
       } catch (error) {
-        console.log(`Failed to process report`, error);
+        logger.error(`Failed to process report`, error);
         failedCount++;
       } finally {
         await session.endSession();
       }
     }
 
-    console.log(`✅Processed: ${processedCount} report`);
-    console.log(`❌ Failed: ${failedCount} report`);
+    logger.info(`✅Processed: ${processedCount} report`);
+    logger.info(`❌ Failed: ${failedCount} report`);
 
     return {
       success: true,
@@ -165,7 +166,7 @@ export const processReportJob = async () => {
       failedCount,
     };
   } catch (error) {
-    console.error("Error processing reports", error);
+    logger.error("Error processing reports", error);
     return {
       success: false,
       error: "Report process failed",

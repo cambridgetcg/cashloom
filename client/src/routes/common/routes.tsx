@@ -1,16 +1,18 @@
+import { lazy } from "react";
 import { AUTH_ROUTES, PROTECTED_ROUTES } from "./routePath";
-import SignIn from "@/pages/auth/sign-in";
-import SignUp from "@/pages/auth/sign-up";
-import ForgotPassword from "@/pages/auth/forgot-password";
-import ResetPassword from "@/pages/auth/reset-password";
-import Dashboard from "@/pages/dashboard";
-import Accounts from "@/pages/accounts";
-import Transactions from "@/pages/transactions";
-import Reports from "@/pages/reports";
-import Settings from "@/pages/settings";
-import Account from "@/pages/settings/account";
-import Appearance from "@/pages/settings/appearance";
-import NotFound from "@/pages/settings/not-found";
+
+const SignIn = lazy(() => import("@/pages/auth/sign-in"));
+const SignUp = lazy(() => import("@/pages/auth/sign-up"));
+const ForgotPassword = lazy(() => import("@/pages/auth/forgot-password"));
+const ResetPassword = lazy(() => import("@/pages/auth/reset-password"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Accounts = lazy(() => import("@/pages/accounts"));
+const Transactions = lazy(() => import("@/pages/transactions"));
+const Reports = lazy(() => import("@/pages/reports"));
+const Settings = lazy(() => import("@/pages/settings"));
+const Account = lazy(() => import("@/pages/settings/account"));
+const Appearance = lazy(() => import("@/pages/settings/appearance"));
+const NotFound = lazy(() => import("@/pages/settings/not-found"));
 
 export const authenticationRoutePaths = [
   { path: AUTH_ROUTES.SIGN_IN, element: <SignIn /> },
@@ -28,7 +30,7 @@ export const protectedRoutePaths = [
   { path: PROTECTED_ROUTES.SETTINGS, 
     element: <Settings /> ,
     children: [
-      { index: true, element: <Account /> }, // Default route
+      { index: true, element: <Account /> },
       { path: PROTECTED_ROUTES.SETTINGS, element: <Account /> },
       { path: PROTECTED_ROUTES.SETTINGS_APPEARANCE, element: <Appearance /> },
     ]

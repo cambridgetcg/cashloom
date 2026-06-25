@@ -64,3 +64,14 @@ export const resetPasswordController = asyncHandler(
     return res.status(HTTPSTATUS.OK).json(result);
   }
 );
+
+export const logoutController = asyncHandler(
+  async (_req: Request, res: Response) => {
+    // Stateless JWT — the client discards the token. This endpoint gives the
+    // client a clean API surface to call on logout (and a hook to add a
+    // server-side blocklist later if needed).
+    return res.status(HTTPSTATUS.OK).json({
+      message: "Logged out successfully",
+    });
+  }
+);

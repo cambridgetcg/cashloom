@@ -17,6 +17,7 @@ import transactionRoutes from "./routes/transaction.route";
 import { initializeCrons } from "./cron";
 import reportRoutes from "./routes/report.route";
 import { getDateRange } from "./utils/date";
+import { logger } from "./utils/logger";
 import analyticsRoutes from "./routes/analytics.route";
 import accountRoutes from "./routes/account.route";
 import connectRoutes from "./routes/connect.route";
@@ -99,5 +100,5 @@ app.listen(Env.PORT, async () => {
     await initializeCrons();
   }
 
-  console.log(`Server is running on port ${Env.PORT} in ${Env.NODE_ENV} mode`);
+  logger.info(`Server is running on port ${Env.PORT} in ${Env.NODE_ENV} mode`);
 });

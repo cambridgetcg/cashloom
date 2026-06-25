@@ -1,12 +1,13 @@
 import { startJobs } from "./scheduler";
+import { logger } from "../utils/logger";
 
 export const initializeCrons = async () => {
   try {
     const jobs = startJobs();
-    console.log(`⏰ ${jobs.length} cron jobs initialized`);
+    logger.info(`⏰ ${jobs.length} cron jobs initialized`);
     return jobs;
   } catch (error) {
-    console.error("CRON INIT ERROR:", error);
+    logger.error("CRON INIT ERROR:", error);
     return [];
   }
 };

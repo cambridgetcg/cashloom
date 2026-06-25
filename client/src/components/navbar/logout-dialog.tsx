@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { useTransition } from "react";
 import { useAppDispatch } from "@/app/hook";
 import { logout } from "@/features/auth/authSlice";
+import { useLogoutMutation } from "@/features/auth/authAPI";
 import { useNavigate } from "react-router-dom";
 import { AUTH_ROUTES } from "@/routes/common/routePath";
 
@@ -15,12 +16,19 @@ interface LogoutDialogProps {
 
 const LogoutDialog = ({ isOpen, setIsOpen }: LogoutDialogProps) => {
     const [isPending, startTransition] = useTransition();
+    const [logoutApi] = useLogoutMutation();
     const dispatch = useAppDispatch();
     const navigate = useNavigate();
 
     const handleLogout = () => {
-      startTransition(() => {
+      startTransition(async () => {
         setIsOpen(false);
+        try {
+          await logoutApi(undefined).unwrap();
+        } catch {
+          // Stateless JWT — clearing client state is enough even if the
+          // server call fails (network, already expired, etc.).
+        }
         dispatch(logout());
         navigate(AUTH_ROUTES.SIGN_IN);
       });
@@ -46,4 +54,4 @@ const LogoutDialog = ({ isOpen, setIsOpen }: LogoutDialogProps) => {
     )
 }
 
-export default LogoutDialog
+export default LogoutDialog;

@@ -1,27 +1,31 @@
-import { getEnv } from "../utils/get-env";
+import { z } from "zod";
 
-const envConfig = () => ({
-  NODE_ENV: getEnv("NODE_ENV", "development"),
+// Validate all environment variables at boot so a misconfig fails fast with a
+// clear message instead of surfacing as a cryptic runtime error mid-request.
+const envSchema = z.object({
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
 
-  PORT: getEnv("PORT", "8000"),
-  BASE_PATH: getEnv("BASE_PATH", "/api"),
-  MONGO_URI: getEnv("MONGO_URI"),
+  PORT: z.coerce.number().default(8000),
+  BASE_PATH: z.string().default("/api"),
+  MONGO_URI: z.string().min(1, "MONGO_URI is required"),
 
-  JWT_SECRET: getEnv("JWT_SECRET", "secert_jwt"),
+  JWT_SECRET: z.string().default("secert_jwt"),
   // Long-lived token: there's no refresh endpoint, so a short expiry just
   // dumps the user mid-session. 7 days is the coherent single-token path.
-  JWT_EXPIRES_IN: getEnv("JWT_EXPIRES_IN", "7d") as string,
+  JWT_EXPIRES_IN: z.string().default("7d"),
 
-  GEMINI_API_KEY: getEnv("GEMINI_API_KEY", ""),
+  GEMINI_API_KEY: z.string().optional(),
 
-  CLOUDINARY_CLOUD_NAME: getEnv("CLOUDINARY_CLOUD_NAME", ""),
-  CLOUDINARY_API_KEY: getEnv("CLOUDINARY_API_KEY", ""),
-  CLOUDINARY_API_SECRET: getEnv("CLOUDINARY_API_SECRET", ""),
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
 
-  RESEND_API_KEY: getEnv("RESEND_API_KEY", ""),
-  RESEND_MAILER_SENDER: getEnv("RESEND_MAILER_SENDER", ""),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_MAILER_SENDER: z.string().default(""),
 
-  FRONTEND_ORIGIN: getEnv("FRONTEND_ORIGIN", "localhost"),
+  FRONTEND_ORIGIN: z.string().default("localhost"),
 
   // READ-ONLY connector credentials, set via `fly secrets set ...`. OPTIONAL
   // on purpose: a missing key must not stop boot — the connector fails
@@ -37,14 +41,23 @@ const envConfig = () => ({
   // (mempool.space/api is shape-compatible), not a credential. None of these
   // can move money. These entries are fly-secrets BOOKKEEPING — the
   // connectors read process.env at call time, never this object.
-  STRIPE_RESTRICTED_KEY: getEnv("STRIPE_RESTRICTED_KEY", ""),
-  GOCARDLESS_SECRET_ID: getEnv("GOCARDLESS_SECRET_ID", ""),
-  GOCARDLESS_SECRET_KEY: getEnv("GOCARDLESS_SECRET_KEY", ""),
-  ALCHEMY_API_KEY: getEnv("ALCHEMY_API_KEY", ""),
-  ESPLORA_BASE_URL: getEnv("ESPLORA_BASE_URL", ""),
+  STRIPE_RESTRICTED_KEY: z.string().optional(),
+  GOCARDLESS_SECRET_ID: z.string().optional(),
+  GOCARDLESS_SECRET_KEY: z.string().optional(),
+  ALCHEMY_API_KEY: z.string().optional(),
+  ESPLORA_BASE_URL: z.string().optional(),
 });
 
-export const Env = envConfig();
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  const errors = parsed.error.issues
+    .map((i) => `  ${i.path.join(".")}: ${i.message}`)
+    .join("\n");
+  throw new Error(`Invalid environment configuration:\n${errors}`);
+}
+
+export const Env = parsed.data;
 
 // Never let the known public-repo default sign tokens in production — that
 // would let anyone forge a login — and don't accept a trivially weak secret

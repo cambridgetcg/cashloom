@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import TransactionModel from "../../models/transaction.model";
 import { calculateNextOccurrence } from "../../utils/helper";
+import { logger } from "../../utils/logger";
 
 export const processRecurringTransactions = async () => {
   const now = new Date();
@@ -13,7 +14,7 @@ export const processRecurringTransactions = async () => {
       nextRecurringDate: { $lte: now },
     }).cursor();
 
-    console.log("Starting recurring process");
+    logger.info("Starting recurring process");
 
     for await (const tx of transactionCursor) {
       const nextDate = calculateNextOccurrence(
@@ -62,14 +63,14 @@ export const processRecurringTransactions = async () => {
         processedCount++;
       } catch (error: any) {
         failedCount++;
-        console.log(`Failed recurring tx: ${tx._id}`, error);
+        logger.error(`Failed recurring tx: ${tx._id}`, error);
       } finally {
         await session.endSession();
       }
     }
 
-    console.log(`✅Processed: ${processedCount} transaction`);
-    console.log(`❌ Failed: ${failedCount} transaction`);
+    logger.info(`✅Processed: ${processedCount} transaction`);
+    logger.info(`❌ Failed: ${failedCount} transaction`);
 
     return {
       success: true,
@@ -77,7 +78,7 @@ export const processRecurringTransactions = async () => {
       failedCount,
     };
   } catch (error: any) {
-    console.error("Error occur processing transaction", error);
+    logger.error("Error occur processing transaction", error);
 
     return {
       success: false,

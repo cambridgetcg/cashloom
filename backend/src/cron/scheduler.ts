@@ -1,18 +1,19 @@
 import cron from "node-cron";
 import { processRecurringTransactions } from "./jobs/transaction.job";
 import { processReportJob } from "./jobs/report.job";
+import { logger } from "../utils/logger";
 
 const scheduleJob = (name: string, time: string, job: Function) => {
-  console.log(`Scheduling ${name} at ${time}`);
+  logger.info(`Scheduling ${name} at ${time}`);
 
   return cron.schedule(
     time,
     async () => {
       try {
         await job();
-        console.log(`${name} completed`);
+        logger.info(`${name} completed`);
       } catch (error) {
-        console.log(`${name} failed`, error);
+        logger.error(`${name} failed`, error);
       }
     },
     {
