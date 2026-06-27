@@ -15,6 +15,7 @@ const Settings = () => {
   const sidebarNavItems = [
     { title: "Account", href: PROTECTED_ROUTES.SETTINGS },
     { title: "Appearance", href: PROTECTED_ROUTES.SETTINGS_APPEARANCE },
+    { title: "Plan & Usage", href: PROTECTED_ROUTES.SETTINGS_PLAN },
   ];
   return (
     <PageLayout

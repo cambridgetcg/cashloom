@@ -17,4 +17,5 @@ export const isAuthRoute = (pathname: string): boolean => {
     REPORTS: "/reports",
     SETTINGS: "/settings",
     SETTINGS_APPEARANCE: "/settings/appearance",
+    SETTINGS_PLAN: "/settings/plan",
   };

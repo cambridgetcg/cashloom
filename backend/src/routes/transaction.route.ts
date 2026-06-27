@@ -12,6 +12,7 @@ import {
   updateTransactionController,
 } from "../controllers/transaction.controller";
 import { upload } from "../config/cloudinary.config";
+import { requireQuota } from "../middlewares/quota.middleware";
 import rateLimit from "express-rate-limit";
 
 const transactionRoutes = Router();
@@ -38,19 +39,22 @@ transactionRoutes.post("/create", createTransactionController);
 transactionRoutes.post(
   "/scan-receipt",
   aiScanLimiter,
+  requireQuota("scan"),
   upload.single("receipt"),
   scanReceiptController
 );
 
 transactionRoutes.post(
   "/parse-statement",
-  aiScanLimiter, // Gemini call — same cost guard as receipt scan
+  aiScanLimiter,
+  requireQuota("aiImport"),
   parseStatementController
 );
 
 transactionRoutes.post(
   "/bulk-transaction",
   bulkImportLimiter,
+  requireQuota("bulkImport"),
   bulkTransactionController
 );
 

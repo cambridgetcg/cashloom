@@ -19,6 +19,8 @@ import reportRoutes from "./routes/report.route";
 import { getDateRange } from "./utils/date";
 import { logger } from "./utils/logger";
 import analyticsRoutes from "./routes/analytics.route";
+import planRoutes from "./routes/plan.route";
+import { getMyPlanController } from "./controllers/plan.controller";
 import accountRoutes from "./routes/account.route";
 import connectRoutes from "./routes/connect.route";
 import valuationRoutes from "./routes/valuation.route";
@@ -82,6 +84,12 @@ app.use(`${BASE_PATH}/account`, passportAuthenticateJwt, accountRoutes);
 app.use(`${BASE_PATH}/connect`, passportAuthenticateJwt, connectRoutes);
 app.use(`${BASE_PATH}/report`, passportAuthenticateJwt, reportRoutes);
 app.use(`${BASE_PATH}/analytics`, passportAuthenticateJwt, analyticsRoutes);
+
+// Public plans endpoint (no auth — the pricing page).
+app.get(`${BASE_PATH}/plans`, planRoutes);
+
+// Authenticated: current user plan + usage.
+userRoutes.get("/plan", getMyPlanController);
 // Auth lives AT THE MOUNT (house invariant) — the route file itself carries
 // no auth, so it is only ever reachable behind the JWT gate attached here.
 app.use(`${BASE_PATH}/valuation`, passportAuthenticateJwt, valuationRoutes);

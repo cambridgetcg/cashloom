@@ -10,6 +10,7 @@ import {
   syncAllAccountsController,
 } from "../controllers/sync.controller";
 import rateLimit from "express-rate-limit";
+import { requireQuota } from "../middlewares/quota.middleware";
 
 const accountRoutes = Router();
 
@@ -37,7 +38,7 @@ const syncAllLimiter = rateLimit({
 // An Account is a labelled balance container on a rail — creating/updating one
 // is metadata, not money movement (no funds live here). Read paths are the
 // Phase-1 "see all the money in one place" surface.
-accountRoutes.post("/create", createAccountController);
+accountRoutes.post("/create", requireQuota("account"), createAccountController);
 accountRoutes.put("/update/:id", updateAccountController);
 
 // Sync pulls READS through the rail connectors (balances + transactions in);

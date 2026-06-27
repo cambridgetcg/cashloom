@@ -12,6 +12,7 @@ const Reports = lazy(() => import("@/pages/reports"));
 const Settings = lazy(() => import("@/pages/settings"));
 const Account = lazy(() => import("@/pages/settings/account"));
 const Appearance = lazy(() => import("@/pages/settings/appearance"));
+const Plan = lazy(() => import("@/pages/settings/plan"));
 const NotFound = lazy(() => import("@/pages/settings/not-found"));
 
 export const authenticationRoutePaths = [
@@ -33,6 +34,7 @@ export const protectedRoutePaths = [
       { index: true, element: <Account /> },
       { path: PROTECTED_ROUTES.SETTINGS, element: <Account /> },
       { path: PROTECTED_ROUTES.SETTINGS_APPEARANCE, element: <Appearance /> },
+      { path: PROTECTED_ROUTES.SETTINGS_PLAN, element: <Plan /> },
     ]
   },
 ];

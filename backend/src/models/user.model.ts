@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { compareValue, hashValue } from "../utils/bcrypt";
+import { PlanEnum } from "../config/plans.config";
 
 export interface UserDocument extends Document {
   name: string;
@@ -7,6 +8,8 @@ export interface UserDocument extends Document {
   password: string;
   profilePicture: string | null;
   currency: string;
+  plan: PlanEnum;
+  planSince?: Date | null;
   resetPasswordToken?: string | null;
   resetPasswordExpires?: Date | null;
   createdAt: Date;
@@ -36,6 +39,15 @@ const userSchema = new Schema<UserDocument>(
     currency: {
       type: String,
       default: "USD",
+    },
+    plan: {
+      type: String,
+      enum: Object.values(PlanEnum),
+      default: PlanEnum.FREE,
+    },
+    planSince: {
+      type: Date,
+      default: null,
     },
     password: {
       type: String,
