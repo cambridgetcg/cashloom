@@ -14,7 +14,7 @@ Worked the list top-value first. Done + verified (tsc clean, tests green), commi
 
 Still open, top value next: per-import **dedupe/idempotency** (#2 — stops double-imports), **password reset** via Resend (#3), persist **AI insights** in-app (#4), CI workflow, dep bumps.
 
-**On money:** the fake billing was cut (it was fiction — see §5). The chosen revenue direction is a **fair-money model** — free to try + a limited-but-generous free tier + a fair paid tier via a **merchant-of-record** (they handle VAT/sales-tax + PCI). Waiting on a processor pick before building it; no exploit loophole when it lands.
+**On money:** the fake billing was cut (it was fiction — see §5). The chosen revenue direction is a **fair-money model** — free to try + a limited-but-generous free tier + a fair paid tier via a **merchant-of-record** (they handle VAT/sales-tax + PCI). BUILD COMPLETE (2026-06-25): Plans config + quota middleware + pricing API + client pricing page. Free tier (3 accounts, 10 AI imports, 10 scans, 50 bulk imports/mo, monthly reports, 30-day history) and Pro tier (£4.99/mo or £49/yr, unlimited accounts, 100 AI ops, weekly+monthly reports, full history). Quota enforced on scan/aiImport/bulkImport/account routes with 429 + upgrade hint. Merchant-of-record webhook hook ready — plan flips FREE→PRO on payment confirmation, not on our say-so.
 
 ## 1. State of CashLoom
 
