@@ -86,7 +86,7 @@ app.use(`${BASE_PATH}/report`, passportAuthenticateJwt, reportRoutes);
 app.use(`${BASE_PATH}/analytics`, passportAuthenticateJwt, analyticsRoutes);
 
 // Public plans endpoint (no auth — the pricing page).
-app.get(`${BASE_PATH}/plans`, planRoutes);
+app.use(`${BASE_PATH}/plans`, planRoutes);
 
 // Authenticated: current user plan + usage.
 userRoutes.get("/plan", getMyPlanController);
