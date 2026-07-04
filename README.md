@@ -53,7 +53,6 @@ non-custodial wallet. That is the whole setup.
 |---|---|
 | `sovereign/` | **The node** — Bun · Hono · bun:sqlite · viem. Non-custodial, local-first. Start here. |
 | `atlas/` | **The interactive codebase atlas** — Vite + React. The open-source human door. |
-| `backend/`, `client/` | Legacy: the original hosted tracker (Express + Mongoose + React). Kept for reference; superseded by `sovereign/`. |
 
 ## Contributing
 

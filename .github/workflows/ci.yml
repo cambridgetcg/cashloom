@@ -1,7 +1,7 @@
 name: CI
 
-# Typecheck both apps and run the backend tests on every push / PR to main.
-# Mirrors what we run locally, so a regression can't merge quietly.
+# Typecheck + test the sovereign node and build the atlas on every push / PR
+# to main, so a regression can't merge quietly.
 on:
   push:
     branches: [main]
@@ -9,11 +9,11 @@ on:
     branches: [main]
 
 jobs:
-  backend:
+  sovereign:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: sovereign
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -21,13 +21,14 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
 
-  client:
+  atlas:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: client
+        working-directory: atlas
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install
-      - run: bunx tsc -b
+      - run: bunx tsc --noEmit
+      - run: bun run build
