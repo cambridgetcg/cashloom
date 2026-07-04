@@ -1,0 +1,52 @@
+import { InternalServerException } from "../utils/app-error";
+
+// The ONLY place connector secrets are touched. A credentialRef (see
+// Account.credentialRef) is the NAME of an environment variable — a pointer,
+// never a value. Resolution happens here, at call time, so secrets live solely
+// in the process environment: not in the database, not in code, not in logs.
+// Error messages name the missing VARIABLE, never any value.
+
+// The pointer namespace is CLOSED. credentialRef is stored from API input, so
+// an unbounded ref would let an authenticated user point a connector at ANY
+// server env var (JWT_SECRET, DATABASE_URL, SMTP_PASSWORD...) and have its
+// value transmitted upstream as a bearer token — blind exfiltration of
+// arbitrary server secrets. Only env vars under a connector-credential prefix
+// (STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*) are nameable; everything else is
+// unreachable by construction. Keyless connectors (Esplora, the public rate
+// APIs) add NOTHING here — a prefix only enters this pattern when a connector
+// genuinely needs a credential. Enforced both at input validation
+// (account.validator) and here at resolution, so no write path — present or
+// future — can widen the namespace.
+//
+// AGENTTOOL_* is the one prefix whose upstream key is NOT read-only-scoped
+// (agenttool bearer keys have no read-only scope) — the connector only reads,
+// but treat that credential as hot: see agenttool.connector.ts header.
+// BASE_URL is excluded by the lookahead: base-URL overrides (AGENTTOOL_BASE_URL,
+// like ESPLORA_BASE_URL before it) are deploy configuration, not credentials —
+// they must stay unreachable as refs so a stored ref can never make a connector
+// treat a URL as a bearer secret.
+export const CREDENTIAL_REF_PATTERN =
+  /^(STRIPE|GOCARDLESS|ALCHEMY|AGENTTOOL)_(?!BASE_URL$)[A-Z0-9_]+$/;
+
+export const isAllowedCredentialRef = (ref: string): boolean =>
+  CREDENTIAL_REF_PATTERN.test(ref);
+
+export const resolveCredentialRef = (ref: string): string => {
+  if (!ref || ref.trim() === "") {
+    throw new InternalServerException(
+      "Cannot resolve connector credential: credentialRef is empty"
+    );
+  }
+  if (!isAllowedCredentialRef(ref)) {
+    throw new InternalServerException(
+      `Refusing to resolve credentialRef "${ref}": only connector-credential environment variables (STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*) can be referenced`
+    );
+  }
+  const value = process.env[ref];
+  if (value === undefined || value.trim() === "") {
+    throw new InternalServerException(
+      `Connector credential is not configured: environment variable "${ref}" is unset or empty`
+    );
+  }
+  return value;
+};
