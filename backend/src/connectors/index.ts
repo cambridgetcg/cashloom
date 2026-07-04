@@ -4,6 +4,7 @@ import { createStripeConnector } from "./stripe.connector";
 import { gocardlessConnector } from "./gocardless.connector";
 import { esploraConnector } from "./esplora.connector";
 import { alchemyConnector } from "./alchemy.connector";
+import { agenttoolConnector } from "./agenttool.connector";
 
 // The connector registry: Account.connectorType → RailConnector. Entries are
 // FACTORIES because some rails need per-account construction (Stripe pins the
@@ -33,6 +34,10 @@ registerConnector("gocardless", gocardlessConnector);
 // its READ-ONLY key from an ALCHEMY_* credentialRef at call time.
 registerConnector("esplora", esploraConnector);
 registerConnector("alchemy", alchemyConnector);
+// Agent-economy observer (singleton — wallet currency is read per-account at
+// call time, decimals fixed at 2). Resolves its bearer key from an
+// AGENTTOOL_* credentialRef; strictly read-only like every rail here.
+registerConnector("agenttool", agenttoolConnector);
 
 // Resolve the connector for an account. BadRequest (not 500) on an unknown
 // type: it means the Account document carries a connectorType nothing here

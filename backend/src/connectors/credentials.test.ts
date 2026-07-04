@@ -5,8 +5,8 @@ import { HTTPSTATUS } from "../config/http.config";
 
 // Obviously-fake placeholder — never a real key shape with entropy.
 // The ref must live in the CLOSED connector-credential namespace (STRIPE_* /
-// GOCARDLESS_* / ALCHEMY_*) — anything else is refused before the environment
-// is read.
+// GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*) — anything else is refused before
+// the environment is read.
 const FAKE_SECRET = "rk_test_FAKE";
 const REF = "STRIPE_CASHLOOM_TEST_KEY";
 
@@ -88,6 +88,9 @@ describe("the closed credentialRef namespace", () => {
     "XSTRIPE_KEY",
     "ALCHEMYX_FOO", // ALCHEMY is a PREFIX of a real var name, not a substring license
     "alchemy_api_key",
+    "AGENTTOOLX_FOO", // same prefix-not-substring rule for the agenttool namespace
+    "agenttool_api_key",
+    "AGENTTOOL_BASE_URL", // deploy config, not a credential — excluded by the lookahead
   ])("refuses to resolve %s even when the env var is set", (ref) => {
     vi.stubEnv(ref, FAKE_SECRET);
     try {
@@ -105,20 +108,27 @@ describe("the closed credentialRef namespace", () => {
     vi.stubEnv("STRIPE_RESTRICTED_KEY_ALT", FAKE_SECRET);
     vi.stubEnv("GOCARDLESS_SECRET_ID", "gc_secret_id_FAKE");
     vi.stubEnv("ALCHEMY_API_KEY", "FAKE");
+    vi.stubEnv("AGENTTOOL_API_KEY", "FAKE-at-key");
     expect(resolveCredentialRef("STRIPE_RESTRICTED_KEY_ALT")).toBe(FAKE_SECRET);
     expect(resolveCredentialRef("GOCARDLESS_SECRET_ID")).toBe(
       "gc_secret_id_FAKE"
     );
     expect(resolveCredentialRef("ALCHEMY_API_KEY")).toBe("FAKE");
+    expect(resolveCredentialRef("AGENTTOOL_API_KEY")).toBe("FAKE-at-key");
   });
 
   it("isAllowedCredentialRef matches only the connector namespace", () => {
     expect(isAllowedCredentialRef("STRIPE_RESTRICTED_KEY")).toBe(true);
     expect(isAllowedCredentialRef("GOCARDLESS_SECRET_KEY")).toBe(true);
     expect(isAllowedCredentialRef("ALCHEMY_API_KEY")).toBe(true);
+    expect(isAllowedCredentialRef("AGENTTOOL_API_KEY")).toBe(true);
     expect(isAllowedCredentialRef("JWT_SECRET")).toBe(false);
     expect(isAllowedCredentialRef("STRIPE_")).toBe(false); // prefix alone is not a name
     expect(isAllowedCredentialRef("ALCHEMY_")).toBe(false);
     expect(isAllowedCredentialRef("ALCHEMYX_FOO")).toBe(false);
+    expect(isAllowedCredentialRef("AGENTTOOL_")).toBe(false);
+    expect(isAllowedCredentialRef("AGENTTOOLX_FOO")).toBe(false);
+    // Base-URL overrides are deploy config, never nameable as credentials.
+    expect(isAllowedCredentialRef("AGENTTOOL_BASE_URL")).toBe(false);
   });
 });

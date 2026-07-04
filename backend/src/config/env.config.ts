@@ -27,7 +27,8 @@ const envSchema = z.object({
 
   FRONTEND_ORIGIN: z.string().default("localhost"),
 
-  // READ-ONLY connector credentials, set via `fly secrets set ...`. OPTIONAL
+  // Connector credentials — READ-ONLY-scoped except AGENTTOOL_API_KEY (see
+  // below) — set via `fly secrets set ...`. OPTIONAL
   // on purpose: a missing key must not stop boot — the connector fails
   // per-call with a message naming the unset variable instead (see
   // connectors/credentials.ts, which resolves these from process.env at call
@@ -38,14 +39,23 @@ const envSchema = z.object({
   // the DB stores the pointer-only credentialRef "ALCHEMY_API_KEY", never the
   // value (SECURITY-ROTATION leak lesson). Esplora is a keyless public
   // indexer: ESPLORA_BASE_URL is an optional base-URL override
-  // (mempool.space/api is shape-compatible), not a credential. None of these
-  // can move money. These entries are fly-secrets BOOKKEEPING — the
-  // connectors read process.env at call time, never this object.
+  // (mempool.space/api is shape-compatible), not a credential. None of the
+  // above can move money. The agenttool key is the ONE exception to that
+  // sentence: agenttool bearer keys have no read-only scope upstream, so
+  // while the connector only ever reads, the credential itself is
+  // money-capable — mint it in a dedicated bridge project, fence that
+  // project's wallets with economy.policies, treat it as hot
+  // (agenttool.connector.ts header). AGENTTOOL_BASE_URL is a base-URL
+  // override like Esplora's, not a credential. These entries are fly-secrets
+  // BOOKKEEPING — the connectors read process.env at call time, never this
+  // object.
   STRIPE_RESTRICTED_KEY: z.string().optional(),
   GOCARDLESS_SECRET_ID: z.string().optional(),
   GOCARDLESS_SECRET_KEY: z.string().optional(),
   ALCHEMY_API_KEY: z.string().optional(),
   ESPLORA_BASE_URL: z.string().optional(),
+  AGENTTOOL_API_KEY: z.string().optional(),
+  AGENTTOOL_BASE_URL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

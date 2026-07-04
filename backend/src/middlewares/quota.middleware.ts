@@ -62,9 +62,13 @@ export const requireQuota = (type: QuotaType): RequestHandler => {
     try {
       const userId = (req as any).user?.id || (req as any).user?._id;
       if (!userId) {
+        // Return, or execution falls through to the quota queries and next()
+        // with an undefined userId — a second response after this one under
+        // automated request volume.
         res.status(HTTPSTATUS.UNAUTHORIZED).json({
           message: "Authentication required",
         });
+        return;
       }
 
       const plan = getUserPlan(req);
@@ -100,11 +104,14 @@ export const requireQuota = (type: QuotaType): RequestHandler => {
       }
 
       if (used >= limit) {
+        // Return, or the over-limit request proceeds through next() anyway
+        // and the route handler double-responds — the quota was decorative.
         res.status(HTTPSTATUS.TOO_MANY_REQUESTS).json({
           message: `You've reached your ${type} limit for this month (${limit}). Upgrade to Pro for more.`,
           quota: { type, plan, limit, used, remaining: 0 },
           upgradeUrl: "/settings/plan",
         });
+        return;
       }
 
       // Attach usage info for the controller to include in the response

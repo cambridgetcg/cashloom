@@ -18,6 +18,11 @@ describe("connector registry", () => {
     expect(connector.type).toBe("alchemy");
   });
 
+  it("resolves 'agenttool' to the agenttool connector", () => {
+    const connector = getConnector("agenttool", "GBP");
+    expect(connector.type).toBe("agenttool");
+  });
+
   it("still resolves the existing 'stripe' factory (currency-pinned)", () => {
     const connector = getConnector("stripe", "GBP");
     expect(connector.type).toBe("stripe");

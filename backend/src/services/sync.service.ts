@@ -47,6 +47,9 @@ const PAYMENT_METHOD_BY_CONNECTOR: Record<
   // enum member is warranted for it.
   esplora: PaymentMethodEnum.OTHER,
   alchemy: PaymentMethodEnum.OTHER,
+  // Agent-economy credits are ledger entries on the agenttool platform,
+  // neither card nor bank money.
+  agenttool: PaymentMethodEnum.OTHER,
 };
 
 // Defensive scrub for error text that leaves the service. Connectors already
@@ -69,7 +72,12 @@ const safeErrorMessage = (error: unknown): string => {
     error instanceof Error && error.message ? error.message : "Sync failed";
   return message
     .replace(SECRET_PATTERN, "[redacted]")
-    .replace(ALCHEMY_URL_KEY_PATTERN, "/v2/[redacted]");
+    .replace(ALCHEMY_URL_KEY_PATTERN, "/v2/[redacted]")
+    // The agenttool bearer key is money-capable upstream (no read-only key
+    // scope exists there). Its connector never embeds headers in errors, but
+    // if any future path dumps an Authorization header into a message, this
+    // catches it — no legitimate error prose contains "Bearer <token>".
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
 };
 
 export interface SyncAccountResult {

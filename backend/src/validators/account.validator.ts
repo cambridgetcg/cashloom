@@ -25,7 +25,8 @@ export const createAccountSchema = z.object({
   decimals: z.number().int().min(0).max(30).optional(),
   externalAccountId: z.string().trim().min(1).optional(),
   // A pointer to a connector-credential env var, never a secret value. The
-  // namespace is CLOSED (STRIPE_* / GOCARDLESS_* / ALCHEMY_*): the server
+  // namespace is CLOSED (STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*):
+  // the server
   // resolves this ref from its own environment, so an unbounded ref would let
   // a caller name JWT_SECRET, DATABASE_URL etc. and exfiltrate them upstream
   // as a bearer token. Rejected at the door; resolveCredentialRef enforces it
@@ -35,7 +36,7 @@ export const createAccountSchema = z.object({
     .trim()
     .regex(
       CREDENTIAL_REF_PATTERN,
-      "credentialRef must name a connector-credential environment variable (STRIPE_*, GOCARDLESS_* or ALCHEMY_*)"
+      "credentialRef must name a connector-credential environment variable (STRIPE_*, GOCARDLESS_*, ALCHEMY_* or AGENTTOOL_*)"
     )
     .optional(),
 });
