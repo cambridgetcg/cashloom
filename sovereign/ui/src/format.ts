@@ -5,10 +5,15 @@
  * All arithmetic is BigInt — parseFloat never touches money here.
  */
 
-/** Known asset decimals for the pay rail (Base). */
+/** Known asset decimals for the pay rails. */
 export const ASSET_DECIMALS: Record<string, number> = {
   ETH: 18,
   USDC: 6,
+  BTC: 8,
+  // Fee-asset label the EVM sender emits: the amount is ALREADY in wei,
+  // so it formats at 0 decimals — without this entry it fell through to the
+  // SENT asset's decimals and mislabelled USDC-send fees.
+  "ETH(wei)": 0,
 };
 
 function group(digits: string): string {

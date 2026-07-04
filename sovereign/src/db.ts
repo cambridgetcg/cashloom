@@ -22,6 +22,9 @@ export const db = new Database(DB_PATH, { create: true });
 // WAL: safe concurrent reads while a sync writes; still a single local file.
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
+// A second process on the same file (a stray dev node) must make writers
+// wait, not throw SQLITE_BUSY mid-payment-bookkeeping.
+db.exec("PRAGMA busy_timeout = 5000;");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS settings (
@@ -90,9 +93,17 @@ CREATE TABLE IF NOT EXISTS payments (
   status       TEXT NOT NULL,                    -- quoted|confirmed|broadcast|failed
   tx_hash      TEXT,
   error        TEXT,
+  detail       TEXT,                             -- opaque sender state (e.g. BTC coin selection); never key material
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at   TEXT
 );
 `);
+
+// payments.detail arrived with the BTC sender; CREATE TABLE IF NOT EXISTS
+// cannot grow an existing file, so probe and patch — idempotent.
+const paymentColumns = db.query("PRAGMA table_info(payments)").all() as { name: string }[];
+if (!paymentColumns.some((c) => c.name === "detail")) {
+  db.exec("ALTER TABLE payments ADD COLUMN detail TEXT");
+}
 
 export const newId = (): string => crypto.randomUUID();

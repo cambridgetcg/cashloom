@@ -13,6 +13,8 @@
 
 import { argon2id } from "@noble/hashes/argon2.js";
 import { randomBytes } from "@noble/hashes/utils.js";
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { NETWORK, WIF, p2wpkh } from "@scure/btc-signer";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { db, newId } from "./db.ts";
 
@@ -133,7 +135,7 @@ const requireKey = (): CryptoKey => {
   return masterKey;
 };
 
-/* -------------------------------- EVM keys ------------------------------- */
+/* --------------------------------- keys ---------------------------------- */
 
 export interface VaultKeyInfo {
   id: string;
@@ -176,14 +178,69 @@ export const importEvmKey = async (label: string, privHex: string): Promise<Vaul
   return { id, label, kind: "evm", address, created_at: new Date().toISOString() };
 };
 
+/* -------------------------------- BTC keys ------------------------------- */
+
+// Mainnet P2WPKH from the COMPRESSED pubkey — the only standard-relayable
+// shape for a segwit v0 key-path spend (WITNESS_PUBKEYTYPE policy).
+const btcAddressFor = (priv: Uint8Array): string => {
+  const address = p2wpkh(secp256k1.getPublicKey(priv, true), NETWORK).address;
+  if (!address) throw new Error("Could not derive a P2WPKH address from this key.");
+  return address;
+};
+
+// BTC key material is sealed as canonical 64-hex (no 0x — Bitcoin convention),
+// whatever shape it arrived in, so revealForSigning has exactly one format
+// per kind to hand back.
+const sealBtcKey = async (label: string, priv: Uint8Array): Promise<VaultKeyInfo> => {
+  const key = requireKey();
+  if (!secp256k1.utils.isValidSecretKey(priv)) {
+    throw new Error("Not a valid secp256k1 private key (out of curve range).");
+  }
+  const address = btcAddressFor(priv);
+  const blob = await seal(key, new TextEncoder().encode(toHex(priv)));
+  priv.fill(0); // best-effort zeroization — JS can't guarantee, but we try
+  const id = newId();
+  db.query(
+    "INSERT INTO vault_keys (id, label, kind, address, enc_blob) VALUES (?, ?, 'btc', ?, ?)"
+  ).run(id, label, address, blob);
+  return { id, label, kind: "btc", address, created_at: new Date().toISOString() };
+};
+
+/** Generate a fresh BTC key (P2WPKH, mainnet), sealed at rest. Returns id +
+ *  address only — the private key is never returned to any caller. */
+export const generateBtcKey = async (label: string): Promise<VaultKeyInfo> =>
+  sealBtcKey(label, secp256k1.utils.randomSecretKey());
+
+/** Import an existing BTC private key — mainnet WIF (compressed only; the
+ *  WIF codec refuses testnet prefixes, bad checksums, and uncompressed
+ *  payloads) or raw 64-hex. The caller-supplied string is the only plaintext
+ *  copy and it dies with the request. */
+export const importBtcKey = async (label: string, secret: string): Promise<VaultKeyInfo> => {
+  const trimmed = secret.trim().replace(/^0x/i, "");
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    return sealBtcKey(label, fromHex(trimmed.toLowerCase()));
+  }
+  let priv: Uint8Array;
+  try {
+    priv = WIF(NETWORK).decode(secret.trim());
+  } catch {
+    // One shaped error for every malformed input — never echo the secret.
+    throw new Error(
+      "That is not a usable BTC key: expected a mainnet WIF (compressed) or 64 hex characters. Uncompressed and testnet WIFs are refused — their spends would not relay."
+    );
+  }
+  return sealBtcKey(label, priv);
+};
+
 /** Decrypt a key for SIGNING ONLY. Callers must never log, store, or return
- *  the value; it lives for the duration of one signature. */
-export const revealForSigning = async (keyId: string): Promise<`0x${string}`> => {
+ *  the value; it lives for the duration of one signature. Format follows the
+ *  key's kind: evm keys reveal as 0x-hex, btc keys as bare 64-hex. */
+export const revealForSigning = async (keyId: string): Promise<string> => {
   const key = requireKey();
   const row = db.query("SELECT enc_blob FROM vault_keys WHERE id = ?").get(keyId) as
     | { enc_blob: Uint8Array }
     | null;
   if (!row) throw new Error(`No vault key ${keyId}`);
   const plain = await unseal(key, new Uint8Array(row.enc_blob));
-  return new TextDecoder().decode(plain) as `0x${string}`;
+  return new TextDecoder().decode(plain);
 };

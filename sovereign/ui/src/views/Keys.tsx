@@ -12,15 +12,43 @@ import { formatDate } from "../format";
 import { toast } from "../toast";
 import type { VaultKey } from "../types";
 
+type Kind = "evm" | "btc";
+
+const KINDS: Kind[] = ["evm", "btc"];
+
+const KIND_LABEL: Record<Kind, string> = {
+  evm: "EVM · Base",
+  btc: "Bitcoin",
+};
+
+function KindPicker({ value, onPick }: { value: Kind; onPick: (k: Kind) => void }) {
+  return (
+    <div className="segmented" role="radiogroup" aria-label="Key kind">
+      {KINDS.map((k) => (
+        <button
+          key={k}
+          type="button"
+          className={value === k ? "is-active" : ""}
+          onClick={() => onPick(k)}
+        >
+          {KIND_LABEL[k]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Keys() {
   const [keys, setKeys] = useState<VaultKey[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const [genLabel, setGenLabel] = useState("");
+  const [genKind, setGenKind] = useState<Kind>("evm");
   const [genBusy, setGenBusy] = useState(false);
   const [genErr, setGenErr] = useState<string | null>(null);
 
   const [impLabel, setImpLabel] = useState("");
+  const [impKind, setImpKind] = useState<Kind>("evm");
   const [impHex, setImpHex] = useState("");
   const [impBusy, setImpBusy] = useState(false);
   const [impErr, setImpErr] = useState<string | null>(null);
@@ -47,7 +75,11 @@ export function Keys() {
     }
     setGenBusy(true);
     try {
-      const r = await api.createKey({ label: genLabel.trim(), action: "generate" });
+      const r = await api.createKey({
+        label: genLabel.trim(),
+        action: "generate",
+        kind: genKind,
+      });
       toast(`Key "${r.key.label}" woven. It lives only in your vault.`, "ok");
       setGenLabel("");
       await load();
@@ -61,16 +93,20 @@ export function Keys() {
   async function importKey(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setImpErr(null);
-    const hex = impHex.trim();
+    const secret = impHex.trim();
     // The private key is cleared from this form on submit, success or not.
     // It is never logged, never echoed back.
     if (!impLabel.trim()) {
       setImpErr("Name the key first.");
       return;
     }
-    if (!/^0x[0-9a-fA-F]{64}$/.test(hex)) {
+    if (impKind === "evm" && !/^0x[0-9a-fA-F]{64}$/.test(secret)) {
       setImpHex("");
-      setImpErr("A private key is 0x followed by exactly 64 hex characters. The field was cleared — paste it fresh.");
+      setImpErr("An EVM private key is 0x followed by exactly 64 hex characters. The field was cleared — paste it fresh.");
+      return;
+    }
+    if (impKind === "btc" && secret === "") {
+      setImpErr("Paste a mainnet WIF (compressed) or 64 hex characters.");
       return;
     }
     setImpBusy(true);
@@ -79,7 +115,8 @@ export function Keys() {
       const r = await api.createKey({
         label: impLabel.trim(),
         action: "import",
-        privHex: hex,
+        kind: impKind,
+        ...(impKind === "evm" ? { privHex: secret } : { secret }),
       });
       toast(`Key "${r.key.label}" imported and sealed in the vault.`, "ok");
       setImpLabel("");
@@ -129,6 +166,9 @@ export function Keys() {
           <p className="key-form-sub">
             Generated inside your node, encrypted at rest, shown to no one.
           </p>
+          <Field label="Kind">
+            <KindPicker value={genKind} onPick={setGenKind} />
+          </Field>
           <Field label="Label">
             <input
               value={genLabel}
@@ -148,20 +188,30 @@ export function Keys() {
             Paste only here. It travels once, over localhost, into the vault —
             then this field is wiped. It is never logged.
           </p>
+          <Field label="Kind">
+            <KindPicker value={impKind} onPick={(k) => { setImpKind(k); setImpErr(null); }} />
+          </Field>
           <Field label="Label">
             <input
               value={impLabel}
               onChange={(e) => setImpLabel(e.target.value)}
-              placeholder="e.g. old MetaMask key"
+              placeholder={impKind === "btc" ? "e.g. old Electrum key" : "e.g. old MetaMask key"}
             />
           </Field>
-          <Field label="Private key" hint="0x + 64 hex characters.">
+          <Field
+            label="Private key"
+            hint={
+              impKind === "btc"
+                ? "Mainnet WIF (compressed, K/L…) or 64 hex characters. Uncompressed and testnet keys are refused."
+                : "0x + 64 hex characters."
+            }
+          >
             <input
               className="mono-input"
               type="password"
               value={impHex}
               onChange={(e) => setImpHex(e.target.value)}
-              placeholder="0x…"
+              placeholder={impKind === "btc" ? "K… / L… / 64-hex" : "0x…"}
               autoComplete="off"
               spellCheck={false}
             />

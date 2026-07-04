@@ -90,7 +90,9 @@ export function Accounts() {
         ...(connectorType && externalId.trim()
           ? { external_account_id: externalId.trim() }
           : {}),
-        ...(connectorType && credentialRef.trim()
+        // esplora is keyless — a credential typed under an earlier connector
+        // choice must never ride along (it would break every future sync).
+        ...(connectorType && connectorType !== "esplora" && credentialRef.trim()
           ? { credential_ref: credentialRef.trim() }
           : {}),
         ...(rail === "CRYPTO" && vaultKeyId ? { vault_key_id: vaultKeyId } : {}),
@@ -265,9 +267,19 @@ export function Accounts() {
           label="Connector"
           hint="Optional. A connector lets the node pull balances and history itself."
         >
-          <select value={connectorChoice} onChange={(e) => setConnectorChoice(e.target.value)}>
+          <select
+            value={connectorChoice}
+            onChange={(e) => {
+              const v = e.target.value;
+              setConnectorChoice(v);
+              // keyless connector — drop any credential typed under an
+              // earlier choice so it can't ride into the payload
+              if (v === "esplora") setCredentialRef("");
+            }}
+          >
             <option value="">none — I'll keep this one by hand</option>
             <option value="agenttool">agenttool</option>
+            <option value="esplora">esplora — watch a Bitcoin address</option>
             <option value="custom">other…</option>
           </select>
         </Field>
@@ -290,33 +302,45 @@ export function Accounts() {
               hint={
                 connectorType === "agenttool"
                   ? "The agenttool wallet UUID this account mirrors."
-                  : "The account's id at the connector."
+                  : connectorType === "esplora"
+                    ? "The Bitcoin address to watch — public chain data, no credential."
+                    : "The account's id at the connector."
               }
             >
               <input
                 className="mono-input"
                 value={externalId}
                 onChange={(e) => setExternalId(e.target.value)}
-                placeholder={connectorType === "agenttool" ? "wallet uuid" : "external id"}
+                placeholder={
+                  connectorType === "agenttool"
+                    ? "wallet uuid"
+                    : connectorType === "esplora"
+                      ? "bc1…"
+                      : "external id"
+                }
                 spellCheck={false}
               />
             </Field>
-            <Field
-              label="Credential ref"
-              hint={
-                connectorType === "agenttool"
-                  ? "The name of the credential your node holds — e.g. AGENTTOOL_API_KEY. Never the secret itself."
-                  : "The name of the credential your node holds. Never the secret itself."
-              }
-            >
-              <input
-                className="mono-input"
-                value={credentialRef}
-                onChange={(e) => setCredentialRef(e.target.value)}
-                placeholder={connectorType === "agenttool" ? "AGENTTOOL_API_KEY" : "CREDENTIAL_NAME"}
-                spellCheck={false}
-              />
-            </Field>
+            {/* esplora is a KEYLESS public indexer — it refuses credentials,
+                so don't offer the field at all. */}
+            {connectorType !== "esplora" && (
+              <Field
+                label="Credential ref"
+                hint={
+                  connectorType === "agenttool"
+                    ? "The name of the credential your node holds — e.g. AGENTTOOL_API_KEY. Never the secret itself."
+                    : "The name of the credential your node holds. Never the secret itself."
+                }
+              >
+                <input
+                  className="mono-input"
+                  value={credentialRef}
+                  onChange={(e) => setCredentialRef(e.target.value)}
+                  placeholder={connectorType === "agenttool" ? "AGENTTOOL_API_KEY" : "CREDENTIAL_NAME"}
+                  spellCheck={false}
+                />
+              </Field>
+            )}
           </div>
         )}
 
@@ -326,14 +350,39 @@ export function Accounts() {
             hint={
               keys.length === 0
                 ? "No vault keys yet — weave one under Keys, then this account can sign."
-                : "Bind a key and this account can pay, not just watch."
+                : "Bind a key and this account can pay, not just watch. Picking a Bitcoin key also wires the esplora watcher to its address, so the balance here is the chain's."
             }
           >
-            <select value={vaultKeyId} onChange={(e) => setVaultKeyId(e.target.value)}>
+            <select
+              value={vaultKeyId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setVaultKeyId(id);
+                const key = keys.find((k) => k.id === id);
+                // A btc key implies the whole BTC shape: sats at 8 decimals,
+                // and the esplora read rail watching the key's own address —
+                // one account row per address, sender and watcher together.
+                if (key?.kind === "btc") {
+                  setCurrency("BTC");
+                  setDecimals(8);
+                  setConnectorChoice("esplora");
+                  setExternalId(key.address);
+                } else {
+                  // Switching away must also unwind the auto-wiring, or the
+                  // form submits an ETH account watching a Bitcoin address.
+                  setCurrency(RAIL_DEFAULTS.CRYPTO.currency);
+                  setDecimals(RAIL_DEFAULTS.CRYPTO.decimals);
+                  if (connectorChoice === "esplora") {
+                    setConnectorChoice("");
+                    setExternalId("");
+                  }
+                }
+              }}
+            >
               <option value="">watch only — no key</option>
               {keys.map((k) => (
                 <option key={k.id} value={k.id}>
-                  {k.label} · {shortAddress(k.address)}
+                  {k.label} ({k.kind}) · {shortAddress(k.address)}
                 </option>
               ))}
             </select>

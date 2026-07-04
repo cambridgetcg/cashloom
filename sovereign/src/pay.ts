@@ -9,10 +9,11 @@
  */
 
 import { db, newId } from "./db.ts";
+import { btcSender } from "./senders/btc.sender.ts";
 import { evmSender } from "./senders/evm.sender.ts";
-import type { PaymentSender } from "./senders/types.ts";
+import { AmbiguousBroadcastError, type PaymentSender } from "./senders/types.ts";
 
-const SENDERS: PaymentSender[] = [evmSender];
+const SENDERS: PaymentSender[] = [evmSender, btcSender];
 const QUOTE_TTL_MS = 5 * 60 * 1000;
 
 const senderForAsset = (asset: string): PaymentSender => {
@@ -70,10 +71,13 @@ export const quotePayment = async (opts: {
     { to: opts.to, amountMinor: opts.amountMinor, asset: opts.asset }
   );
   const id = newId();
+  // quote.detail is the sender's opaque persisted state (e.g. the BTC coin
+  // selection) — stored verbatim, handed back verbatim at confirm, never
+  // parsed here, never selected by listPayments.
   db.query(
-    `INSERT INTO payments (id, account_id, rail, to_addr, asset, amount_minor, fee_minor, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'quoted')`
-  ).run(id, account.id, sender.type, opts.to, opts.asset.trim().toUpperCase(), opts.amountMinor, quote.feeMinor);
+    `INSERT INTO payments (id, account_id, rail, to_addr, asset, amount_minor, fee_minor, status, detail)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'quoted', ?)`
+  ).run(id, account.id, sender.type, opts.to, opts.asset.trim().toUpperCase(), opts.amountMinor, quote.feeMinor, quote.detail ?? null);
   return {
     paymentId: id,
     feeMinor: quote.feeMinor,
@@ -113,16 +117,64 @@ export const confirmPayment = async (paymentId: string): Promise<ConfirmResult> 
   db.query("UPDATE payments SET status = 'confirmed', updated_at = ? WHERE id = ?")
     .run(new Date().toISOString(), paymentId);
 
+  let receipt;
   try {
-    const receipt = await sender.send(
-      { vaultKeyId: account.vault_key_id! },
-      { to: String(row.to_addr), amountMinor: String(row.amount_minor), asset: String(row.asset) }
+    receipt = await sender.send(
+      { vaultKeyId: account.vault_key_id!, paymentId },
+      {
+        to: String(row.to_addr),
+        amountMinor: String(row.amount_minor),
+        asset: String(row.asset),
+        detail: (row.detail as string | null) ?? null,
+      },
+      {
+        // The signed tx's id lands in the row BEFORE the network hears the
+        // tx: a crash mid-broadcast or an unanswered indexer leaves a
+        // 'confirmed' payment with the exact txid to check on-chain — never
+        // a mystery, never silently re-sendable.
+        onSigned: (externalId) => {
+          db.query("UPDATE payments SET tx_hash = ?, updated_at = ? WHERE id = ?").run(
+            externalId,
+            new Date().toISOString(),
+            paymentId
+          );
+        },
+      }
     );
+  } catch (error) {
+    if (error instanceof AmbiguousBroadcastError) {
+      // NOT failed: the tx may be on the wire. The row stays 'confirmed'
+      // (unresendable — only 'quoted' rows confirm), the error says what to
+      // verify, and NO ledger row is written: if the tx landed, the read
+      // rail imports it by txid; if it didn't, nothing moved.
+      db.query("UPDATE payments SET error = ?, updated_at = ? WHERE id = ?")
+        .run(error.message, new Date().toISOString(), paymentId);
+      return {
+        paymentId,
+        status: "confirmed",
+        txHash: error.externalId,
+        error: error.message,
+      };
+    }
+    const message = error instanceof Error ? error.message : "send failed";
+    db.query("UPDATE payments SET status = 'failed', error = ?, updated_at = ? WHERE id = ?")
+      .run(message, new Date().toISOString(), paymentId);
+    // Recorded, surfaced, NOT retried.
+    return { paymentId, status: "failed", txHash: null, error: message };
+  }
+
+  // The broadcast SUCCEEDED. From here on this payment must never read
+  // 'failed' — a bookkeeping problem is a recording problem, not a payment
+  // problem, and calling a live payment failed is the double-pay invitation
+  // the whole rite exists to refuse. The bookkeeping gets its own try.
+  try {
     db.query("UPDATE payments SET status = 'broadcast', tx_hash = ?, updated_at = ? WHERE id = ?")
       .run(receipt.externalId, new Date().toISOString(), paymentId);
-    // The ledger records the send immediately (negative = out). The chain
-    // remains the source of truth; a read-rail sync of the same tx dedupes
-    // on the hash.
+    // The ledger records the send immediately (negative = out), using the
+    // rail's exact total outflow when it knows one (BTC: amount + fee, so
+    // the row equals what the read rail would derive for this txid). The
+    // chain remains the source of truth; a read-rail sync of the same tx
+    // dedupes on the hash.
     db.query(
       `INSERT OR IGNORE INTO transactions (id, account_id, external_id, title, amount_minor, date, source)
        VALUES (?, ?, ?, ?, ?, ?, 'PAYMENT')`
@@ -131,16 +183,21 @@ export const confirmPayment = async (paymentId: string): Promise<ConfirmResult> 
       account.id,
       receipt.externalId,
       `pay · ${row.asset} → ${String(row.to_addr).slice(0, 12)}…`,
-      `-${row.amount_minor}`,
+      `-${receipt.totalOutMinor ?? row.amount_minor}`,
       new Date().toISOString()
     );
     return { paymentId, status: "broadcast", txHash: receipt.externalId, error: null };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "send failed";
-    db.query("UPDATE payments SET status = 'failed', error = ?, updated_at = ? WHERE id = ?")
-      .run(message, new Date().toISOString(), paymentId);
-    // Recorded, surfaced, NOT retried.
-    return { paymentId, status: "failed", txHash: null, error: message };
+    const message = error instanceof Error ? error.message : "recording failed";
+    const note = `Broadcast succeeded (txid ${receipt.externalId}); recording it locally failed: ${message}. Do NOT re-quote — the payment is live.`;
+    try {
+      db.query("UPDATE payments SET error = ?, updated_at = ? WHERE id = ?")
+        .run(note, new Date().toISOString(), paymentId);
+    } catch {
+      // Even the error write failed — the onSigned tx_hash is already durable,
+      // so the row remains reconcilable on-chain.
+    }
+    return { paymentId, status: "confirmed", txHash: receipt.externalId, error: note };
   }
 };
 

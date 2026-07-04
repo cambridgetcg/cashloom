@@ -104,7 +104,8 @@ export const evmSender: PaymentSender = {
   async send(ctx: SenderContext, instruction: PaymentInstruction): Promise<PaymentReceipt> {
     const { to, amount, asset } = parseInstruction(instruction);
     // Reveal lives for exactly this scope: derive the signer, sign, done.
-    const account = privateKeyToAccount(await revealForSigning(ctx.vaultKeyId));
+    // (The vault reveals evm-kind keys as 0x-hex — asserted, not re-checked.)
+    const account = privateKeyToAccount((await revealForSigning(ctx.vaultKeyId)) as `0x${string}`);
     const wallet = createWalletClient({ account, chain: base, transport: http(rpcUrl()) });
     const request = buildRequest(to, amount, asset);
     const hash = await wallet.sendTransaction({

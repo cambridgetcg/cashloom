@@ -779,6 +779,8 @@ input[type="date"] { color-scheme: dark; }
 .pay-result h3 { font-size: 24px; margin-bottom: 8px; }
 .pay-result.is-ok::before { background: linear-gradient(180deg, var(--in), var(--gold)); opacity: 0.8; }
 .pay-result.is-failed::before { background: var(--out); opacity: 0.8; }
+/* Broadcast went unanswered — the tx may be live. Gold: verify, don't retry. */
+.pay-result.is-unknown::before { background: var(--gold); opacity: 0.8; }
 .pay-result-sub {
   color: var(--parch-dim);
   font-size: 14px;

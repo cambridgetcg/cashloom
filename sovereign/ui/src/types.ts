@@ -82,7 +82,9 @@ export interface Quote {
 
 export interface ConfirmResult {
   paymentId: string;
-  status: "broadcast" | "failed";
+  /** 'confirmed' = signed but the broadcast went unanswered — the tx MAY be
+   *  on the wire; verify the txHash on-chain before quoting again. */
+  status: "broadcast" | "failed" | "confirmed";
   txHash: string | null;
   error: string | null;
 }

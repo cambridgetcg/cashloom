@@ -60,6 +60,13 @@ export function Receive() {
                 <CopyButton text={k.address} label="Copy address" big />
                 <span className="card-asof">since {formatDate(k.created_at)}</span>
               </footer>
+              {k.kind === "btc" && (
+                <p className="receive-note">
+                  One Bitcoin address, in the open: anyone you pay or share it
+                  with can read its full balance and history on the public
+                  chain. Sharing it can't move your money — only reveal it.
+                </p>
+              )}
             </article>
           ))}
           <p className="receive-note">

@@ -52,7 +52,7 @@ describe("vault — custody discipline", () => {
     expect(revealed).toMatch(/^0x[0-9a-f]{64}$/i);
     // Round-trip: the revealed key derives the stored address.
     const { privateKeyToAccount } = await import("viem/accounts");
-    expect(privateKeyToAccount(revealed).address).toBe(key.address);
+    expect(String(privateKeyToAccount(revealed as `0x${string}`).address)).toBe(key.address as string);
   });
 
   it("imports a known key and derives the right address", async () => {
@@ -69,5 +69,38 @@ describe("vault — custody discipline", () => {
     expect(vault.isValidSession(token)).toBe(false);
     const keys = vault.listKeys();
     await expect(vault.revealForSigning(keys[0]!.id)).rejects.toThrow(/locked/);
+  });
+});
+
+describe("vault — btc keys", () => {
+  it("generates a mainnet P2WPKH key, sealed, revealed as bare 64-hex", async () => {
+    await vault.unlock("correct horse battery staple");
+    const key = await vault.generateBtcKey("btc hot");
+    expect(key.kind).toBe("btc");
+    expect(key.address).toMatch(/^bc1q[02-9ac-hj-np-z]{38}$/);
+
+    const revealed = await vault.revealForSigning(key.id);
+    expect(revealed).toMatch(/^[0-9a-f]{64}$/); // canonical: no 0x, one shape per kind
+
+    const { db } = await import("./db.ts");
+    const row = db.query("SELECT enc_blob FROM vault_keys WHERE id = ?").get(key.id) as {
+      enc_blob: Uint8Array;
+    };
+    const blobText = Buffer.from(row.enc_blob).toString("latin1");
+    expect(blobText).not.toContain(revealed); // sealed means sealed
+  });
+
+  it("imports 64-hex (with or without 0x) to the pinned test-vector address", async () => {
+    // Throwaway vector (32 bytes of 0x07) — NOT a secret; address cross-checked
+    // against @scure/btc-signer + noble in btc.sender.test.ts.
+    const a = await vault.importBtcKey("hexed", "07".repeat(32));
+    const b = await vault.importBtcKey("hexed-0x", "0x" + "07".repeat(32));
+    expect(a.address).toBe("bc1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j29e5za5");
+    expect(b.address).toBe(a.address);
+  });
+
+  it("refuses an out-of-range scalar", async () => {
+    await expect(vault.importBtcKey("zero", "00".repeat(32))).rejects.toThrow(/not a valid secp256k1/i);
+    await expect(vault.importBtcKey("overflow", "ff".repeat(32))).rejects.toThrow(/not a valid secp256k1/i);
   });
 });

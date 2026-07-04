@@ -129,8 +129,8 @@ export const MODULES: Module[] = [
     sources: ["../../sovereign/src/senders/types.ts?raw", "../../sovereign/src/senders/evm.sender.ts?raw"],
     idea: "All money movement goes through PaymentSender — a separate interface from reading, held to stricter rules: validate, disclose the fee, sign locally, broadcast the signed result.",
     doctrine: [
-      "Reading a balance and moving money are different acts with different blast radii, so they live behind different interfaces. A sender validates the destination and amount before anything is signed, discloses the fee as an upper bound, and signs locally — the key never rides the wire.",
-      "The first rail is Base L2 (ETH + USDC): a cheap, fast stablecoin path chosen so 'everyone pays everyone' is affordable enough to actually mean everyone. The quote uses only the public address; the private key surfaces solely inside the send.",
+      "Reading a balance and moving money are different acts with different blast radii, so they live behind different interfaces. A sender validates the destination and amount before anything is signed, discloses the fee before anything moves, and signs locally — the key never rides the wire.",
+      "Two rails move money so far: Base L2 (ETH + USDC), a cheap fast stablecoin path chosen so 'everyone pays everyone' is affordable enough to actually mean everyone — and Bitcoin on-chain, which earned its own module because UTXOs carry their own ways to lose money quietly. The quote uses only the public address; the private key surfaces solely inside the send.",
       "Fees are pass-through only — the network's gas, nothing added. The fee summary says so out loud: 'No CashLoom fee, ever.'",
     ],
     loadBearing: [
@@ -138,8 +138,27 @@ export const MODULES: Module[] = [
       { marker: "Disclose the UPPER BOUND", note: "A confirm screen is never shown a fee lower than what could be charged. Honesty rounds against the house." },
       { marker: "the private key never touches the network", note: "Sign here, broadcast the signature. The secret and the internet never meet." },
     ],
-    relatesTo: ["pay", "the-vault"],
+    relatesTo: ["pay", "the-vault", "btc-sending"],
     weave: { x: 0.78, y: 0.4 },
+  },
+  {
+    id: "btc-sending",
+    title: "BTC Sending",
+    subtitle: "Sign exactly what was disclosed.",
+    sources: ["../../sovereign/src/senders/btc.sender.ts?raw"],
+    idea: "Coin selection and the exact fee happen at quote time and are persisted; confirm rebuilds that selection bit-for-bit, signs, and broadcasts — the fee paid is the fee disclosed, to the satoshi.",
+    doctrine: [
+      "On Bitcoin the fee is never written down — it is the implicit difference between inputs and outputs, which makes it the easiest number in all of money to get quietly wrong. So the quote does the whole selection, persists it, and the confirm signs exactly that selection: no re-selection, no re-estimation, nothing the human didn't see.",
+      "The persisted selection is treated as hostile at signing time: every amount re-proven, the inputs-minus-outputs equation checked to the satoshi, and a final assert that the signed transaction's fee equals the disclosed one — or nothing broadcasts. A doctored row overpays no one.",
+      "The indexer it reads is public and keyless, and the design assumes it lies. BIP-143 makes a lying indexer harmless to funds — a wrong claimed value yields a consensus-invalid signature, rejected loudly. And when a broadcast goes unanswered, the payment refuses to call itself failed: the signed txid was recorded before the network ever heard it, so the one wrong move — signing the same money twice — stays impossible.",
+    ],
+    loadBearing: [
+      { marker: "Re-selection at confirm is never a fallback", note: "The built-ONCE doctrine, ported to UTXO land. What confirm signs is what quote disclosed — structurally, not aspirationally." },
+      { marker: "BEFORE the network hears the tx", note: "The txid is deterministic once signed, so it is written down before broadcast. A crash mid-flight leaves a payment you can check on-chain, never a mystery." },
+      { marker: "the double-pay lever", note: "An unanswered broadcast is not a failure — it is unknown. Calling it 'failed' would invite the second send a hostile indexer is fishing for." },
+    ],
+    relatesTo: ["the-outbound-seam", "pay", "the-vault", "the-read-seam"],
+    weave: { x: 0.88, y: 0.56 },
   },
   {
     id: "the-read-seam",
@@ -250,6 +269,16 @@ export const DECISIONS: Decision[] = [
     livesIn: "the-ledger",
   },
   {
+    question: "A Bitcoin fee can drift between quote and send. How do you keep the disclosure honest?",
+    options: [
+      { label: "Re-select coins at send, capped at the quoted fee", verdict: "rejected", note: "Caps one number but signs inputs and change the human never saw — the disclosure covered the whole intent, not just the fee." },
+      { label: "Persist the selection at quote; confirm signs exactly that, or nothing", verdict: "chosen", note: "The fee paid equals the fee disclosed, to the satoshi. A spent-from-under-us coin fails loudly into a fresh quote." },
+      { label: "Build and sign at quote time", verdict: "rejected", note: "Nothing may carry a signature before the human confirms — that is the whole rite." },
+    ],
+    because: "The quote→confirm promise is about the entire intent. On a UTXO chain the only way to keep it is to make the quoted selection the thing that is signed — and to treat that persisted selection as untrusted input when signing time comes.",
+    livesIn: "btc-sending",
+  },
+  {
     question: "SaaS, or sovereign?",
     options: [
       { label: "Hosted SaaS: plans, quotas, pricing, a central operator", verdict: "rejected", note: "That is the old age. It makes the operator the owner of your money's story." },
@@ -261,17 +290,19 @@ export const DECISIONS: Decision[] = [
 ];
 
 export const ROADMAP: RoadmapThread[] = [
-  {
-    title: "Bitcoin sending (PSBT + coin selection)",
-    status: "next",
-    mindset: "BTC moving is not 'another EVM rail' — UTXOs, coin selection, and fee estimation each carry their own way to lose money quietly. It earns its own careful session with its own tests, not a rushed bolt-on.",
-    whyNotYet: "Reading BTC already works via Esplora; sending safely is a real design, deliberately not hurried into the first slice.",
-  },
+  // Bitcoin sending (PSBT + coin selection) graduated from this list on
+  // 2026-07-05 — it lives in the weave now, as the btc-sending module.
   {
     title: "Lightning",
-    status: "planned",
+    status: "next",
     mindset: "The path to near-free instant payments — but it needs a node. The honest question is embedded (LDK) versus connect-your-own, and that trade-off deserves its own spec before a line is written.",
     whyNotYet: "A whole sub-design about where the Lightning node lives; scoped as its own slice.",
+  },
+  {
+    title: "BTC fee-bump & broadcast reconciliation",
+    status: "planned",
+    mindset: "Every send already signals RBF and records its txid before broadcast — the door is open. What remains is walking back through it: bump a stuck fee, and re-check payments whose broadcast went unanswered against the chain.",
+    whyNotYet: "The safe-by-default posture shipped first; the recovery tooling is its own small, careful slice.",
   },
   {
     title: "Payment pointers — you@cashloom",

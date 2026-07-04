@@ -9,26 +9,40 @@
 export interface PaymentInstruction {
   /** Rail-specific destination (EVM 0x-address, BTC address, Stripe id). */
   to: string;
-  /** Integer minor units of the ASSET as a decimal string (USDC: 6dp; ETH: wei). */
+  /** Integer minor units of the ASSET as a decimal string (USDC: 6dp; ETH: wei; BTC: sats). */
   amountMinor: string;
-  /** Asset symbol the sender understands ("ETH", "USDC"). */
+  /** Asset symbol the sender understands ("ETH", "USDC", "BTC"). */
   asset: string;
+  /** Opaque sender state persisted at quote time (payments.detail) and handed
+   *  back VERBATIM at send — how a UTXO rail signs exactly the selection it
+   *  disclosed. Rail-specific; pay.ts stores it, never parses it. It MUST
+   *  never contain key material, and a sender MUST treat it as UNTRUSTED
+   *  input at send — re-validate every invariant before signing. */
+  detail?: string | null;
 }
 
 export interface SenderContext {
   /** Vault key backing the sending account. Senders receive the ID, never
    *  key material — they call the vault for a signature-lifetime reveal. */
   vaultKeyId: string;
+  /** The payments row being acted on, when one exists — lets a UTXO sender
+   *  exclude ITSELF while checking that no other signed payment already
+   *  committed the same coins. */
+  paymentId?: string;
 }
 
 /** The fee disclosure, produced BEFORE any signature exists. */
 export interface PaymentQuote {
-  /** Upper-bound network fee, integer minor units of feeAsset, as a string. */
+  /** Network fee, integer minor units of feeAsset, as a string. An upper
+   *  bound on rails that re-estimate (EVM); EXACT on rails that sign the
+   *  persisted selection (BTC). */
   feeMinor: string;
-  /** Asset the fee is paid in (EVM: always the native asset). */
+  /** Asset the fee is paid in (EVM: always the native asset; BTC: BTC). */
   feeAsset: string;
   /** Human line for the confirm screen — states amount, asset, destination, fee. */
   summary: string;
+  /** See PaymentInstruction.detail — returned here, stored by pay.ts. */
+  detail?: string;
 }
 
 export type SendStatus = "broadcast" | "failed";
@@ -37,6 +51,36 @@ export interface PaymentReceipt {
   /** The rail's own stable id (tx hash) — becomes the ledger external_id. */
   externalId: string;
   status: SendStatus;
+  /** The full signed outflow in the SENT asset — amount + fee when the fee
+   *  is paid in the same asset (BTC, where the fee is known exactly at
+   *  signing). Absent when the fee lives in another asset (EVM gas): the
+   *  ledger then records the amount alone and the read rail's later import
+   *  of the same hash stays the source of truth. Without this, the txid
+   *  dedupe would freeze a fee-less ledger row forever. */
+  totalOutMinor?: string;
+}
+
+export interface SendHooks {
+  /** Called after local signing, BEFORE broadcast, with the rail's stable id
+   *  (deterministic pre-broadcast for segwit). pay.ts persists it so a crash
+   *  or an unanswered broadcast leaves a row reconcilable against the chain,
+   *  never a mystery. */
+  onSigned?: (externalId: string) => void;
+}
+
+/** Thrown when a broadcast's OUTCOME is unknown — transport failure, 5xx,
+ *  unreadable answer. The transaction may be relaying: recording a clean
+ *  "failed" would invite an immediate second send, which is exactly the
+ *  double-pay lever a hostile indexer would pull. pay.ts keeps such payments
+ *  in their unresendable 'confirmed' state and tells the human what to check. */
+export class AmbiguousBroadcastError extends Error {
+  /** The signed transaction's id — already persisted via onSigned. */
+  readonly externalId: string | null;
+  constructor(message: string, externalId: string | null = null) {
+    super(message);
+    this.name = "AmbiguousBroadcastError";
+    this.externalId = externalId;
+  }
 }
 
 export interface PaymentSender {
@@ -46,6 +90,11 @@ export interface PaymentSender {
   /** Fee + sanity BEFORE signing. Throws on invalid destination/amount. */
   quote(ctx: SenderContext, instruction: PaymentInstruction): Promise<PaymentQuote>;
   /** Sign locally, broadcast the signed transaction. One attempt — failed
-   *  sends are recorded and surfaced, NEVER auto-retried. */
-  send(ctx: SenderContext, instruction: PaymentInstruction): Promise<PaymentReceipt>;
+   *  sends are recorded and surfaced, NEVER auto-retried. Throws
+   *  AmbiguousBroadcastError when the outcome is genuinely unknown. */
+  send(
+    ctx: SenderContext,
+    instruction: PaymentInstruction,
+    hooks?: SendHooks
+  ): Promise<PaymentReceipt>;
 }

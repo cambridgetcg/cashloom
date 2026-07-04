@@ -65,18 +65,44 @@ app.post("/api/vault/lock", (c) => {
 
 app.get("/api/vault/keys", (c) => c.json({ keys: vault.listKeys() }));
 
-const keySchema = z.object({
-  label: z.string().min(1).max(80),
-  action: z.enum(["generate", "import"]),
-  privHex: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
-});
+const keySchema = z
+  .object({
+    label: z.string().min(1).max(80),
+    action: z.enum(["generate", "import"]),
+    kind: z.enum(["evm", "btc"]).default("evm"),
+    privHex: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(), // evm import
+    secret: z.string().min(1).max(120).optional(), // btc import: WIF or 64-hex
+  })
+  .superRefine((body, ctx) => {
+    // Each kind imports through its own field — a key pasted into the wrong
+    // one should say so, not surface as "empty key" from the vault.
+    if (body.action !== "import") return;
+    if (body.kind === "evm" && !body.privHex) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["privHex"],
+        message: "Importing an evm key needs privHex (0x + 64 hex). Did you mean kind: 'btc'?",
+      });
+    }
+    if (body.kind === "btc" && !body.secret) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["secret"],
+        message: "Importing a btc key needs secret (mainnet WIF or 64-hex). Did you mean kind: 'evm'?",
+      });
+    }
+  });
 
 app.post("/api/vault/keys", async (c) => {
   const body = keySchema.parse(await c.req.json());
   const key =
-    body.action === "generate"
-      ? await vault.generateEvmKey(body.label)
-      : await vault.importEvmKey(body.label, body.privHex ?? "");
+    body.kind === "btc"
+      ? body.action === "generate"
+        ? await vault.generateBtcKey(body.label)
+        : await vault.importBtcKey(body.label, body.secret ?? "")
+      : body.action === "generate"
+        ? await vault.generateEvmKey(body.label)
+        : await vault.importEvmKey(body.label, body.privHex ?? "");
   return c.json({ key }, 201);
 });
 

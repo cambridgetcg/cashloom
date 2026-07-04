@@ -105,8 +105,13 @@ export const api = {
   vaultLock: () => request<{ ok: boolean }>("/api/vault/lock", {}),
 
   keys: () => request<{ keys: VaultKey[] }>("/api/vault/keys"),
-  createKey: (body: { label: string; action: "generate" | "import"; privHex?: string }) =>
-    request<{ key: VaultKey }>("/api/vault/keys", body),
+  createKey: (body: {
+    label: string;
+    action: "generate" | "import";
+    kind?: "evm" | "btc";
+    privHex?: string; // evm import
+    secret?: string; // btc import: WIF or 64-hex
+  }) => request<{ key: VaultKey }>("/api/vault/keys", body),
 
   accounts: () => request<{ accounts: Account[] }>("/api/accounts"),
   createAccount: (body: {

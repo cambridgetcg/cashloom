@@ -7,10 +7,25 @@ import {
   formatMinorCompact,
   parseToMinor,
 } from "../format";
-import type { Account, ConfirmResult, Quote } from "../types";
+import type { Account, ConfirmResult, Quote, VaultKey } from "../types";
 
-const ASSETS = ["ETH", "USDC"] as const;
+const ASSETS = ["ETH", "USDC", "BTC"] as const;
 type Asset = (typeof ASSETS)[number];
+
+/** Which vault-key kind can sign which asset. */
+const kindFor = (asset: Asset): string => (asset === "BTC" ? "btc" : "evm");
+
+const explorerFor = (asset: Asset, tx: string) =>
+  asset === "BTC"
+    ? { href: `https://mempool.space/tx/${tx}`, label: "View on mempool.space ↗" }
+    : { href: `https://basescan.org/tx/${tx}`, label: "View on Basescan ↗" };
+
+const networkNameFor = (asset: Asset): string =>
+  asset === "BTC" ? "the Bitcoin network" : "Base";
+
+// Loose client-side shape check only — quote() is the authoritative
+// validator (btc-signer decodes and refuses testnet/mixed-case/bad checksums).
+const BTC_ADDR_SHAPE = /^(bc1[02-9ac-hj-np-z]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
 
 type Stage =
   | { step: "form" }
@@ -25,6 +40,7 @@ function decimalsFor(asset: Asset, account: Account | undefined): number {
 
 export function Pay() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
+  const [keys, setKeys] = useState<VaultKey[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const [accountId, setAccountId] = useState("");
@@ -41,16 +57,17 @@ export function Pay() {
     let live = true;
     void (async () => {
       try {
-        const r = await api.accounts();
+        const [r, k] = await Promise.all([api.accounts(), api.keys()]);
         if (!live) return;
         setAccounts(r.accounts);
+        setKeys(k.keys);
         const first = r.accounts.find(
           (a) => a.vault_key_id && a.status !== "archived",
         );
         if (first) {
           setAccountId(first.id);
-          if (first.currency === "ETH" || first.currency === "USDC") {
-            setAsset(first.currency);
+          if ((ASSETS as readonly string[]).includes(first.currency)) {
+            setAsset(first.currency as Asset);
           }
         }
       } catch (ex) {
@@ -69,13 +86,29 @@ export function Pay() {
     return () => window.clearInterval(t);
   }, [stage.step]);
 
+  // Only accounts whose bound key can actually SIGN the chosen asset —
+  // a btc key cannot sign Base, an evm key cannot sign Bitcoin.
+  const keyKindById = useMemo(() => new Map(keys.map((k) => [k.id, k.kind])), [keys]);
   const eligible = useMemo(
-    () => (accounts ?? []).filter((a) => a.vault_key_id && a.status !== "archived"),
-    [accounts],
+    () =>
+      (accounts ?? []).filter(
+        (a) =>
+          a.vault_key_id &&
+          a.status !== "archived" &&
+          keyKindById.get(a.vault_key_id) === kindFor(asset),
+      ),
+    [accounts, keyKindById, asset],
   );
   const account = eligible.find((a) => a.id === accountId);
   const decimals = decimalsFor(asset, account);
   const minor = parseToMinor(amountStr, decimals);
+
+  // Switching asset can strand the picker on an account that can't sign it.
+  useEffect(() => {
+    if (!eligible.some((a) => a.id === accountId) && eligible.length > 0) {
+      setAccountId(eligible[0].id);
+    }
+  }, [asset, eligible, accountId]);
 
   async function requestQuote(e?: FormEvent<HTMLFormElement>) {
     e?.preventDefault();
@@ -84,7 +117,16 @@ export function Pay() {
       setFormErr("Pick the account that will sign.");
       return;
     }
-    if (!/^0x[0-9a-fA-F]{40}$/.test(to.trim())) {
+    let dest = to.trim();
+    if (asset === "BTC") {
+      // BIP-173 QR codes render bech32 ALL-UPPERCASE — normalize that form
+      // to canonical lowercase (mixed case stays refused, as the spec says).
+      if (/^BC1/.test(dest) && dest === dest.toUpperCase()) dest = dest.toLowerCase();
+      if (!BTC_ADDR_SHAPE.test(dest)) {
+        setFormErr("Destination should be a Bitcoin address — bech32 (bc1…) or legacy base58.");
+        return;
+      }
+    } else if (!/^0x[0-9a-fA-F]{40}$/.test(dest)) {
       setFormErr("Destination should be a 0x address — 40 hex characters after the 0x.");
       return;
     }
@@ -100,7 +142,7 @@ export function Pay() {
     try {
       const quote = await api.payQuote({
         accountId: account.id,
-        to: to.trim(),
+        to: dest,
         amountMinor: minor,
         asset,
       });
@@ -141,7 +183,11 @@ export function Pay() {
   if (loadErr) return <EmptyState>{loadErr}</EmptyState>;
   if (!accounts) return <LoadingThreads />;
 
-  if (eligible.length === 0) {
+  // Only bail out entirely when NOTHING can sign — if the mismatch is just
+  // the chosen asset (evm key, BTC picked), keep the form so the asset
+  // switcher stays reachable.
+  const anyKeyBacked = accounts.some((a) => a.vault_key_id && a.status !== "archived");
+  if (!anyKeyBacked) {
     return (
       <div className="stagger">
         <SectionTitle>Pay</SectionTitle>
@@ -158,26 +204,44 @@ export function Pay() {
   if (stage.step === "done") {
     const r = stage.result;
     const ok = r.status === "broadcast";
+    // 'confirmed' back from confirm = the broadcast went UNANSWERED. The tx
+    // may be live; the one wrong move is quoting again before checking.
+    const unknown = r.status === "confirmed";
+    const explorer = r.txHash ? explorerFor(asset, r.txHash) : null;
     return (
       <div className="stagger">
         <SectionTitle>Pay</SectionTitle>
-        <div className={`pay-result card ${ok ? "is-ok" : "is-failed"}`}>
-          <h3>{ok ? "Woven." : "The thread didn't take."}</h3>
+        <div className={`pay-result card ${ok ? "is-ok" : unknown ? "is-unknown" : "is-failed"}`}>
+          <h3>{ok ? "Woven." : unknown ? "The network didn't answer." : "The thread didn't take."}</h3>
           {ok ? (
             <>
               <p className="pay-result-sub">
-                Signed in your vault, broadcast to Base. Give it a moment to settle.
+                Signed in your vault, broadcast to {networkNameFor(asset)}. Give it a
+                moment to settle.
               </p>
-              {r.txHash && (
+              {r.txHash && explorer && (
                 <div className="txhash-row">
                   <code className="txhash">{r.txHash}</code>
-                  <a
-                    className="btn btn-ghost"
-                    href={`https://basescan.org/tx/${r.txHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    View on Basescan ↗
+                  <a className="btn btn-ghost" href={explorer.href} target="_blank" rel="noreferrer">
+                    {explorer.label}
+                  </a>
+                </div>
+              )}
+            </>
+          ) : unknown ? (
+            <>
+              <p className="form-error pay-fail-msg">{r.error ?? "The broadcast went unanswered."}</p>
+              <p className="pay-result-sub">
+                The payment was signed, but the network never said yes or no — it may
+                still go through. <strong>Check the transaction on-chain before you
+                quote again</strong>; sending twice is the one mistake this screen
+                exists to prevent.
+              </p>
+              {r.txHash && explorer && (
+                <div className="txhash-row">
+                  <code className="txhash">{r.txHash}</code>
+                  <a className="btn btn-ghost" href={explorer.href} target="_blank" rel="noreferrer">
+                    {explorer.label}
                   </a>
                 </div>
               )}
@@ -281,7 +345,7 @@ export function Pay() {
           </div>
           {confirming && (
             <p className="pay-confirming-note">
-              Signing locally, broadcasting to Base. Don't close the tab.
+              Signing locally, broadcasting to {networkNameFor(asset)}. Don't close the tab.
             </p>
           )}
         </div>
@@ -294,7 +358,14 @@ export function Pay() {
     <div className="stagger">
       <SectionTitle>Pay</SectionTitle>
       <form className="card pay-form" onSubmit={(e) => void requestQuote(e)}>
-        <Field label="From" hint="Only accounts bound to a vault key can sign.">
+        <Field
+          label="From"
+          hint={
+            eligible.length === 0
+              ? `No account holds a ${kindFor(asset)}-kind key, so nothing can sign ${asset} — weave one under Keys, bind it under Accounts.`
+              : "Only accounts bound to a vault key of the right kind can sign."
+          }
+        >
           <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             {eligible.map((a) => (
               <option key={a.id} value={a.id}>
@@ -304,12 +375,19 @@ export function Pay() {
           </select>
         </Field>
 
-        <Field label="To" hint="A 0x address on Base. Check the first and last characters — always.">
+        <Field
+          label="To"
+          hint={
+            asset === "BTC"
+              ? "A Bitcoin address — bech32 (bc1…) or legacy. Check the first and last characters — always."
+              : "A 0x address on Base. Check the first and last characters — always."
+          }
+        >
           <input
             className="mono-input"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            placeholder="0x…"
+            placeholder={asset === "BTC" ? "bc1…" : "0x…"}
             spellCheck={false}
             autoComplete="off"
           />

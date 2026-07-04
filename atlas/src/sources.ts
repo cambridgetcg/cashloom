@@ -12,6 +12,7 @@ import s_vault from "../../sovereign/src/vault.ts?raw";
 import s_pay from "../../sovereign/src/pay.ts?raw";
 import s_senders_types from "../../sovereign/src/senders/types.ts?raw";
 import s_evm from "../../sovereign/src/senders/evm.sender.ts?raw";
+import s_btc from "../../sovereign/src/senders/btc.sender.ts?raw";
 import s_conn_types from "../../sovereign/src/connectors/types.ts?raw";
 import s_agenttool from "../../sovereign/src/connectors/agenttool.connector.ts?raw";
 import s_sync from "../../sovereign/src/sync.ts?raw";
@@ -23,6 +24,7 @@ export const SOURCES: Record<string, string> = {
   "../../sovereign/src/pay.ts?raw": s_pay,
   "../../sovereign/src/senders/types.ts?raw": s_senders_types,
   "../../sovereign/src/senders/evm.sender.ts?raw": s_evm,
+  "../../sovereign/src/senders/btc.sender.ts?raw": s_btc,
   "../../sovereign/src/connectors/types.ts?raw": s_conn_types,
   "../../sovereign/src/connectors/agenttool.connector.ts?raw": s_agenttool,
   "../../sovereign/src/sync.ts?raw": s_sync,
