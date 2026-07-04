@@ -105,7 +105,7 @@ You run CashLoom locally, hold your **BTC key + USDC key + Stripe key** (all loc
 - CashLoom is an **open payment protocol**. This document is the spec; the codebase is a **reference implementation**. Anyone may implement or run it.
 - **No central dependency** — everyone self-runs a non-custodial node; interoperability is via open rails (crypto networks) + shared fiat rails, never via a CashLoom-operated server.
 - **Financial inclusion** — no-KYC crypto rails open payment to anyone a bank won't take; that's what makes it genuinely "for everyone."
-- **Open-source the reference implementation** — *decision flagged, not yet made.* The repo is currently private (`cambridgetcg/cashloom`). Options: (a) open-source the reference impl (MIT/Apache) so everyone can run/audit/build on it; (b) keep the impl private and open only this protocol spec. Owner's call.
+- **Open-source the reference implementation** — *decided 2026-07-04: **yes, MIT** ([`LICENSE`](LICENSE)).* The reference implementation (the `sovereign/` node) is open so everyone can run, audit, fork, and build on it — "everyone runs their own" is only true if everyone can see and hold the code. The [`atlas/`](atlas/) is the interactive human door to it. MIT was chosen for maximum frictionless adoption (flip to Apache-2.0 if an explicit patent grant is ever wanted).
 
 ## 8. Decomposition / scope
 

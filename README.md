@@ -1,50 +1,67 @@
 # CashLoom
 
-A personal finance tracker — log income & expenses, see analytics, get AI insights, and a monthly email report. Monorepo: a Bun + Express API and a React (Vite) client.
+> **Money you can read. Everyone pays everyone.**
+> A non-custodial, local-first money manager. Your keys, your data, your machine.
 
-Imported 2026-06-04 from the original 2025-07 contractor build (`arit98/cashloom-{backend,client}`) — secrets stripped, git history dropped — then rebuilt into a tested, deployable app.
+CashLoom is an open payment protocol and its reference implementation: a
+sovereign money manager anyone can run on their own machine to hold, read, and
+move money across every rail — fiat and crypto — holding nothing, collecting
+nothing, taking no fee. It replaces the traditional-finance middleman with
+software you run yourself.
 
-## What it does
+**Non-custodial. Local-first. Zero infrastructure. Open source (MIT).**
 
-- **Transactions** — add by hand, scan a receipt (Gemini), import a CSV, or **paste a bank/card statement and let AI parse it** → review → save. Re-imports skip rows you already have (no doubled data).
-- **Analytics** — dashboard summary, an income/expense chart bucketed by your timezone, category breakdown, and period-over-period change.
-- **Reports** — a monthly email (Resend) with AI insights, also saved and viewable in-app.
-- **Auth** — sign up (logs you straight in), sign in, and password reset by email.
-- **Settings** — account, display currency, light/dark theme.
+## Start here
 
-## Structure
+- **[`sovereign/`](sovereign/)** — the node. One Bun process, one SQLite file,
+  runs on your machine with no database server, no cloud, no accounts. This is
+  the live implementation: vault, `pay()`, read every rail. → [`sovereign/README.md`](sovereign/README.md)
+- **[`atlas/`](atlas/)** — the interactive way to understand the codebase.
+  Follow the *ideas* and the real code comes with you — the anti-GitHub. Build
+  it with `cd atlas && bun install && bun run build`, or visit the hosted copy.
+- **[`PROTOCOL.md`](PROTOCOL.md)** — the spec. The promise the code keeps.
 
-| Dir | Stack |
-|---|---|
-| `backend/` | Bun · Express 5 · MongoDB (Mongoose) · TypeScript · Gemini · Resend · Cloudinary |
-| `client/`  | React 19 · Vite · shadcn/ui · Redux Toolkit |
-
-## Run
-
-Uses **Bun**. Each app needs its own `.env` (copy the example, fill values; never commit `.env`).
+## Run your own node
 
 ```bash
-# backend
-cd backend && bun install && cp .env.example .env   # fill values
-bun run dev
-
-# client
-cd client && bun install && cp .env.example .env
-bun run dev
+cd sovereign
+bun install
+bun run build:ui
+bun start          # → http://127.0.0.1:4747
 ```
 
-Tests: `cd backend && bun run test` — Vitest, including real-DB integration tests (mongodb-memory-server). CI runs typecheck + tests on every push to `main` (`.github/workflows/ci.yml`).
+No `.env` required to boot. Forge a passphrase, and you have a running
+non-custodial wallet. That is the whole setup.
 
-## Deploy
+## What it is
 
-- **Backend** ships as a container — `backend/Dockerfile` (host-agnostic; all secrets are runtime env vars).
-- **Client** is a static build — `cd client && bun run build`, then serve `dist/` on any static host.
+- **Non-custodial by architecture** — private keys are sealed locally
+  (Argon2id → AES-256-GCM), decrypted only in memory, only to sign, and never
+  leave your machine. The passphrase is custody; there is no recovery.
+- **Everyone pays everyone** — `pay()` moves money over open rails (Base L2
+  ETH + USDC today; more coming), as a two-step rite: quote discloses the fee
+  and signs nothing, confirm signs and broadcasts once. Never auto-retried.
+- **Read every rail** — sync balances and transactions from Stripe, banks
+  (GoCardless), Bitcoin, Ethereum, and the agenttool agent economy. Strictly
+  read-only: a connector can never move money.
+- **Pass-through fees only** — the network's fee, nothing added. No CashLoom
+  fee, ever, because there is no intermediary to take one.
 
-## Security
+## Layout
 
-⚠️ The original public repos leaked live credentials. **Rotate everything before any deploy** — see [`SECURITY-ROTATION.md`](SECURITY-ROTATION.md). `JWT_SECRET` must be set in production (the app refuses to boot on the default).
+| Dir | What |
+|---|---|
+| `sovereign/` | **The node** — Bun · Hono · bun:sqlite · viem. Non-custodial, local-first. Start here. |
+| `atlas/` | **The interactive codebase atlas** — Vite + React. The open-source human door. |
+| `backend/`, `client/` | Legacy: the original hosted tracker (Express + Mongoose + React). Kept for reference; superseded by `sovereign/`. |
 
-## More
+## Contributing
 
-- What's built + what's next: [`ROADMAP.md`](ROADMAP.md)
-- Compliance / legal notes: [`COMPLIANCE-NOTES.md`](COMPLIANCE-NOTES.md)
+CashLoom is a **protocol** with a reference implementation. Read it, run it,
+fork it, or write your own — and interoperate over the same open rails. There
+is no central server anyone depends on. See [`PROTOCOL.md`](PROTOCOL.md) for
+the spec and the open decisions still on the table.
+
+## License
+
+[MIT](LICENSE) — free to use, run, modify, and distribute.
