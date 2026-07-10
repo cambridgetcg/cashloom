@@ -20,6 +20,9 @@ software you run yourself.
   Follow the *ideas* and the real code comes with you — the anti-GitHub. Build
   it with `cd atlas && bun install && bun run build`, or visit the hosted copy.
 - **[`PROTOCOL.md`](PROTOCOL.md)** — the spec. The promise the code keeps.
+- **[`FIAT-ROUTE.md`](FIAT-ROUTE.md)** — the plan for touching fiat *legally*:
+  never custody, never the transmitter, connect to licensed on-ramps, per-country
+  compliance map, ZRN kept out of scope, and the honest line we won't cross.
 
 ## Run your own node
 
