@@ -76,7 +76,7 @@ Universal over rails. `to` is rail-specific (see addressing).
 
 ### 5.4 Local-first runtime
 
-CashLoom runs on **your** machine: the existing Bun + Express + MongoDB stack, run locally — **no hosted SaaS, no central account, no telemetry.** All data + keys local. **Fast-follow:** package as a Tauri desktop app so running it needs zero server setup.
+CashLoom runs on **your** machine: the shipped Bun + Hono + bun:sqlite stack, run locally — **no hosted SaaS, no central account, no telemetry.** All data + keys local, in one SQLite file. **Fast-follow:** package as a Tauri desktop app so running it needs zero server setup.
 
 ### 5.5 Rails (first slice)
 
@@ -84,8 +84,8 @@ CashLoom runs on **your** machine: the existing Bun + Express + MongoDB stack, r
   - **BTC on-chain** — sign locally, broadcast via Esplora (reuse the existing read node).
   - **USDC on Base** — cheap L2; EVM signer via ethers, broadcast via Alchemy / public RPC.
   - Lightning = **fast-follow** (needs a node — LDK embedded vs connect an existing node).
-- **Fiat (KYC-at-rail):**
-  - **Stripe** — reuses the existing Stripe integration, now with a **separate write-scope key** (not the read-only `rk_`): Connect transfers (account→account) + payment links (anyone pays by card). KYC is Stripe's, on the user's account; CashLoom collects nothing.
+- **Fiat (KYC-at-rail) — _planned, not yet shipped_:**
+  - **Stripe (send)** — _design only; no Stripe sender ships yet — `sovereign/src/senders/` holds the BTC and EVM senders only._ When built it reuses the existing Stripe integration with a **separate write-scope key** (not the read-only `rk_`): Connect transfers (account→account) + payment links (anyone pays by card). KYC is Stripe's, on the user's account; CashLoom collects nothing.
 
 ### 5.6 Addressing
 
@@ -98,7 +98,7 @@ CashLoom is non-custodial **software** (never holds funds → not a money transm
 
 ## 6. First-slice done-state
 
-You run CashLoom locally, hold your **BTC key + USDC key + Stripe key** (all local/encrypted), and `pay()` any address (BTC/USDC) or any Stripe link/account — non-custodial, nothing collected by CashLoom, ~free on crypto, Stripe's fee on fiat. This proves the universal primitive over **a no-info rail and a KYC rail**, end-to-end.
+You run CashLoom locally, hold your **BTC key + USDC key** (local/encrypted), and `pay()` any BTC or USDC-on-Base address — non-custodial, nothing collected by CashLoom, ~free on crypto. The two crypto senders (`sovereign/src/senders/btc.sender.ts` + `evm.sender.ts`) ship today; the **Stripe (fiat) sender is still design-only**, so the KYC-rail half of this done-state — `pay()` to a Stripe link/account — is not yet reachable. The no-info crypto rails prove the universal primitive end-to-end; the fiat rail lands next.
 
 ## 7. "For everyone" — the protocol is open
 

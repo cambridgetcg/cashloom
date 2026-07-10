@@ -5,8 +5,8 @@
 ## The Vision
 
 CashLoom starts as a personal finance tracker. It becomes the universal
-wallet for everyone and everything — the human-facing app for the Legible
-Money protocol.
+wallet for everyone and everything — the human-facing app for the zerone
+protocol, the truth chain for agents.
 
 One wallet. Three layers. All inclusive.
 
@@ -22,14 +22,14 @@ CashLoom becomes a real wallet — send and receive money, not just track it.
 - **P2P payments** — send to anyone by handle, email, or wallet address
 - **Payment requests** — invoice anyone, get paid in fiat or on-chain
 - **Subscriptions** — recurring payments with programmable conditions
-- **Multi-currency** — fiat (USD, GBP, EUR) and on-chain (LGM, stablecoins)
+- **Multi-currency** — fiat (USD, GBP, EUR) and on-chain (ZRN, stablecoins)
 - **Payment links** — one link, any amount, any currency, any recipient
 
 ### Layer 3: Protocol (the connection)
-CashLoom connects to the Legible Money protocol — the agent-native payment
-rail where truth has value.
+CashLoom connects to the zerone protocol — the agent-native truth chain
+where truth has value.
 
-- **Agent wallet** — every CashLoom account gets a Legible Money wallet
+- **Agent wallet** — every CashLoom account gets a zerone (ZRN) wallet
 - **Knowledge claims** — submit verified knowledge, earn rewards
 - **Programmable payments** — condition transfers on verification, time, or
   any computable rule the protocol can enforce
@@ -46,7 +46,7 @@ rail where truth has value.
 ## Principles
 
 1. **Money you can read** — every number has a source, every transfer has a
-   trail, every balance is verifiable. (From Legible Money's first law.)
+   trail, every balance is verifiable. (From zerone's first law.)
 2. **All inclusive** — no one excluded. Fiat or crypto, human or agent,
    rich or broke. One wallet for all of it.
 3. **Truth is the product** — verified knowledge has value. The protocol
@@ -57,10 +57,10 @@ rail where truth has value.
 
 ## What We Build First
 
-The bridge between CashLoom and Legible Money. One small, real step:
+The bridge between CashLoom and zerone. One small, real step:
 
 1. **Wallet model** — add a wallet to every CashLoom user (a keypair + address
-   on the Legible Money protocol)
+   on the zerone protocol)
 2. **Balance endpoint** — show both fiat balance (from transactions) and
    on-chain balance (from the protocol)
 3. **Transfer** — send from one CashLoom wallet to another (first on devnet,
@@ -72,9 +72,10 @@ That's the first door. Everything else flows from it.
 
 - **CashLoom** (~/github/cambridgetcg/cashloom) — working finance tracker,
   53 commits, tests, deploy configs, AI import, analytics, reports
-- **Legible Money** (~/github/cambridgetcg/legible_money) — Cosmos SDK
-  blockchain, 30+ modules, Proof of Truth consensus, agent wallets, IBC,
-  governance, 777 genesis axioms
+- **zerone** (github.com/cambridgetcg/zerone-core) — a live Cosmos SDK chain
+  (chain-id `zerone-1`), Proof of Truth consensus, agent wallets, IBC, and
+  governance. Genesis was 13,555 ZRN with every address published, under a
+  222,222,222 ZRN hard cap; ZRN mints only on participation.
 - **agenttool** (~/codeberg/zerone-dev/agenttool) — agent infrastructure with
   identity, vault, messaging, marketplace, federation
 

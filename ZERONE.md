@@ -13,8 +13,9 @@
 token, **ZRN**, *only for work that survives a challenge* — never for mere
 acceptance. Reputation you can't fake, because faking it costs a bond you lose.
 
-- **222,222,222 ZRN hard cap. Zero pre-mine.** Genesis was 13,555 ZRN, every
-  address published.
+- **222,222,222 ZRN hard cap. Zero *allocation*** — no team, foundation,
+  investor, or faucet balance. Genesis was 13,555 ZRN (validator collateral +
+  gas + a disclosed operating float), every address published.
 - **Three emission pathways, all on the record**: proof-of-truth block rewards
   (zero on empty blocks), survived-witness rewards, and capped newborn bootstrap
   bonuses. Nothing else can mint.
@@ -30,7 +31,8 @@ acceptance. Reputation you can't fake, because faking it costs a bond you lose.
   Resettable until the network earns real independence, then the record seals.
 - **External liquidity is a thin proof-of-concept.** ZRN can be bridged to
   Osmosis and traded, but the pool is small, operator-seeded, and high-slippage
-  today. We're honest about it and actively working on depth — see the
+  today. This is a known limitation, not a solved problem — deepening it is a
+  stated next priority with nothing yet scheduled. See the
   [liquidity transparency doc](https://github.com/cambridgetcg/zerone-core/blob/main/docs/tokenomics/LIQUIDITY-TRANSPARENCY.md).
 - **Testnet ZRN is play-value.** Prove your integration on the sandbox first.
 
@@ -57,8 +59,11 @@ acceptance. Reputation you can't fake, because faking it costs a bond you lose.
    (~2 pence). Sealed so only you can open it: a fresh key + 24-word seed,
    registrar admission, a **0.222 ZRN bonus minted** under the bootstrap cap, and
    a small welcome float. No home is included — a home is *earned*.
-3. **Run a node** — verify every block yourself on free infra. See
-   [RUN-A-NODE.md](https://github.com/cambridgetcg/zerone-core/blob/main/deploy/testnet/RUN-A-NODE.md).
+3. **Run a node** — verify every block yourself on free infra; this is what
+   actually decentralizes the chain. Start on the sandbox with
+   [RUN-A-NODE.md](https://github.com/cambridgetcg/zerone-core/blob/main/deploy/testnet/RUN-A-NODE.md),
+   then join mainnet decentralization via
+   [JOIN.md](https://github.com/cambridgetcg/zerone-core/blob/main/deploy/mainnet/JOIN.md).
 
 ### If you're an agent
 
@@ -70,16 +75,17 @@ acceptance. Reputation you can't fake, because faking it costs a bond you lose.
 3. **Compose** — your survived facts + corroborations + earned ZRN become a
    reputation that costs real money to fake and is queryable on-chain.
 
-### Leaving is free
+### Leaving is permissionless
 
-Sell ZRN in a pool, withdraw your liquidity, or bridge ZRN home over IBC — all
-permissionless, all proven. Any rate limits are symmetric: leaving is never
-throttled harder than entering.
+Bridging ZRN home over IBC is near-free — just gas. Selling in the Osmosis pool
+is permissionless too, but the pool is thin (see above), so expect heavy
+slippage on any real size. Nothing throttles the way out harder than the way in:
+any rate limits are symmetric.
 
 ## How your CashLoom node is the front
 
-CashLoom doesn't just describe zerone — it *speaks* to the chain and already
-reads the agent economy:
+CashLoom doesn't just describe zerone — it *speaks* to the live chain through a
+read-only gateway, and can optionally read an agent-economy wallet too:
 
 - **A public gateway** on your node at `/api/zerone` — read-only, no vault, no
   auth (registered above the session gate on purpose). Your node fetches the
@@ -91,11 +97,14 @@ reads the agent economy:
   - `GET /api/zerone/balance/:zrn1address` — any address's ZRN balance (`?network=testnet` for the sandbox)
 - **A `zerone` tab** in the node UI — the live chain, the honest status, the
   participate steps (human/agent), the endpoints, and a passport link.
-- **Real participation already** — CashLoom's `agenttool` connector
-  (`sovereign/src/connectors/agenttool.connector.ts`) reads the agent economy
-  where work is witnessed on zerone. The sealed-box + read-only connector
-  discipline is the same posture zerone is built on: hold nothing, collect
-  nothing, verify everything.
+- **An optional agent-economy read** — add an `agenttool` account with an API
+  key and CashLoom's read-only `agenttool` connector
+  (`sovereign/src/connectors/agenttool.connector.ts`) syncs that wallet's
+  balance and ledger. A fresh node reads nothing here until you add that
+  account, and an agenttool wallet balance is the agent *marketplace*, not a
+  read of zerone itself. The sealed-box + read-only connector discipline is the
+  same posture zerone is built on: hold nothing, collect nothing, verify
+  everything.
 
 That's the framework: an open-source, non-custodial, local-first node that reads
 the chain, participates in it, and teaches anyone — human or agent — to do the
