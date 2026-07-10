@@ -95,3 +95,49 @@ export interface SyncResult {
   imported: number;
   skipped: number;
 }
+
+// zerone — the truth chain front (public, read-only).
+export interface ZeroneNetworkStatus {
+  id: string;
+  label: string;
+  kind: "mainnet" | "testnet";
+  reachable: boolean;
+  height: string | null;
+  catching_up?: boolean | null;
+  supply_zrn: number | null;
+  hard_cap_zrn: number;
+  minted_pct_of_cap?: number;
+  rpc: string;
+  rest: string;
+}
+export interface ZeroneStatus {
+  mainnet: ZeroneNetworkStatus;
+  testnet: ZeroneNetworkStatus;
+}
+export interface ZeroneNetworkInfo {
+  id: string;
+  label: string;
+  rpc: string;
+  rest: string;
+  p2pSeed: string;
+  what: string;
+}
+export interface ZeroneGuide {
+  what_is_zerone: string;
+  honest_status: string;
+  for_humans: string[];
+  for_agents: string[];
+  exit: string;
+  onboarding: {
+    marketplace: string;
+    mainnet_passport_listing: string;
+    testnet_passport_listing: string;
+    free_guide_listing: string;
+    witness_adapter: string;
+    witness_reward_zrn: number;
+    challenge_window_blocks: number;
+  };
+  networks: { mainnet: ZeroneNetworkInfo; testnet: ZeroneNetworkInfo };
+  links: Record<string, string>;
+  denom: { symbol: string; base: string; micro: number; hard_cap_zrn: number };
+}

@@ -54,6 +54,15 @@ non-custodial wallet. That is the whole setup.
 | `sovereign/` | **The node** — Bun · Hono · bun:sqlite · viem. Non-custodial, local-first. Start here. |
 | `atlas/` | **The interactive codebase atlas** — Vite + React. The open-source human door. |
 
+## The front of zerone 🌗
+
+Your CashLoom node is also the human- and agent-friendly **front door to
+zerone**, the truth chain for agents. A public gateway (`/api/zerone`, no vault,
+no auth) reads the live chain and serves a participation guide; a `zerone` tab
+in the node UI shows it to people. CashLoom already reads the agent economy
+(where work is witnessed on zerone) through its `agenttool` connector. Full
+guide + honest status: [`ZERONE.md`](ZERONE.md).
+
 ## Contributing
 
 CashLoom is a **protocol** with a reference implementation. Read it, run it,

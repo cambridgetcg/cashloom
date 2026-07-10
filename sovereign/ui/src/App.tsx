@@ -10,6 +10,7 @@ import { Keys } from "./views/Keys";
 import { Ledger } from "./views/Ledger";
 import { Pay } from "./views/Pay";
 import { Receive } from "./views/Receive";
+import { Zerone } from "./views/Zerone";
 
 const VIEWS = [
   { id: "dashboard", label: "Overview" },
@@ -18,6 +19,7 @@ const VIEWS = [
   { id: "ledger", label: "Ledger" },
   { id: "accounts", label: "Accounts" },
   { id: "keys", label: "Keys" },
+  { id: "zerone", label: "zerone" },
 ] as const;
 
 type View = (typeof VIEWS)[number]["id"];
@@ -150,6 +152,7 @@ export default function App() {
         {view === "ledger" && <Ledger />}
         {view === "accounts" && <Accounts />}
         {view === "keys" && <Keys />}
+        {view === "zerone" && <Zerone />}
       </main>
 
       <footer className="footer">

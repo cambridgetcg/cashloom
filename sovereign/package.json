@@ -7,9 +7,9 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch src/index.ts",
     "build:ui": "cd ui && bun install && bun run build",
-    "test": "bunx vitest run src/connectors src/utils && bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts",
+    "test": "bunx vitest run src/connectors src/utils && bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/zerone.test.ts",
     "test:connectors": "bunx vitest run src/connectors src/utils",
-    "test:node": "bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts",
+    "test:node": "bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/zerone.test.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {

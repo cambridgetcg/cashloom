@@ -12,6 +12,13 @@ import { db, DB_PATH, newId } from "./db.ts";
 import * as vault from "./vault.ts";
 import { quotePayment, confirmPayment, listPayments } from "./pay.ts";
 import { syncAccount } from "./sync.ts";
+import {
+  getAllStatus,
+  getAddressBalance,
+  getParticipationGuide,
+  isZrnAddress,
+  ZERONE_NETWORKS,
+} from "./zerone.ts";
 
 const app = new Hono();
 
@@ -31,6 +38,25 @@ app.get("/api/meta", (c) =>
     db: DB_PATH,
   })
 );
+
+/* --------------------------- zerone front (public) ------------------------ */
+// The front door to the zerone truth chain — read-only, no vault, no auth.
+// Any human or agent can read the live chain and the participation guide.
+// Registered above the /api/* session gate on purpose.
+
+app.get("/api/zerone", (c) =>
+  c.json({ service: "cashloom — the front of zerone", ...getParticipationGuide() })
+);
+app.get("/api/zerone/guide", (c) => c.json(getParticipationGuide()));
+app.get("/api/zerone/status", async (c) => c.json(await getAllStatus()));
+app.get("/api/zerone/balance/:address", async (c) => {
+  const address = c.req.param("address");
+  if (!isZrnAddress(address)) {
+    return c.json({ error: "bad_address", message: "address must be a zrn1... bech32 address" }, 400);
+  }
+  const net = c.req.query("network") === "testnet" ? ZERONE_NETWORKS.testnet : ZERONE_NETWORKS.mainnet;
+  return c.json(await getAddressBalance(address, net));
+});
 
 const passphraseSchema = z.object({ passphrase: z.string().min(1) });
 

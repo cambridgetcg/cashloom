@@ -7,6 +7,8 @@ import type {
   SyncResult,
   Tx,
   VaultKey,
+  ZeroneGuide,
+  ZeroneStatus,
 } from "./types";
 
 /**
@@ -150,4 +152,8 @@ export const api = {
     request<Quote>("/api/pay/quote", body),
   payConfirm: (paymentId: string) =>
     request<ConfirmResult>("/api/pay/confirm", { paymentId }),
+
+  // zerone front — public, read-only (works with or without a vault session).
+  zeroneGuide: () => request<ZeroneGuide>("/api/zerone/guide"),
+  zeroneStatus: () => request<ZeroneStatus>("/api/zerone/status"),
 };
