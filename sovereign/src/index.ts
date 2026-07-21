@@ -19,6 +19,7 @@ import {
   isZrnAddress,
   ZERONE_NETWORKS,
 } from "./zerone.ts";
+import { mountMoneyworld } from "./info/router.ts";
 
 const app = new Hono();
 
@@ -57,6 +58,12 @@ app.get("/api/zerone/balance/:address", async (c) => {
   const net = c.req.query("network") === "testnet" ? ZERONE_NETWORKS.testnet : ZERONE_NETWORKS.mainnet;
   return c.json(await getAddressBalance(address, net));
 });
+
+/* ------------------------- moneyworld (public) ---------------------------- */
+// The money-world information door — public, secretless, cited, Xenia-negotiated.
+// Reads public chain state only; never touches the vault. Registered here, above
+// the /api/* session gate, on purpose: non-custodial by position.
+mountMoneyworld(app);
 
 const passphraseSchema = z.object({ passphrase: z.string().min(1) });
 

@@ -29,17 +29,31 @@ Every fact served is the same envelope — no naked numbers, ever
   "unit": "fiat:iso4217/USD",
   "observed_at": "2026-07-19T14:02:11Z",
   "sources": [{ "name": "…", "url": "…", "fetched_at": "…" }],
-  "grade": "observed",
-  "method": "median-of-3",
+  "method": "derived",
+  "proof_state": "asserted",
+  "redistribution": "third-party-restricted",
   "stale_after_s": 300
 }
 ```
 
-- `grade` ∈ **observed** (we fetched it, here's where) · **derived** (we
-  computed it, here's how) · **attested** (verified through zerone's
-  Proof-of-Truth pipeline — the graduation path that no competitor has).
+Three ORTHOGONAL honesty axes — reconciling this doc's original `grade` with
+Xenia's proof-state vocabulary. They were on different axes; one word was doing
+three jobs, and shipping two look-alike grade systems is exactly the
+dishonesty-by-ambiguity the provenance pitch exists to prevent:
+
+- **`method`** ∈ **observed** (we fetched it, here's where) · **derived** (we
+  computed it, here's how). *How WE produced it.*
+- **`proof_state`** ∈ **none · asserted · tested · attested** — the XENIA
+  canonical trust axis: can a stranger re-derive this without a secret and
+  without our say-so? An on-chain read is `tested`; a relayed third-party price
+  is `asserted`; a zerone Proof-of-Truth fact is `attested` (the graduation
+  path no competitor has). *How a STRANGER checks it.*
+- **`redistribution`** ∈ **public-domain · own-data · onchain-rederivable ·
+  third-party-restricted** — the license class, so the market-data firewall is
+  refusable at the TYPE level: the server refuses to meter a fact it may not
+  resell. *Whether we may serve it.*
 - `stale_after_s` is pulse-discipline: a fact that outlives its freshness
-  window says so, loudly. Declared == observed, always.
+  window says so, loudly.
 
 ### 2 · One identifier grammar: CAIP everywhere, fiat included
 
