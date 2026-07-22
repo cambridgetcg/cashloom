@@ -1,0 +1,155 @@
+/**
+ * MONEYWORLD as MCP tools — the money world, usable by any agent.
+ *
+ * A thin, stdio Model-Context-Protocol server that turns MONEYWORLD's public
+ * HTTP doors into typed agent tools. It holds no keys and moves no money: every
+ * tool reads a cited MoneyFact (or an honest refusal) from a running MONEYWORLD
+ * node — local (`http://127.0.0.1:4747`, your own sovereign node) or any hosted
+ * one via `MONEYWORLD_URL`. Agents get provenance (sources + proof_state) on
+ * every number, so they can *check* an answer instead of trusting it.
+ *
+ * Add it (Claude Code):
+ *   claude mcp add moneyworld -- bun /path/to/sovereign/src/mcp/moneyworld.ts
+ * or point it anywhere:
+ *   MONEYWORLD_URL=https://your-node bun src/mcp/moneyworld.ts
+ */
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+
+const BASE = (process.env.MONEYWORLD_URL ?? "http://127.0.0.1:4747").replace(/\/+$/, "");
+
+/**
+ * Fetch a MONEYWORLD door. On success returns the node's body UNCHANGED (a
+ * MoneyFact, or a collection, byte-for-byte — never mutated). On an HTTP error
+ * or an unreachable node, returns a shaped, actionable refusal that names a way
+ * forward — so an agent always gets something it can branch on, never a bare
+ * throw and never a polluted fact.
+ */
+async function api(path: string): Promise<any> {
+  try {
+    const res = await fetch(BASE + path, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(12_000),
+    });
+    const data = await res.json().catch(() => null);
+    // The door's own refusals (RFC-9457) are 4xx JSON carrying {title,status,...}
+    // — pass those through untouched. Only a non-JSON body or a 5xx is ours to shape.
+    if (data == null || (!res.ok && typeof data.title !== "string")) {
+      return {
+        title: "moneyworld door error",
+        status: res.status,
+        detail: `${BASE}${path} returned ${res.status}${data == null ? " with an unparseable body" : ""}`,
+        next_actions: ["retry shortly", "check the node/proxy is healthy or set MONEYWORLD_URL to a reachable node"],
+      };
+    }
+    return data;
+  } catch (e: any) {
+    return {
+      _transport_error: true,
+      title: "moneyworld unreachable",
+      detail: `${BASE} did not answer (${e?.message ?? e})`,
+      next_actions: ["start a node: cd sovereign && bun start", "or set MONEYWORLD_URL to a running node"],
+    };
+  }
+}
+
+// Wrap a door result as an MCP tool result. A refusal (carries `title`) or a
+// transport failure is flagged isError so an agent's tool-runner routes it as a
+// failure instead of mistaking a refusal for a value.
+const out = (obj: any) => {
+  // A transport failure or a 5xx door error is a genuine tool failure; an honest
+  // business refusal (a 4xx problem the agent should read) is a normal result.
+  const isErr = obj?._transport_error === true || (typeof obj?.status === "number" && obj.status >= 500);
+  return { content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }], ...(isErr ? { isError: true } : {}) };
+};
+
+const READ = { readOnlyHint: true, openWorldHint: true, idempotentHint: true } as const;
+
+/** The tool set — exported so tests can drive the handlers directly. */
+export const TOOLS = [
+  {
+    name: "moneyworld_list_chains",
+    description:
+      "List the chains MONEYWORLD reads BALANCES on, by CAIP-2 id + aliases (currently Bitcoin, Zerone). Use an id/alias with moneyworld_get_balance. Note: fee coverage (moneyworld_get_fees) is a DIFFERENT set.",
+    schema: {},
+    handler: async () => out(await api("/v1/chains")),
+  },
+  {
+    name: "moneyworld_get_balance",
+    description:
+      "Read a public on-chain balance as a cited MoneyFact: the amount is the exact integer minor-unit STRING at top-level `.value` (divide by 10^`.decimals`, never parse as a float), with `.sources`, `.proof_state` (tested — re-derivable) and a `.recompute` recipe. Non-custodial: reads public chain state only.",
+    schema: {
+      chain: z.string().describe("CAIP-2 id or alias from moneyworld_list_chains, e.g. 'bitcoin' or 'bip122:000000000019d6689c085ae165831e93'"),
+      address: z.string().describe("the address on that chain"),
+    },
+    handler: async ({ chain, address }: { chain: string; address: string }) =>
+      out(await api(`/v1/chain/${encodeURIComponent(chain)}/${encodeURIComponent(address)}`)),
+  },
+  {
+    name: "moneyworld_get_fx_rate",
+    description:
+      "Get a cited foreign-exchange rate (quote per 1 base) as a MoneyFact — amount at top-level `.value` (÷10^`.decimals`). A direct ECB rate is proof_state:asserted; a cross/inverse is derived+tested with a `.recompute` recipe you can re-run. base/quote are ISO-4217 codes; call moneyworld_list_fiat for the exact supported set.",
+    schema: {
+      base: z.string().describe("base currency ISO-4217 code, e.g. 'GBP'"),
+      quote: z.string().describe("quote currency ISO-4217 code, e.g. 'USD'"),
+    },
+    handler: async ({ base, quote }: { base: string; quote: string }) =>
+      out(await api(`/v1/fx/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`)),
+  },
+  {
+    name: "moneyworld_list_fiat",
+    description:
+      "List the fiat currencies MONEYWORLD can rate + convert — the ECB reference set from one base (default EUR). Returns a matrix of fx MoneyFacts; the `unit` codes are the usable ISO-4217 codes for moneyworld_get_fx_rate and moneyworld_convert.",
+    schema: { base: z.string().default("EUR").describe("base ISO-4217 code for the matrix, default 'EUR'") },
+    handler: async ({ base }: { base?: string }) => out(await api(`/v1/rates/fiat?base=${encodeURIComponent(base ?? "EUR")}`)),
+  },
+  {
+    name: "moneyworld_convert",
+    description:
+      "Convert a fiat amount using a cited rate. FIAT↔FIAT ONLY — today only EUR/USD/GBP actually convert (no crypto spot-price source is wired, so any crypto/CAIP-19 leg is honestly refused). SUCCESS shape: `{ \"@type\":\"Conversion\", input, result, rate, ... }` — the converted amount is the exact minor-unit STRING at `result.value` (÷10^`result.decimals`), NOT top-level `.value`. REFUSAL: an object carrying `title` (+ numeric `status`, `next_actions`) — detect a refusal by the presence of `title`, there is no not_covered flag. amount_minor = exact integer minor units of `from` (e.g. '25000' = 250.00 of a 2-decimal currency; get decimals from moneyworld_list_fiat).",
+    schema: {
+      amount_minor: z.string().describe("exact integer minor units of the `from` asset, e.g. '25000' for 250.00"),
+      from: z.string().describe("source fiat ISO-4217 code — EUR, USD, or GBP today"),
+      to: z.string().describe("target fiat ISO-4217 code — EUR, USD, or GBP today"),
+    },
+    handler: async ({ amount_minor, from, to }: { amount_minor: string; from: string; to: string }) =>
+      out(await api(`/v1/convert?amount_minor=${encodeURIComponent(amount_minor)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)),
+  },
+  {
+    name: "moneyworld_get_fees",
+    description:
+      "What it costs to move money on a chain right now (fee model + current fee/gas). Response is a COLLECTION `{ count, facts: [MoneyFact] }` — each fee value is at `facts[i].value`. Omit `chain` to list ALL covered chains (currently Bitcoin + Base). Note: fee-covered chains DIFFER from the balance chains in moneyworld_list_chains (Zerone has no fee source).",
+    schema: { chain: z.string().optional().describe("CAIP-2 id or alias (e.g. 'bitcoin', 'base'); omit to list all fee-covered chains") },
+    handler: async ({ chain }: { chain?: string }) =>
+      out(await api(chain ? `/v1/fees?chain=${encodeURIComponent(chain)}` : "/v1/fees")),
+  },
+  {
+    name: "moneyworld_find_asset",
+    description:
+      "Disambiguate an asset — 'USDC' is many assets on many chains. Returns candidate rows with `id` (CAIP-19 for chain assets, iso4217:XXX for fiat), `symbol`, `decimals`, `aliases`. Use a row's `decimals` to build amount_minor. Omit `query` to list the full asset registry.",
+    schema: { query: z.string().optional().describe("asset name or symbol, e.g. 'USDC'; omit to list all assets") },
+    handler: async ({ query }: { query?: string }) =>
+      out(await api(query ? `/v1/assets?q=${encodeURIComponent(query)}` : "/v1/assets")),
+  },
+] as const;
+
+const INSTRUCTIONS =
+  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert nests it at `result.value` and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids.";
+
+/** Build the MCP server with all tools + annotations + instructions. */
+export function buildServer(): McpServer {
+  const server = new McpServer({ name: "cashloom-moneyworld", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  for (const t of TOOLS) {
+    // 5-arg form: name, description, zod shape, tool annotations, handler.
+    (server.tool as any)(t.name, t.description, t.schema, READ, t.handler);
+  }
+  return server;
+}
+
+if (import.meta.main) {
+  const server = buildServer();
+  await server.connect(new StdioServerTransport());
+  console.error(`cashloom-moneyworld MCP: ${TOOLS.length} tools, node=${BASE}`);
+}
