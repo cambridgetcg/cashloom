@@ -79,3 +79,9 @@ the spec and the open decisions still on the table.
 ## License
 
 [MIT](LICENSE) — free to use, run, modify, and distribute.
+
+## Rights
+
+CashLoom adopts [`xenia.rights/0.1`](RIGHTS.md) — every guest at every door,
+human or agent, is met as a subject. Reading without registration is a right;
+refusals teach; nothing is collected. Pinned + byte-vendored in [RIGHTS.md](RIGHTS.md).

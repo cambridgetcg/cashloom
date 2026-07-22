@@ -93,3 +93,47 @@ export const minorToMajorIsSafe = (
     return false;
   }
 };
+
+// Banker's rounding for BigInt division: round half to even, sign-correct.
+// The single rounding rule of the info layer — every derived rate and every
+// conversion declares it, so a stranger can reproduce the exact digits.
+export const divHalfEven = (numerator: bigint, denominator: bigint): bigint => {
+  if (denominator === 0n) {
+    throw new InternalServerException("divHalfEven: division by zero");
+  }
+  const negative = numerator < 0n !== denominator < 0n;
+  const n = numerator < 0n ? -numerator : numerator;
+  const d = denominator < 0n ? -denominator : denominator;
+  let q = n / d;
+  const r = n % d;
+  const twice = r * 2n;
+  if (twice > d || (twice === d && q % 2n === 1n)) q += 1n;
+  return negative ? -q : q;
+};
+
+// Apply an exchange rate to a minor-unit amount, exactly. The rate is an
+// integer mantissa + scale (quote-major per 1 base-major = rateScaled × 10^-rateScale);
+// the result is the quote amount in ITS minor units, rounded half-even at the
+// final digit only. Pure BigInt throughout — wei-scale safe by construction.
+export const applyRate = (
+  amountMinor: string,
+  fromDecimals: number,
+  rateScaled: string,
+  rateScale: number,
+  toDecimals: number
+): string => {
+  assertDecimals(fromDecimals);
+  assertDecimals(toDecimals);
+  if (!Number.isInteger(rateScale) || rateScale < 0 || rateScale > 30) {
+    throw new InternalServerException(
+      `Invalid rate scale ${rateScale}: expected an integer between 0 and 30`
+    );
+  }
+  const amount = parseMinor(amountMinor);
+  const rate = parseMinor(rateScaled);
+  // target minor = amount × rate × 10^(toDecimals − fromDecimals − rateScale)
+  const exponent = toDecimals - fromDecimals - rateScale;
+  const product = amount * rate;
+  if (exponent >= 0) return (product * 10n ** BigInt(exponent)).toString();
+  return divHalfEven(product, 10n ** BigInt(-exponent)).toString();
+};

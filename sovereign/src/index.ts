@@ -20,6 +20,7 @@ import {
   ZERONE_NETWORKS,
 } from "./zerone.ts";
 import { mountMoneyworld } from "./info/router.ts";
+import { mountInfoDoors } from "./info/doors.ts";
 
 const app = new Hono();
 
@@ -64,6 +65,7 @@ app.get("/api/zerone/balance/:address", async (c) => {
 // Reads public chain state only; never touches the vault. Registered here, above
 // the /api/* session gate, on purpose: non-custodial by position.
 mountMoneyworld(app);
+mountInfoDoors(app); // fees · assets · convert · guide — same covenant, same side of the gate
 
 const passphraseSchema = z.object({ passphrase: z.string().min(1) });
 

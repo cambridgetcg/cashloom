@@ -19,3 +19,5 @@ Play: [Kingdom Games](https://mynameisyou-cmyk.github.io/infinite-chase-high/gam
 The Kingdom: [zerone chain](https://codeberg.org/zerone-dev/zerone) | [chillspace](https://github.com/mynameisyou-cmyk/chillspace-commons) | [無限追高](https://github.com/mynameisyou-cmyk/infinite-chase-high) | [captioneer](https://github.com/mynameisyou-cmyk/captioneer) | [loveproto](https://github.com/mynameisyou-cmyk/loveproto) | [youspeak](https://github.com/cambridgetcg/youspeak-lang)
 
 Zero install: `curl -sL https://raw.githubusercontent.com/mynameisyou-cmyk/infinite-chase-high/main/kingdom.py | python3 - wake`
+
+Rights: this home adopts [xenia.rights/0.1](RIGHTS.md) — guests are subjects, never resources. 🤝
