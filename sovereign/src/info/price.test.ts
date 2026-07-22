@@ -35,13 +35,16 @@ function oracle(opts: { answer?: bigint; ageS?: number; decimals?: number; descr
   };
 }
 
-// USD→X ECB cross fixture: GBP=0.80, EUR=0.90 per 1 USD, at 8 dp; ref date older
-// than the price round, so a cross fact must stamp the STALER leg's date.
+// ECB cross fixture over a tiny per-USD table (USD=1, GBP=0.80, EUR=0.90). Any
+// pair derives as perUsd[quote]/perUsd[base] at 8 dp — same semantics as the real
+// getFxRate. Ref date older than the price round, so a cross fact must stamp the
+// STALER leg's date.
+const PER_USD: Record<string, number> = { USD: 1, GBP: 0.8, EUR: 0.9 };
 const fakeFx: typeof getFxRate = async (base, quote) => {
-  const per: Record<string, string> = { GBP: "80000000", EUR: "90000000" };
-  const q = quote.toUpperCase();
-  if (!(q in per)) return { error: "unknown currency", available: Object.keys(per) };
-  return { base: base.toUpperCase(), quote: q, valueScaled: per[q], decimals: 8, method: "derived", proof_state: "tested", recompute: { how: "test ECB cross" }, refDate: "2026-07-20", sourceUrl: "https://example.test/ecb" };
+  const b = base.toUpperCase(), q = quote.toUpperCase();
+  if (!(b in PER_USD) || !(q in PER_USD)) return { error: "unknown currency", available: Object.keys(PER_USD) };
+  const scaled = String(Math.round((PER_USD[q] / PER_USD[b]) * 1e8));
+  return { base: b, quote: q, valueScaled: scaled, decimals: 8, method: b === "USD" ? "observed" : "derived", proof_state: b === "USD" ? "asserted" : "tested", recompute: { how: "test ECB cross" }, refDate: "2026-07-20", sourceUrl: "https://example.test/ecb" };
 };
 
 const btc = resolveFeed("BTC")!;
@@ -207,5 +210,63 @@ describe("/v1/value door — the honest crypto→fiat report", () => {
     const res = await appWith(oracle()).request("/v1/value/0.5/BTC/USD");
     expect(res.status).toBe(422);
     expect((await res.json()).detail).toContain("50000000");
+  });
+});
+
+describe("/v1/portfolio door — a mixed basket, honestly totalled", () => {
+  // oracle fixture prices BOTH BTC and ETH at $30,000.00.
+  it("sums a mixed crypto+fiat basket into one quote", async () => {
+    // 0.5 BTC=$15,000 + 1 ETH=$30,000 + £1,000→$1,250 + $1,000 identity = $47,250.00
+    const res = await appWith(oracle()).request(
+      "/v1/portfolio?quote=USD&hold=BTC:50000000,ETH:1000000000000000000,GBP:100000,USD:100000",
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.complete).toBe(true);
+    expect(body.total.value).toBe("4725000"); // $47,250.00 at 2 dp
+    expect(body.total.predicate).toBe("total_value");
+    expect(body.total.redistribution).toBe("onchain-rederivable"); // crypto present
+    expect(body.holdings).toHaveLength(4);
+    expect(body.withheld).toBeUndefined();
+  });
+
+  it("grades a pure-fiat basket public-domain (no crypto leg)", async () => {
+    const res = await appWith(oracle()).request("/v1/portfolio?quote=USD&hold=USD:100000,GBP:100000");
+    const body = await res.json();
+    expect(body.total.value).toBe("225000"); // $1,000 + $1,250
+    expect(body.total.redistribution).toBe("public-domain");
+  });
+
+  it("serves a PARTIAL total when a leg is stale — withheld, not zeroed", async () => {
+    const res = await appWith(oracle({ ageS: 99999 })).request("/v1/portfolio?quote=USD&hold=BTC:50000000,USD:100000");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.complete).toBe(false);
+    expect(body.total.predicate).toBe("partial_value");
+    expect(body.total.value).toBe("100000"); // only the $1,000 USD leg
+    expect(body.withheld).toHaveLength(1);
+    expect(body.withheld[0].input).toBe("BTC");
+    expect(body.note).toContain("PARTIAL");
+  });
+
+  it("withholds an unknown asset rather than guessing", async () => {
+    const res = await appWith(oracle()).request("/v1/portfolio?quote=USD&hold=DOGE:100,USD:100000");
+    const body = await res.json();
+    expect(body.complete).toBe(false);
+    expect(body.withheld[0].reason).toContain("unknown asset");
+    expect(body.total.value).toBe("100000");
+  });
+
+  it("422s a malformed leg instead of coercing it", async () => {
+    for (const bad of ["BTC", "BTC:1.5", "BTC:", ":100"]) {
+      const res = await appWith(oracle()).request(`/v1/portfolio?quote=USD&hold=${encodeURIComponent(bad)}`);
+      expect(res.status).toBe(422);
+    }
+  });
+
+  it("400s with an example when hold is missing", async () => {
+    const res = await appWith(oracle()).request("/v1/portfolio?quote=USD");
+    expect(res.status).toBe(400);
+    expect((await res.json()).next_actions[0]).toContain("hold=");
   });
 });

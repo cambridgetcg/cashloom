@@ -129,6 +129,17 @@ export const TOOLS = [
       out(await api(`/v1/value/${encodeURIComponent(amount_minor)}/${encodeURIComponent(asset)}/${encodeURIComponent(quote ?? "USD")}`)),
   },
   {
+    name: "moneyworld_portfolio",
+    description:
+      "Value a whole basket of mixed crypto + fiat holdings in ONE quote currency — a wallet's real question. Returns `{ \"@type\":\"Portfolio\", complete, total, holdings[], withheld? }`; the basket total is the exact minor-unit STRING at `total.value` (÷10^`total.decimals`). HONESTY: if any leg is stale/unknown, `complete` is false, `total.predicate` is 'partial_value', and the missing legs are named in `withheld[]` — the total EXCLUDES them rather than silently zeroing, so never treat a partial total as the full basket. Each holding is 'SYMBOL:amount_minor' (exact integer minor units): 0.5 BTC = 'BTC:50000000', 1 ETH = 'ETH:1000000000000000000', £1,000 = 'GBP:100000'. Crypto legs are oracle-priced, fiat legs ECB-rated.",
+    schema: {
+      holdings: z.array(z.string()).describe("holdings as 'SYMBOL:amount_minor' strings, e.g. ['BTC:50000000','ETH:1000000000000000000','GBP:100000']"),
+      quote: z.string().default("USD").describe("the single currency to total in, ISO-4217, default 'USD'"),
+    },
+    handler: async ({ holdings, quote }: { holdings: string[]; quote?: string }) =>
+      out(await api(`/v1/portfolio?quote=${encodeURIComponent(quote ?? "USD")}&hold=${encodeURIComponent(holdings.join(","))}`)),
+  },
+  {
     name: "moneyworld_convert",
     description:
       "Convert a fiat amount using a cited rate. FIAT↔FIAT ONLY — today only EUR/USD/GBP actually convert. For a CRYPTO amount → fiat, use moneyworld_value instead (on-chain oracle priced); this door honestly refuses a crypto/CAIP-19 leg. SUCCESS shape: `{ \"@type\":\"Conversion\", input, result, rate, ... }` — the converted amount is the exact minor-unit STRING at `result.value` (÷10^`result.decimals`), NOT top-level `.value`. REFUSAL: an object carrying `title` (+ numeric `status`, `next_actions`) — detect a refusal by the presence of `title`, there is no not_covered flag. amount_minor = exact integer minor units of `from` (e.g. '25000' = 250.00 of a 2-decimal currency; get decimals from moneyworld_list_fiat).",
@@ -159,7 +170,7 @@ export const TOOLS = [
 ] as const;
 
 const INSTRUCTIONS =
-  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert and moneyworld_value nest it at `result.value`, and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. Crypto→fiat: use moneyworld_get_price for a unit price and moneyworld_value for a holding's worth (both on-chain oracle, and both REFUSE a stale round rather than serve an old number); moneyworld_convert is fiat↔fiat only. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids.";
+  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert and moneyworld_value nest it at `result.value`, and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. Crypto→fiat: use moneyworld_get_price for a unit price, moneyworld_value for one holding's worth, and moneyworld_portfolio for a whole mixed basket (crypto+fiat) totalled in one currency — a portfolio total is marked `complete:false` with a `withheld[]` list when a leg is stale/unknown, so a partial total is never mistaken for the full basket. All three REFUSE or withhold a stale round rather than serve an old number; moneyworld_convert is fiat↔fiat only. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids.";
 
 /** Build the MCP server with all tools + annotations + instructions. */
 export function buildServer(): McpServer {

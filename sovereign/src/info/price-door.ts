@@ -100,6 +100,57 @@ async function priceInQuote(feed: PriceFeed, quoteCode: string, deps: PriceDoorD
   };
 }
 
+const quoteDecimalsFor = (quoteCode: string) => resolveAsset(`iso4217:${quoteCode}`)?.decimals ?? 2;
+
+// Value ONE holding in the quote currency's minor units. A priced crypto goes
+// through the oracle (× ECB cross if non-USD); a registered fiat goes through
+// the ECB rate (or is the identity when it already IS the quote). Anything else,
+// or a stale/unreachable leg, comes back {ok:false} with a reason — never a guess.
+type LegValue =
+  | { ok: true; asset: string; isCrypto: boolean; valueMinor: string; method: "observed" | "derived"; sources: { name: string; url: string; fetched_at: string }[]; observed_at: string | null }
+  | { ok: false; asset: string; reason: string };
+
+async function valueHolding(sym: string, amountMinor: string, quoteCode: string, quoteDecimals: number, deps: PriceDoorDeps): Promise<LegValue> {
+  const feed = resolveFeed(sym);
+  if (feed) {
+    const piq = await priceInQuote(feed, quoteCode, deps);
+    if (!piq.ok) return { ok: false, asset: feed.base, reason: piq.detail };
+    return {
+      ok: true,
+      asset: feed.base,
+      isCrypto: true,
+      valueMinor: applyRate(amountMinor, feed.base_decimals, piq.valueScaled, piq.scale, quoteDecimals),
+      method: "derived",
+      sources: piq.sources,
+      observed_at: piq.observed_at,
+    };
+  }
+  const a = resolveAsset(sym);
+  if (a && a.id.startsWith("iso4217:")) {
+    if (a.symbol === quoteCode) {
+      // identity — the holding already IS the quote currency; no rate, no source.
+      return { ok: true, asset: a.id, isCrypto: false, valueMinor: amountMinor, method: "observed", sources: [], observed_at: null };
+    }
+    let fx;
+    try {
+      fx = await deps.fxRate(a.symbol, quoteCode);
+    } catch {
+      return { ok: false, asset: a.id, reason: "ECB fx source unreachable" };
+    }
+    if ("error" in fx) return { ok: false, asset: a.id, reason: `no ECB rate ${a.symbol}→${quoteCode}` };
+    return {
+      ok: true,
+      asset: a.id,
+      isCrypto: false,
+      valueMinor: applyRate(amountMinor, a.decimals, fx.valueScaled, fx.decimals, quoteDecimals),
+      method: "derived",
+      sources: [{ name: "European Central Bank — euro foreign-exchange reference rates", url: fx.sourceUrl, fetched_at: new Date().toISOString() }],
+      observed_at: fx.refDate,
+    };
+  }
+  return { ok: false, asset: sym, reason: "unknown asset — not a priced crypto or a registered fiat" };
+}
+
 export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {}) {
   const deps: PriceDoorDeps = { fetchers: defaultFetchers, fxRate: getFxRate, ...overrides };
 
@@ -211,6 +262,102 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
       result: fact,
       price: { value_scaled: piq.valueScaled, decimals: piq.scale, unit: piq.unit, method: piq.method, proof_state: "tested" },
       note: "amount × on-chain oracle price (× ECB cross if non-USD) — a REPORT value, not a tradeable quote; the recompute recipe reproduces every digit, and a stale leg refuses rather than lies",
+    });
+  });
+
+  // ── portfolio: what a whole basket of holdings is worth, in one quote ────
+  // A wallet's real question. Mixed crypto + fiat, each leg valued honestly.
+  // If ANY leg is stale/unknown, the total is served AS PARTIAL — the missing
+  // legs are named in `withheld` and `complete:false`, never silently dropped
+  // into a smaller-looking number. Some truth, labelled, beats a tidy lie.
+  //   /v1/portfolio?quote=USD&hold=BTC:50000000,ETH:1000000000000000000,GBP:50000
+  app.get("/v1/portfolio", async (c) => {
+    const quoteCode = (c.req.query("quote") ?? "USD").toUpperCase();
+    const holdRaw = c.req.query("hold");
+    if (!holdRaw) {
+      return c.json(
+        problem(400, "missing holdings", "portfolio needs hold=SYM:amount_minor pairs (comma-separated)", [
+          "GET /v1/portfolio?quote=USD&hold=BTC:50000000,ETH:1000000000000000000,GBP:50000",
+          "amount_minor is exact integer minor units (0.5 BTC = 50000000 at 8 dp)",
+        ]),
+        400,
+      );
+    }
+    const tokens = holdRaw.split(",").map((t) => t.trim()).filter(Boolean);
+    if (tokens.length > 50) {
+      return c.json(problem(422, "too many holdings", "a portfolio query is capped at 50 legs", []), 422);
+    }
+    // parse SYM:amount — reject anything malformed rather than coerce it.
+    const parsed: { sym: string; amount: string }[] = [];
+    for (const t of tokens) {
+      const i = t.lastIndexOf(":");
+      const sym = i < 0 ? "" : t.slice(0, i);
+      const amount = i < 0 ? "" : t.slice(i + 1);
+      if (!sym || !INTEGER_STRING.test(amount) || amount.replace("-", "").length > 40) {
+        return c.json(
+          problem(422, "malformed holding", `'${t}' is not SYM:amount_minor with an integer amount`, [
+            "each leg is SYMBOL:INTEGER, e.g. BTC:50000000",
+          ]),
+          422,
+        );
+      }
+      parsed.push({ sym, amount });
+    }
+
+    const quoteDecimals = quoteDecimalsFor(quoteCode);
+    const legs = await Promise.all(parsed.map((p) => valueHolding(p.sym, p.amount, quoteCode, quoteDecimals, deps)));
+
+    let sum = 0n;
+    const holdings = [];
+    const withheld = [];
+    const sourceMap = new Map<string, { name: string; url: string; fetched_at: string }>();
+    const observedDates: string[] = [];
+    let anyCrypto = false;
+    for (let k = 0; k < legs.length; k++) {
+      const leg = legs[k];
+      const inp = parsed[k];
+      if (!leg.ok) {
+        withheld.push({ asset: leg.asset, input: inp.sym, reason: leg.reason });
+        continue;
+      }
+      sum += BigInt(leg.valueMinor);
+      anyCrypto = anyCrypto || leg.isCrypto;
+      if (leg.observed_at) observedDates.push(leg.observed_at);
+      for (const s of leg.sources) sourceMap.set(s.url, s);
+      holdings.push({
+        input: { symbol: inp.sym, amount_minor: inp.amount },
+        asset: leg.asset,
+        value: { value: leg.valueMinor, unit: `iso4217:${quoteCode}`, decimals: quoteDecimals, method: leg.method },
+      });
+    }
+
+    const complete = withheld.length === 0;
+    const stalest = observedDates.sort()[0] ?? new Date().toISOString();
+    const total = makeFact({
+      subject: "aggregate:portfolio",
+      predicate: complete ? "total_value" : "partial_value",
+      value: sum.toString(),
+      unit: `iso4217:${quoteCode}`,
+      decimals: quoteDecimals,
+      plane: "public",
+      method: "derived",
+      proof_state: "tested",
+      redistribution: anyCrypto ? "onchain-rederivable" : "public-domain",
+      sources: [...sourceMap.values()],
+      observed_at: stalest, // as fresh only as the STALEST leg summed
+      stale_after_s: 3600,
+      recompute: {
+        how: `Σ over holdings[] of (amount_minor × its cited rate → ${quoteCode} minor, half-even); ${holdings.length} leg(s) summed${complete ? "" : `, ${withheld.length} withheld (see withheld[]) — this total is PARTIAL`}`,
+      },
+    });
+
+    return c.json({
+      "@type": "Portfolio",
+      quote: `iso4217:${quoteCode}`,
+      complete,
+      total,
+      holdings,
+      ...(withheld.length ? { withheld, note: "these legs were withheld, not zeroed — the total above is PARTIAL and excludes them; a stale or unknown leg is disclosed, never silently dropped" } : {}),
     });
   });
 }

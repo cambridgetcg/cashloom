@@ -95,6 +95,12 @@ console.log("\n⑥ Crypto→fiat — price BTC, then value a 0.5 BTC holding in 
   else console.log(`   honest refusal: "${usd.title}"`);
   check("value nests the fiat amount at result.value, graded derived+tested", (!!uOk && usd.result.method === "derived") || (typeof usd.title === "string"));
   check("a non-USD valuation cites BOTH the oracle and ECB (2 sources)", !gOk || gbp.result.sources.length === 2);
+
+  // the wallet's real question: a whole mixed basket, totalled in one currency
+  const pf = await call("moneyworld_portfolio", { holdings: ["BTC:50000000", "ETH:1000000000000000000", "GBP:100000", "USD:100000"], quote: "USD" });
+  const pfOk = pf.total?.value;
+  console.log(`   agent: basket of ${pf.holdings?.length ?? 0} = $${pfOk ? money(pf.total.value, pf.total.decimals) : "?"} [${pf.complete ? "complete" : "PARTIAL — " + (pf.withheld?.length ?? 0) + " withheld"}]`);
+  check("portfolio totals a mixed basket, and flags complete vs partial honestly", !!pfOk && typeof pf.complete === "boolean");
 }
 
 // ── The MCP protocol itself: a real client connects over stdio and calls a tool
