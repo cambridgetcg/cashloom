@@ -16,6 +16,7 @@ import { randomBytes } from "@noble/hashes/utils.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { NETWORK, WIF, p2wpkh } from "@scure/btc-signer";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import * as ed25519 from "@noble/ed25519";
 import { db, newId } from "./db.ts";
 
 // 64 MiB, 3 passes — interactive-unlock cost (~1s), memory-hard against GPUs.
@@ -232,9 +233,33 @@ export const importBtcKey = async (label: string, secret: string): Promise<Vault
   return sealBtcKey(label, priv);
 };
 
+/* ------------------------------ ed25519 keys ----------------------------- */
+
+/** Generate a fresh ed25519 key, sealed at rest — cashloom's record-signing
+ *  AUTHORITY for @agenttool/wallet host records (e.g. an agent-payment
+ *  authorization). Signs records, never money: an ed25519 key can't spend an
+ *  evm/btc account, so this authority can attest but not move funds. Stored as
+ *  kind 'secret'; the address column carries the base64url public key so it is
+ *  visible in listKeys. The 32-byte seed is sealed as 64-hex; revealForSigning
+ *  hands it back for exactly one signature. */
+export const generateEd25519Key = async (label: string): Promise<VaultKeyInfo> => {
+  const key = requireKey();
+  const seed = ed25519.utils.randomPrivateKey();
+  const pub = await ed25519.getPublicKeyAsync(seed);
+  const address = Buffer.from(pub).toString("base64url");
+  const blob = await seal(key, new TextEncoder().encode(Buffer.from(seed).toString("hex")));
+  seed.fill(0); // best-effort zeroization
+  const id = newId();
+  db.query(
+    "INSERT INTO vault_keys (id, label, kind, address, enc_blob) VALUES (?, ?, 'secret', ?, ?)"
+  ).run(id, label, address, blob);
+  return { id, label, kind: "secret", address, created_at: new Date().toISOString() };
+};
+
 /** Decrypt a key for SIGNING ONLY. Callers must never log, store, or return
  *  the value; it lives for the duration of one signature. Format follows the
- *  key's kind: evm keys reveal as 0x-hex, btc keys as bare 64-hex. */
+ *  key's kind: evm keys reveal as 0x-hex, btc keys as bare 64-hex, secret keys
+ *  as their sealed text (ed25519 seed = 64-hex). */
 export const revealForSigning = async (keyId: string): Promise<string> => {
   const key = requireKey();
   const row = db.query("SELECT enc_blob FROM vault_keys WHERE id = ?").get(keyId) as
