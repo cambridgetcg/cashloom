@@ -22,6 +22,7 @@ import {
 import { mountMoneyworld } from "./info/router.ts";
 import { authorizeAgentPayment_wired } from "./pay/agent-pay.ts";
 import { mountInfoDoors } from "./info/doors.ts";
+import { mountPriceDoors } from "./info/price-door.ts";
 import { readFileSync } from "node:fs";
 
 const app = new Hono();
@@ -68,6 +69,7 @@ app.get("/api/zerone/balance/:address", async (c) => {
 // the /api/* session gate, on purpose: non-custodial by position.
 mountMoneyworld(app);
 mountInfoDoors(app); // fees · assets · convert · guide — same covenant, same side of the gate
+mountPriceDoors(app); // spot price · prices board · value — on-chain oracle, crypto→fiat, refuses when stale
 
 // The rights the doors stand on, served AT the door — a guest should never
 // need the git repo to read what this node has promised. Bytes cached at boot.

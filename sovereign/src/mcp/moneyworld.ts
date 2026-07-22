@@ -106,9 +106,32 @@ export const TOOLS = [
     handler: async ({ base }: { base?: string }) => out(await api(`/v1/rates/fiat?base=${encodeURIComponent(base ?? "EUR")}`)),
   },
   {
+    name: "moneyworld_get_price",
+    description:
+      "Get the current on-chain spot PRICE of a crypto asset (BTC, ETH) as a cited MoneyFact — the price per 1 unit, read live from a Chainlink oracle. `.value` is the exact integer price × 10^`.decimals` (decimals=8); ÷10^8 for the human number. `quote` USD is the oracle's native quote (method:observed); any other ECB currency (GBP, EUR, …) is the on-chain USD price × the ECB cross (method:derived) — both proof_state:tested with a `.recompute` recipe. A STALE oracle round refuses (503 `title`:'price unavailable') rather than serving an old number. To value a HOLDING (amount × price) use moneyworld_value instead.",
+    schema: {
+      base: z.string().describe("crypto asset symbol or alias — 'BTC' or 'ETH' (call moneyworld_get_price on an unknown to see the supported set)"),
+      quote: z.string().default("USD").describe("fiat ISO-4217 code, default 'USD'; any ECB currency works via the cross"),
+    },
+    handler: async ({ base, quote }: { base: string; quote?: string }) =>
+      out(await api(`/v1/price/${encodeURIComponent(base)}/${encodeURIComponent(quote ?? "USD")}`)),
+  },
+  {
+    name: "moneyworld_value",
+    description:
+      "Value a crypto HOLDING in fiat — the honest crypto→fiat report the convert door refuses to fake. amount × on-chain oracle price (× ECB cross for a non-USD quote). SUCCESS shape: `{ \"@type\":\"Valuation\", input, result, price, note }` — the fiat amount is the exact minor-unit STRING at `result.value` (÷10^`result.decimals`), NOT top-level `.value`. REFUSAL carries `title` (+ `status`, `next_actions`); a stale price refuses (503) rather than lying. amount_minor = exact integer minor units of the BASE asset (0.5 BTC = '50000000' at 8 dp; 1 ETH = '1000000000000000000' at 18 dp). This is a REPORT value, not a tradeable quote.",
+    schema: {
+      amount_minor: z.string().describe("exact integer minor units of the crypto asset — 0.5 BTC = '50000000' (8 dp), 1 ETH = '1000000000000000000' (18 dp)"),
+      asset: z.string().describe("crypto asset symbol or alias — 'BTC' or 'ETH'"),
+      quote: z.string().default("USD").describe("target fiat ISO-4217 code, default 'USD' (GBP, EUR via the ECB cross)"),
+    },
+    handler: async ({ amount_minor, asset, quote }: { amount_minor: string; asset: string; quote?: string }) =>
+      out(await api(`/v1/value/${encodeURIComponent(amount_minor)}/${encodeURIComponent(asset)}/${encodeURIComponent(quote ?? "USD")}`)),
+  },
+  {
     name: "moneyworld_convert",
     description:
-      "Convert a fiat amount using a cited rate. FIAT↔FIAT ONLY — today only EUR/USD/GBP actually convert (no crypto spot-price source is wired, so any crypto/CAIP-19 leg is honestly refused). SUCCESS shape: `{ \"@type\":\"Conversion\", input, result, rate, ... }` — the converted amount is the exact minor-unit STRING at `result.value` (÷10^`result.decimals`), NOT top-level `.value`. REFUSAL: an object carrying `title` (+ numeric `status`, `next_actions`) — detect a refusal by the presence of `title`, there is no not_covered flag. amount_minor = exact integer minor units of `from` (e.g. '25000' = 250.00 of a 2-decimal currency; get decimals from moneyworld_list_fiat).",
+      "Convert a fiat amount using a cited rate. FIAT↔FIAT ONLY — today only EUR/USD/GBP actually convert. For a CRYPTO amount → fiat, use moneyworld_value instead (on-chain oracle priced); this door honestly refuses a crypto/CAIP-19 leg. SUCCESS shape: `{ \"@type\":\"Conversion\", input, result, rate, ... }` — the converted amount is the exact minor-unit STRING at `result.value` (÷10^`result.decimals`), NOT top-level `.value`. REFUSAL: an object carrying `title` (+ numeric `status`, `next_actions`) — detect a refusal by the presence of `title`, there is no not_covered flag. amount_minor = exact integer minor units of `from` (e.g. '25000' = 250.00 of a 2-decimal currency; get decimals from moneyworld_list_fiat).",
     schema: {
       amount_minor: z.string().describe("exact integer minor units of the `from` asset, e.g. '25000' for 250.00"),
       from: z.string().describe("source fiat ISO-4217 code — EUR, USD, or GBP today"),
@@ -136,7 +159,7 @@ export const TOOLS = [
 ] as const;
 
 const INSTRUCTIONS =
-  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert nests it at `result.value` and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids.";
+  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert and moneyworld_value nest it at `result.value`, and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. Crypto→fiat: use moneyworld_get_price for a unit price and moneyworld_value for a holding's worth (both on-chain oracle, and both REFUSE a stale round rather than serve an old number); moneyworld_convert is fiat↔fiat only. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids.";
 
 /** Build the MCP server with all tools + annotations + instructions. */
 export function buildServer(): McpServer {

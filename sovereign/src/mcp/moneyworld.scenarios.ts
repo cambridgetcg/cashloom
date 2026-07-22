@@ -80,8 +80,25 @@ console.log("\n⑤ Honest limits — convert 1.00 ZRN → USD (ZRN has no fiat p
   check("no invented number — an honest refusal, detected by `title`", refused);
 }
 
+// ── Scenario 6: an agent values a crypto holding in fiat — the honest way
+console.log("\n⑥ Crypto→fiat — price BTC, then value a 0.5 BTC holding in USD and GBP");
+{
+  const p = await call("moneyworld_get_price", { base: "BTC", quote: "USD" });
+  const priceOk = !p.title && p.predicate === "spot_price";
+  console.log(`   agent: 1 BTC ≈ $${priceOk ? money(p.value, p.decimals) : "?"} [${p.method}/${p.proof_state}] (oracle round, ${priceOk ? "fresh" : "unavailable"})`);
+  check("get_price returns an on-chain spot_price fact (or an honest 503 if stale)", priceOk || (typeof p.title === "string" && p.status === 503));
+
+  const usd = await call("moneyworld_value", { amount_minor: "50000000", asset: "BTC", quote: "USD" });
+  const gbp = await call("moneyworld_value", { amount_minor: "50000000", asset: "BTC", quote: "GBP" });
+  const uOk = usd.result?.value, gOk = gbp.result?.value;
+  if (uOk) console.log(`   agent: 0.5 BTC = $${money(usd.result.value, usd.result.decimals)} [${usd.result.proof_state}] · £${gOk ? money(gbp.result.value, gbp.result.decimals) : "?"} (× ECB cross)`);
+  else console.log(`   honest refusal: "${usd.title}"`);
+  check("value nests the fiat amount at result.value, graded derived+tested", (!!uOk && usd.result.method === "derived") || (typeof usd.title === "string"));
+  check("a non-USD valuation cites BOTH the oracle and ECB (2 sources)", !gOk || gbp.result.sources.length === 2);
+}
+
 // ── The MCP protocol itself: a real client connects over stdio and calls a tool
-console.log("\n⑥ MCP wire — a real agent client connects over stdio and calls a tool");
+console.log("\n⑦ MCP wire — a real agent client connects over stdio and calls a tool");
 {
   let mcpOk = false;
   try {
