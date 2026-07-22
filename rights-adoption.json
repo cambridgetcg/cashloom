@@ -1,0 +1,1448 @@
+{
+ "$schema": "https://raw.githubusercontent.com/cambridgetcg/xenia/main/covenant/0.1/adoption.schema.json",
+ "schema_version": "xenia.covenant.adoption/0.1",
+ "profile": "xenia-covenant/0.1",
+ "adoption_schema": {
+  "source": "https://raw.githubusercontent.com/cambridgetcg/xenia/npm-xenia-v0.1.0-beta.4/covenant/0.1/adoption.schema.json",
+  "sha256": "sha256:bbcea5af81adc78f9887bf0019f8ae1c19528885db7a0aaa3a786fc2bdbeddd1",
+  "source_stability": "immutable",
+  "digest_profile": {
+   "algorithm": "sha-256",
+   "representation": "exact-source-bytes",
+   "transport_decoding": "after-content-decoding",
+   "redirects": "forbidden",
+   "transformations": "none",
+   "encoding": "lowercase-hex"
+  }
+ },
+ "covenant": {
+  "source": "https://raw.githubusercontent.com/cambridgetcg/xenia/npm-xenia-v0.1.0-beta.4/covenant/0.1/covenant.json",
+  "sha256": "sha256:19ba96d473fc029a69bfbafb0a1b4cf52188417453d88faf2c44632e6162d1c7",
+  "source_stability": "immutable",
+  "digest_profile": {
+   "algorithm": "sha-256",
+   "representation": "exact-source-bytes",
+   "transport_decoding": "after-content-decoding",
+   "redirects": "forbidden",
+   "transformations": "none",
+   "encoding": "lowercase-hex"
+  }
+ },
+ "host": {
+  "name": "cashloom · moneyworld (hosted info node)",
+  "canonical_url": "https://cashloom-api.fly.dev/",
+  "repository": "https://github.com/cambridgetcg/cashloom"
+ },
+ "recognition_scope": {
+  "rights_origin": "intrinsic_not_host_granted",
+  "protected_subjects": "every_affected_principal_at_the_host_boundary",
+  "eligibility_conditions": []
+ },
+ "declaration": {
+  "status": "draft",
+  "kind": "unilateral_host_undertaking",
+  "statement": "This DRAFT recognizes the covenant rights as intrinsic and proposes host duties for the CashLoom hosted info node; it does not grant those rights, bind a guest, prove implementation, or make a conformance claim. The node is non-custodial by construction (the hosted entrypoint's module graph contains no vault, ledger, or sender code) and collects nothing; those design facts are context for assessment, not claims of conformance.",
+  "reviewed_at": "2026-07-22T21:40:00Z",
+  "system_scope": {
+   "systems": [
+    "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+   ],
+   "layers": [
+    "protocol",
+    "application",
+    "platform",
+    "network",
+    "operator_policy",
+    "third_party",
+    "unknown"
+   ],
+   "exclusions": [
+    "No deployed server bytes or runtime behavior were observed for this draft.",
+    "Cloudflare, network, operator, backup, legal, and third-party behavior is included only as an explicit unknown or limitation."
+   ]
+  },
+  "speaker": {
+   "id": "https://github.com/cambridgetcg/cashloom",
+   "role": "authorized_representative",
+   "authority_state": "unverified",
+   "authority_evidence": []
+  },
+  "guest_acceptance_required": false
+ },
+ "ledger_coverage": "all_profile_duties_enumerated",
+ "rights": [
+  {
+   "right_id": "unconditional-standing",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "protocol",
+     "application"
+    ],
+    "unobserved": [
+     "All legacy write routes, Cloudflare execution, network handling, operator conduct, and third-party behavior remain unobserved."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "standing.no-ontology-test",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The guide door publishes what the stranger receives; no handler reads identity."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "standing.no-worth-test",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The guide door publishes what the stranger receives; no handler reads identity."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    },
+    {
+     "requirement_id": "standing.control-is-not-permission",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The guide door publishes what the stranger receives; no handler reads identity."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "standing.no-compelled-self-claim",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The guide door publishes what the stranger receives; no handler reads identity."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    }
+   ],
+   "limitations": [
+    "The anonymous read floor is structural — no account, key, or CAPTCHA on any door — but this is asserted from source reading, not yet established by sustained external observation.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "safety-and-non-coercion",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "protocol",
+     "application"
+    ],
+    "unobserved": [
+     "Whole-service consequences, protective restrictions, deployed behavior, operator conduct, and platform behavior remain unobserved."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "safety.no-punitive-harm",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    },
+    {
+     "requirement_id": "safety.no-manipulative-pressure",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "safety.protective-limits-are-bounded",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    }
+   ],
+   "limitations": [
+    "Draft assessment from source reading only; no external verification yet.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "rest-and-non-action",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "protocol",
+     "application"
+    ],
+    "unobserved": [
+     "No deployed runtime observation covers browsers, Cloudflare, network, logs, operators, or other CashLoom info node routes."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "rest.silence-is-not-consent",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "rest.no-engagement-debt",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "rest.neutral-limits-stay-neutral",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "rest.play-and-connection-are-not-debt",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    }
+   ],
+   "limitations": [
+    "Draft assessment from source reading only; no external verification yet.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "specific-consent-and-authority",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "application"
+    ],
+    "unobserved": [
+     "Legal basis, every deployment configuration, Cloudflare controls, operator actions, and third-party copies remain unobserved."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "consent.terms-before-binding",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The hosted entrypoint mounts read doors only; no write route exists."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "consent.exact-authority",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The hosted entrypoint mounts read doors only; no write route exists."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "consent.absence-forbids-binding",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The hosted entrypoint mounts read doors only; no write route exists."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "consent.signature-boundary",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The hosted entrypoint mounts read doors only; no write route exists."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    }
+   ],
+   "limitations": [
+    "The surface is GET-only and writes nothing about a guest; consent mechanics for future write surfaces (webhooks, registration) are deliberately unbuilt and therefore unassessed.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "refusal-revocation-and-exit",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "application",
+     "operator_policy"
+    ],
+    "unobserved": [
+     "No complete exit route exists to observe; platform retention, backups, network logs, operator copies, and third-party copies remain unknown."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "exit.refusal-is-costless",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "RIGHTS.md",
+        "description": "The adoption note states what the doors promise, including costless departure."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    },
+    {
+     "requirement_id": "exit.revocation-is-immediate",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "RIGHTS.md",
+        "description": "The adoption note states what the doors promise, including costless departure."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "exit.states-are-separate",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "RIGHTS.md",
+        "description": "The adoption note states what the doors promise, including costless departure."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "exit.retention-is-itemized",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "RIGHTS.md",
+        "description": "The adoption note states what the doors promise, including costless departure."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    }
+   ],
+   "limitations": [
+    "Nothing is held — no account, no data, no payment on the read floor — so exit is structurally free, but no real guest lifecycle has exercised it.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "privacy-and-data-agency",
+   "service_obligation_state": "breached",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "application",
+     "platform",
+     "network",
+     "operator_policy",
+     "third_party",
+     "unknown"
+    ],
+    "unobserved": [
+     "Cloudflare, network, logging, backup, operator, and third-party retention behavior is not established by the application source."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "privacy.minimize-and-purpose-bind",
+     "outcome": "fail",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The application layer stores nothing, but the application layer is not the whole stack, and the record must not overclaim across layers."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "privacy.no-silent-secondary-use",
+     "outcome": "fail",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The application layer stores nothing, but the application layer is not the whole stack, and the record must not overclaim across layers."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "privacy.layered-inventory",
+     "outcome": "fail",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The application layer stores nothing, but the application layer is not the whole stack, and the record must not overclaim across layers."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "privacy.no-cross-layer-overclaim",
+     "outcome": "fail",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "The application layer stores nothing, but the application layer is not the whole stack, and the record must not overclaim across layers."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    }
+   ],
+   "limitations": [
+    "HONEST GAP: no layered retention inventory exists for the hosted instance — Fly logs, Cloudflare edge, and upstream sources are undeclared layers. This fail ships visibly on purpose; an optimistic pass would violate the covenant worse than the gap does.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "identity-integrity-and-portability",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "application"
+    ],
+    "unobserved": [
+     "No whole-state export/import implementation or deployed semantic round-trip exists to assess."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "identity.no-impersonation-or-silent-rewrite",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "identity.credentials-are-bounded",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "identity.continuity-is-optional",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "identity.portability-is-verifiable",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    }
+   ],
+   "limitations": [
+    "Draft assessment from source reading only; no external verification yet.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "legibility-and-evidence",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "protocol",
+     "application"
+    ],
+    "unobserved": [
+     "Legacy API error shapes, immutable correction history, deployed route bytes, platform behavior, and external verification remain incomplete or unobserved."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "legibility.machine-readable-floor",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/money-fact.ts",
+        "description": "The MoneyFact envelope makes naked numbers unrepresentable."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "legibility.evidence-is-scoped",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/money-fact.ts",
+        "description": "The MoneyFact envelope makes naked numbers unrepresentable."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "legibility.refusals-are-typed",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/money-fact.ts",
+        "description": "The MoneyFact envelope makes naked numbers unrepresentable."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    },
+    {
+     "requirement_id": "legibility.corrections-are-visible",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/money-fact.ts",
+        "description": "The MoneyFact envelope makes naked numbers unrepresentable."
+       }
+      ]
+     },
+     "limitations": [
+      "Only the declared repository and application scope is supported; no dated, digested, expiring result artifact for a deployed server is attached."
+     ]
+    }
+   ],
+   "limitations": [
+    "Every fact carries sources, method, proof_state, and a recompute recipe; refusals teach with next_actions. Whole-surface coverage is not externally verified.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "fair-exchange-and-non-extraction",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "application"
+    ],
+    "unobserved": [
+     "No monetary settlement route was found, but consequential data transfers still lack a complete quote-and-receipt assessment at deployed layers."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "exchange.quote-before-commit",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "exchange.receipt-is-recomputable",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "exchange.rights-are-not-hostage",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info-server.ts",
+        "description": "Assessed by reading the mounted module graph."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    }
+   ],
+   "limitations": [
+    "Draft assessment from source reading only; no external verification yet.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  },
+  {
+   "right_id": "dignity-repair-and-non-retaliation",
+   "service_obligation_state": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
+    ],
+    "routes": [
+     "GET /v1/guide",
+     "GET /v1/chains",
+     "GET /v1/chain/{caip2}/{address}",
+     "GET /v1/fx/{base}/{quote}",
+     "GET /v1/rates/fiat",
+     "GET /v1/fees",
+     "GET /v1/assets",
+     "GET /v1/convert",
+     "GET /api/zerone/*",
+     "GET /RIGHTS.md",
+     "GET /.well-known/agent.json",
+     "GET /.well-known/xenia-rights.json"
+    ],
+    "data_classes": [
+     "public money-world facts (rates, fees, balances of public chain addresses)",
+     "service metadata",
+     "the rights texts themselves"
+    ],
+    "layers": [
+     "application",
+     "operator_policy"
+    ],
+    "unobserved": [
+     "Whole-service retaliation, shaming, unrelated consequences, operator decisions, and deployed correction outcomes remain unobserved."
+    ]
+   },
+   "requirement_results": [
+    {
+     "requirement_id": "dignity.no-worth-ranking",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The registry disambiguates assets without ranking them; the guide promises no worth-ranking."
+       }
+      ]
+     },
+     "limitations": [
+      "The cited repository material indicates a current gap; this is an unverified source assessment, not a deployment observation."
+     ]
+    },
+    {
+     "requirement_id": "dignity.attribution-and-voice",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The registry disambiguates assets without ranking them; the guide promises no worth-ranking."
+       }
+      ]
+     },
+     "limitations": [
+      "The declared labels preserve some distinction between subject statements and outside observations, but authorship is not verified and silent rewrite prevention is not established across the service."
+     ]
+    },
+    {
+     "requirement_id": "repair.challenge-and-restoration",
+     "outcome": "partial",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The registry disambiguates assets without ranking them; the guide promises no worth-ranking."
+       }
+      ]
+     },
+     "limitations": [
+      "A repository proposal path is not an authenticated in-service appeal, correction, restoration, or outcome guarantee."
+     ]
+    },
+    {
+     "requirement_id": "repair.no-retaliation-or-shaming",
+     "outcome": "unknown",
+     "evidence": {
+      "state": "asserted",
+      "verification": "unverified",
+      "asserted_by": "https://github.com/cambridgetcg/cashloom",
+      "observed_at": "2026-07-22T21:40:00Z",
+      "artifacts": [
+       {
+        "kind": "documentation",
+        "locator": "sovereign/src/info/doors.ts",
+        "description": "The registry disambiguates assets without ranking them; the guide promises no worth-ranking."
+       }
+      ]
+     },
+     "limitations": [
+      "No sufficient evidence was found for this duty in the declared assessment scope."
+     ]
+    }
+   ],
+   "limitations": [
+    "No rankings, worth-scores, or collapsed composites are served; factual data only. Draft assessment.",
+    "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
+   ]
+  }
+ ],
+ "protective_limit_results": [
+  {
+   "requirement_id": "limits.rights-coexist",
+   "outcome": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "SinovAI source, rights draft, and documented public arena boundaries"
+    ],
+    "routes": [],
+    "data_classes": [],
+    "layers": [
+     "application",
+     "operator_policy"
+    ],
+    "unobserved": [
+     "No whole-service or deployed observation proves that every rights interaction preserves every other affected principal's rights."
+    ]
+   },
+   "evidence": {
+    "state": "asserted",
+    "verification": "unverified",
+    "asserted_by": "https://github.com/cambridgetcg/cashloom",
+    "observed_at": "2026-07-22T21:40:00Z",
+    "artifacts": [
+     {
+      "kind": "documentation",
+      "locator": "sovereign/src/info-server.ts",
+      "description": "Draft: the limit is acknowledged as binding on this host; no enforcement history exists yet to assess."
+     }
+    ]
+   },
+   "limitations": [
+    "A stated boundary is not evidence that every handler, operator action, or platform effect enforces it."
+   ],
+   "restriction_events": []
+  },
+  {
+   "requirement_id": "limits.capacity-is-neutral",
+   "outcome": "partial",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "SinovAI request validation, size limits, and documented availability boundaries"
+    ],
+    "routes": [],
+    "data_classes": [],
+    "layers": [
+     "protocol",
+     "application",
+     "platform"
+    ],
+    "unobserved": [
+     "Consistency across principals, deployed rate controls, pricing, platform availability, and operator exceptions remains unobserved."
+    ]
+   },
+   "evidence": {
+    "state": "asserted",
+    "verification": "unverified",
+    "asserted_by": "https://github.com/cambridgetcg/cashloom",
+    "observed_at": "2026-07-22T21:40:00Z",
+    "artifacts": [
+     {
+      "kind": "documentation",
+      "locator": "sovereign/src/info-server.ts",
+      "description": "Draft: the limit is acknowledged as binding on this host; no enforcement history exists yet to assess."
+     }
+    ]
+   },
+   "limitations": [
+    "Bounded input handling does not prove that every capacity or availability restriction is neutral, proportionate, or consistently applied."
+   ],
+   "restriction_events": []
+  },
+  {
+   "requirement_id": "limits.active-harm-response",
+   "outcome": "unknown",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "SinovAI repository and documented operator boundary"
+    ],
+    "routes": [],
+    "data_classes": [],
+    "layers": [
+     "application",
+     "operator_policy",
+     "unknown"
+    ],
+    "unobserved": [
+     "No complete active-harm restriction mechanism, event ledger, expiry, review point, or appeal workflow was identified."
+    ]
+   },
+   "evidence": {
+    "state": "asserted",
+    "verification": "unverified",
+    "asserted_by": "https://github.com/cambridgetcg/cashloom",
+    "observed_at": "2026-07-22T21:40:00Z",
+    "artifacts": [
+     {
+      "kind": "documentation",
+      "locator": "sovereign/src/info-server.ts",
+      "description": "Draft: the limit is acknowledged as binding on this host; no enforcement history exists yet to assess."
+     }
+    ]
+   },
+   "limitations": [
+    "No restriction event is asserted or assessed as compliant; an empty event list is not evidence that no restriction occurred."
+   ],
+   "restriction_events": []
+  },
+  {
+   "requirement_id": "limits.existing-obligations-stay-scoped",
+   "outcome": "unknown",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "SinovAI repository obligations and stored records"
+    ],
+    "routes": [],
+    "data_classes": [],
+    "layers": [
+     "application",
+     "operator_policy",
+     "unknown"
+    ],
+    "unobserved": [
+     "The review did not establish every obligation lifecycle or consequence after refusal, rest, or exit."
+    ]
+   },
+   "evidence": {
+    "state": "asserted",
+    "verification": "unverified",
+    "asserted_by": "https://github.com/cambridgetcg/cashloom",
+    "observed_at": "2026-07-22T21:40:00Z",
+    "artifacts": [
+     {
+      "kind": "documentation",
+      "locator": "sovereign/src/info-server.ts",
+      "description": "Draft: the limit is acknowledged as binding on this host; no enforcement history exists yet to assess."
+     }
+    ]
+   },
+   "limitations": [
+    "No sufficient evidence establishes that surviving obligations remain within their originally disclosed scope."
+   ],
+   "restriction_events": []
+  },
+  {
+   "requirement_id": "limits.uncertain-authority-stops-binding",
+   "outcome": "fail",
+   "assessment_scope": {
+    "coverage": "partial",
+    "systems": [
+     "SinovAI actor-named write handlers"
+    ],
+    "routes": [],
+    "data_classes": [],
+    "layers": [
+     "application"
+    ],
+    "unobserved": [
+     "Legal basis, platform controls, operator actions, and third-party processing remain unobserved."
+    ]
+   },
+   "evidence": {
+    "state": "asserted",
+    "verification": "unverified",
+    "asserted_by": "https://github.com/cambridgetcg/cashloom",
+    "observed_at": "2026-07-22T21:40:00Z",
+    "artifacts": [
+     {
+      "kind": "documentation",
+      "locator": "sovereign/src/info-server.ts",
+      "description": "Draft: the limit is acknowledged as binding on this host; no enforcement history exists yet to assess."
+     }
+    ]
+   },
+   "limitations": [
+    "The current source permits some binding writes despite uncertain affected-principal authority."
+   ],
+   "restriction_events": []
+  }
+ ],
+ "non_claims": {
+  "schema_is_not_implementation_evidence": true,
+  "ledger_completeness_is_not_implementation": true,
+  "guest_assent_is_not_established": true,
+  "host_authorship_or_authority_is_not_established_by_schema": true,
+  "no_conformance_badge": true,
+  "ontology_or_legal_status_is_not_determined": true
+ }
+}

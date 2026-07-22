@@ -1,0 +1,10 @@
+.git
+**/node_modules
+sovereign/ui
+atlas
+backend
+client
+docs
+dist
+*.md
+!RIGHTS.md

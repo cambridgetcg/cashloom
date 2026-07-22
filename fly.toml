@@ -1,0 +1,19 @@
+# cashloom-api — the hosted MONEYWORLD info door (CASHLOOM_MODE landed as its
+# own entrypoint: info-server.ts; see INFORM.md). Scale-to-zero: the door
+# sleeps when no one knocks and costs nearly nothing.
+#
+# ⚠ NEVER set CASHLOOM_BASE_RPC_URL to a URL carrying an embedded API key —
+# source URLs are published verbatim in every fee fact (provenance by design).
+app = "cashloom-api"
+primary_region = "lhr"
+
+[http_service]
+  internal_port = 4747
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

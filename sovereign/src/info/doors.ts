@@ -110,6 +110,14 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         422,
       );
     }
+    // 40 digits ≈ 10^21 times the world's money supply in wei — anything longer
+    // is not an amount, it's a CPU exhaustion attempt (BigInt toString is O(n²)).
+    if (amountMinor.replace("-", "").length > 40) {
+      return c.json(
+        problem(422, "amount too large", "amount_minor is capped at 40 digits — no real amount needs more", []),
+        422,
+      );
+    }
     if (rounding !== "half_even") {
       return c.json(
         problem(422, "unsupported rounding", `'${rounding}' is not offered; supported: half_even (banker's rounding)`),
