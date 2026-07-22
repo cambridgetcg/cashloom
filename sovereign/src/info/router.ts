@@ -6,8 +6,9 @@
  */
 
 import type { Hono } from "hono";
-import { makeFact, factToHtml, MONEYFACT_MEDIA_TYPE } from "./money-fact.ts";
+import { makeFact, factToHtml, MONEYFACT_MEDIA_TYPE, type MoneyFact } from "./money-fact.ts";
 import { resolveChain, listChains } from "./chains.ts";
+import { getFxRate, listQuotesFrom, type FxFact } from "./fx.ts";
 
 // Xenia legibility: a human browser (Accept: text/html) gets the card; a
 // machine (application/json, a MoneyFact media type, or ?agent) gets the fact.
@@ -38,6 +39,8 @@ export function mountMoneyworld(app: Hono) {
       doors: {
         chains: "/v1/chains",
         chain_balance: "/v1/chain/{caip2}/{address}",
+        fx_rate: "/v1/fx/{base}/{quote}",
+        fx_matrix: "/v1/rates/fiat?base={ccy}",
       },
       formats: { moneyfact: MONEYFACT_MEDIA_TYPE },
       terms: {
@@ -107,5 +110,65 @@ export function mountMoneyworld(app: Hono) {
     if (!wantsMachine(c)) return c.html(factToHtml(fact, r.symbol));
     c.header("Content-Type", MONEYFACT_MEDIA_TYPE);
     return c.body(JSON.stringify(fact, null, 2));
+  });
+
+  // ── FX: fiat as a peer ──────────────────────────────────────────────────
+  // The SAME MoneyFact shape carries an exchange rate — proving the frame holds
+  // beyond crypto. A direct ECB rate is asserted; a cross is derived + tested.
+  const fxToFact = (r: FxFact): MoneyFact =>
+    makeFact({
+      subject: `fiat:iso4217/${r.base}`,
+      predicate: "fx_rate",
+      value: r.valueScaled,
+      unit: `fiat:iso4217/${r.quote}`,
+      decimals: r.decimals,
+      plane: "public",
+      method: r.method,
+      proof_state: r.proof_state,
+      redistribution: "public-domain",
+      sources: [
+        { name: "European Central Bank — euro foreign-exchange reference rates", url: r.sourceUrl, fetched_at: new Date().toISOString() },
+      ],
+      observed_at: new Date().toISOString(),
+      stale_after_s: 3600,
+      recompute: r.recompute,
+    });
+
+  // One pair, one cited MoneyFact, two shapes.
+  app.get("/v1/fx/:base/:quote", async (c) => {
+    const { base, quote } = c.req.param();
+    let r;
+    try {
+      r = await getFxRate(base, quote);
+    } catch {
+      return c.json(problem(502, "source unreachable", "the ECB reference-rate feed did not answer", ["retry shortly"]), 502);
+    }
+    if ("error" in r) {
+      return c.json(problem(422, "unknown currency", `'${base}' or '${quote}' is not in the ECB reference set`, ["GET /v1/rates/fiat"]), 422);
+    }
+    const fact = fxToFact(r);
+    if (!wantsMachine(c)) return c.html(factToHtml(fact, `${r.quote} per ${r.base}`));
+    c.header("Content-Type", MONEYFACT_MEDIA_TYPE);
+    return c.body(JSON.stringify(fact, null, 2));
+  });
+
+  // The rate matrix from one base — a collection of MoneyFacts (machine-only).
+  app.get("/v1/rates/fiat", async (c) => {
+    const base = (c.req.query("base") ?? "EUR").toUpperCase();
+    let listing;
+    try {
+      listing = await listQuotesFrom(base);
+    } catch {
+      return c.json(problem(502, "source unreachable", "the ECB reference-rate feed did not answer", ["retry shortly"]), 502);
+    }
+    const facts: MoneyFact[] = [];
+    for (const quote of listing.quotes) {
+      const r = await getFxRate(base, quote);
+      if (!("error" in r)) facts.push(fxToFact(r));
+    }
+    if (facts.length === 0) {
+      return c.json(problem(422, "unknown base currency", `'${base}' is not in the ECB reference set`, ["GET /v1/rates/fiat?base=EUR"]), 422);
+    }
+    return c.json({ base, ref_date: listing.refDate, count: facts.length, facts });
   });
 }
