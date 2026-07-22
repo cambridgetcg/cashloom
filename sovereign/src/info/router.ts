@@ -41,6 +41,11 @@ export function mountMoneyworld(app: Hono) {
         chain_balance: "/v1/chain/{caip2}/{address}",
         fx_rate: "/v1/fx/{base}/{quote}",
         fx_matrix: "/v1/rates/fiat?base={ccy}",
+        fees: "/v1/fees?chain={caip2}",
+        assets: "/v1/assets?q={name}",
+        convert: "/v1/convert?amount_minor={int}&from={asset}&to={asset}",
+        guide: "/v1/guide",
+        rights: "/RIGHTS.md",
       },
       formats: { moneyfact: MONEYFACT_MEDIA_TYPE },
       terms: {

@@ -5,11 +5,11 @@
  */
 
 import type { Hono } from "hono";
-import { makeFact, MONEYFACT_MEDIA_TYPE } from "./money-fact.ts";
+import { makeFact } from "./money-fact.ts";
 import { getFxRate } from "./fx.ts";
-import { readFees } from "./fees.ts";
+import { readFees, supportedFeeChains } from "./fees.ts";
 import { ASSETS, resolveAsset, searchAssets } from "./assets.ts";
-import { applyRate } from "../utils/minor-units";
+import { applyRate } from "../utils/minor-units.ts";
 
 // Mirrors router.ts's refusal shape (kept private there; six lines beat a hot-file export).
 const problem = (status: number, title: string, detail: string, next?: string[]) => ({
@@ -36,7 +36,10 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
     const r = await deps.fees(chain);
     if (r.unknown) {
       return c.json(
-        problem(404, "unknown chain", `no fee source registered for '${r.unknown}'`, ["GET /v1/chains"]),
+        problem(404, "unknown chain", `no fee source registered for '${r.unknown}'`, [
+          ...supportedFeeChains().map((s) => `try ?chain=${s}`),
+          "GET /v1/fees for all covered chains",
+        ]),
         404,
       );
     }
@@ -69,7 +72,7 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
     });
   });
 
-  app.get("/v1/assets/:id", (c) => {
+  app.get("/v1/assets/:id{.+}", (c) => {
     const row = resolveAsset(c.req.param("id"));
     if (!row) {
       return c.json(
@@ -159,27 +162,21 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
       sources: [
         { name: "European Central Bank — euro foreign-exchange reference rates", url: r.sourceUrl, fetched_at: new Date().toISOString() },
       ],
-      observed_at: new Date().toISOString(),
+      observed_at: r.refDate, // the ECB fixing's own date — never a fabricated "now"
       stale_after_s: 3600,
       recompute: {
-        how: `amount_minor × rate × 10^(${to.decimals}−${from.decimals}−${r.decimals}), BigInt, final digit half-even; rate: ${r.recompute.how}`,
+        how: `${amountMinor} × ${r.valueScaled} × 10^(${to.decimals}−${from.decimals}−${r.decimals}), BigInt, final digit half-even; rate: ${r.recompute.how}`,
       },
     });
-    c.header("Content-Type", MONEYFACT_MEDIA_TYPE);
-    return c.body(
-      JSON.stringify(
-        {
-          "@type": "Conversion",
-          input: { amount_minor: amountMinor, asset: from.id, decimals: from.decimals },
-          result: fact,
-          rate: { value_scaled: r.valueScaled, decimals: r.decimals, method: r.method, recompute: r.recompute },
-          rounding: "half_even",
-          note: "reference-rate arithmetic, not a tradeable quote — the recompute recipe reproduces every digit",
-        },
-        null,
-        2,
-      ),
-    );
+    return c.json({
+      "@type": "Conversion",
+      input: { amount_minor: amountMinor, asset: from.id, decimals: from.decimals },
+      result: fact,
+      rate: { value_scaled: r.valueScaled, decimals: r.decimals, method: r.method, recompute: r.recompute },
+      ref_date: r.refDate,
+      rounding: "half_even",
+      note: "reference-rate arithmetic, not a tradeable quote — the recompute recipe reproduces every digit",
+    });
   });
 
   // ── guide: the hospitality door — what a stranger receives, in writing ──
@@ -216,7 +213,7 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
       ],
       rights: {
         baseline: "xenia.rights/0.1",
-        adopted_at: "/RIGHTS.md in the repo — pinned release, vendored byte mirror, digest-tested",
+        adopted_at: "/RIGHTS.md — served by this node; pinned release, vendored byte mirror, digest-tested in CI",
         upstream: "https://github.com/cambridgetcg/xenia",
       },
       sources_ledger: [

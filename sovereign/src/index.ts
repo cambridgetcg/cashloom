@@ -20,7 +20,9 @@ import {
   ZERONE_NETWORKS,
 } from "./zerone.ts";
 import { mountMoneyworld } from "./info/router.ts";
+import { authorizeAgentPayment_wired } from "./pay/agent-pay.ts";
 import { mountInfoDoors } from "./info/doors.ts";
+import { readFileSync } from "node:fs";
 
 const app = new Hono();
 
@@ -66,6 +68,11 @@ app.get("/api/zerone/balance/:address", async (c) => {
 // the /api/* session gate, on purpose: non-custodial by position.
 mountMoneyworld(app);
 mountInfoDoors(app); // fees · assets · convert · guide — same covenant, same side of the gate
+
+// The rights the doors stand on, served AT the door — a guest should never
+// need the git repo to read what this node has promised. Bytes cached at boot.
+const rightsMd = readFileSync(new URL("../../RIGHTS.md", import.meta.url), "utf-8");
+app.get("/RIGHTS.md", (c) => c.text(rightsMd, 200, { "Content-Type": "text/markdown; charset=utf-8" }));
 
 const passphraseSchema = z.object({ passphrase: z.string().min(1) });
 
@@ -273,6 +280,19 @@ app.post("/api/pay/confirm", async (c) => {
 });
 
 app.get("/api/payments", (c) => c.json({ payments: listPayments() }));
+
+// Agent payment authorization — the capability gate, in the pay flow. An agent
+// submits its signed {descriptor, capability, intent, simulation} + the host's
+// durable usage; the gate authorizes only a within-grant intent and the vault
+// signs the authorization. Nothing is broadcast: a pass records permission,
+// the deliberate confirm step still does the send.
+app.post("/api/pay/agent/authorize", async (c) => {
+  try {
+    return c.json(await authorizeAgentPayment_wired(await c.req.json()));
+  } catch (e) {
+    return c.json({ authorized: false, refused: e instanceof Error ? e.message : String(e) }, 403);
+  }
+});
 
 /* --------------------------------- errors --------------------------------- */
 

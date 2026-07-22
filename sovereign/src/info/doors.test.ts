@@ -53,9 +53,10 @@ describe("readFees", () => {
     expect(r.failed).toHaveLength(0);
     const btc = r.facts.find((f) => f.predicate === "fee_per_vbyte_sat")!;
     expect(btc.value).toBe("1250");
-    expect(btc.decimals).toBe(2);
+    expect(btc.decimals).toBe(10); // unit/decimals contract: value × 10^-10 = BTC/vB
     const base = r.facts.find((f) => f.predicate === "gas_price_wei")!;
     expect(base.value).toBe("12345678");
+    expect(base.decimals).toBe(18); // wei read as ETH/gas
   });
 
   it("names a failed source instead of hiding it", async () => {
@@ -73,6 +74,18 @@ describe("readFees", () => {
   it("echoes an unknown chain filter", async () => {
     const r = await readFees("eip155:1", goodFetchers);
     expect(r.unknown).toBe("eip155:1");
+  });
+
+  it("accepts chain aliases case-insensitively", async () => {
+    const r = await readFees("btc", goodFetchers);
+    expect(r.unknown).toBeUndefined();
+    expect(r.facts).toHaveLength(1);
+    expect(r.facts[0].predicate).toBe("fee_per_vbyte_sat");
+  });
+
+  it("treats an empty filter as all chains", async () => {
+    const r = await readFees("", goodFetchers);
+    expect(r.facts).toHaveLength(2);
   });
 });
 
@@ -118,6 +131,24 @@ describe("/v1/convert", () => {
     expect(body.next_actions).toBeDefined();
   });
 
+  it("applies half-even at the conversion's final digit", async () => {
+    // 0.25 GBP @ 0.5: 25 × 50000000 × 10^-8 = 12.5 → 12 (even)
+    const tieFx: typeof fakeFx = async (b, q) => ({
+      ...(await fakeFx(b, q)),
+      valueScaled: "50000000",
+    });
+    const tieApp = appWith({ fxRate: tieFx });
+    const res = await tieApp.request("/v1/convert?amount_minor=25&from=GBP&to=USD");
+    expect((await res.json()).result.value).toBe("12");
+  });
+
+  it("stamps the ECB fixing date, never a fabricated now", async () => {
+    const res = await app.request("/v1/convert?amount_minor=10000&from=GBP&to=USD");
+    const body = await res.json();
+    expect(body.ref_date).toBe("2026-07-21");
+    expect(body.result.observed_at).toBe("2026-07-21");
+  });
+
   it("names the supported rounding when refused", async () => {
     const res = await app.request("/v1/convert?amount_minor=100&from=GBP&to=USD&rounding=floor");
     expect(res.status).toBe(422);
@@ -151,11 +182,13 @@ describe("/v1/fees door", () => {
     expect(body.failed).toHaveLength(1);
   });
 
-  it("404s an unknown chain with a way forward", async () => {
+  it("404s an unknown chain naming the actual supported set", async () => {
     const app = appWith({ fees: (chain) => readFees(chain, goodFetchers) });
     const res = await app.request("/v1/fees?chain=eip155:1");
     expect(res.status).toBe(404);
-    expect((await res.json()).next_actions).toContain("GET /v1/chains");
+    const next = (await res.json()).next_actions as string[];
+    expect(next.join(" ")).toContain("bip122:");
+    expect(next.join(" ")).toContain("eip155:8453");
   });
 });
 
@@ -171,6 +204,26 @@ describe("/v1/assets doors", () => {
     const res = await app.request("/v1/assets/wat");
     expect(res.status).toBe(404);
     expect((await res.json()).next_actions[0]).toContain("?q=");
+  });
+
+  it("reaches slash-bearing canonical ids raw", async () => {
+    const res = await app.request(
+      "/v1/assets/eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).symbol).toBe("USDC");
+  });
+
+  it("refuses a raw percent without crashing", async () => {
+    const res = await app.request("/v1/assets/%25");
+    expect(res.status).toBe(404);
+    expect((await res.json()).title).toBe("unknown asset");
+  });
+
+  it("resolves the sibling door's fiat:iso4217 unit strings", async () => {
+    const res = await app.request("/v1/assets/fiat:iso4217%2FUSD");
+    expect(res.status).toBe(200);
+    expect((await res.json()).symbol).toBe("USD");
   });
 });
 

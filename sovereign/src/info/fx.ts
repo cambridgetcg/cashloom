@@ -14,6 +14,8 @@
  * firewall. Values stay exact fixed-point strings; a float never touches money.
  */
 
+import { divHalfEven } from "../utils/minor-units";
+
 const ECB_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
 const SCALE = 8; // fixed-point decimals carried on every FX value
 const REFRESH_MS = 60 * 60 * 1000; // ECB updates once/day; refresh at most hourly
@@ -87,10 +89,10 @@ export async function getFxRate(base: string, quote: string): Promise<FxFact | F
     proof_state = "asserted";
     how = `ECB daily euro reference rate EUR→${quote} (ref date ${refDate})`;
   } else {
-    valueScaled = (q * pow(SCALE) + b / 2n) / b; // q/b at SCALE decimals, rounded
+    valueScaled = divHalfEven(q * pow(SCALE), b); // q/b at SCALE decimals, half-even — the info layer's one rounding rule
     method = "derived";
     proof_state = "tested";
-    how = `ECB(EUR→${quote}) ÷ ECB(EUR→${base}) = ${quote} per ${base}; both rates from ${ECB_URL} (ref date ${refDate})`;
+    how = `ECB(EUR→${quote}) ÷ ECB(EUR→${base}) = ${quote} per ${base}, rounded half-even at ${SCALE} dp; both rates from ${ECB_URL} (ref date ${refDate})`;
   }
   return {
     base,

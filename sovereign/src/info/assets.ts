@@ -21,15 +21,15 @@ const BTC_CAIP2 = "bip122:000000000019d6689c085ae165831e93";
 export const ASSETS: AssetRow[] = [
   {
     id: "iso4217:GBP", symbol: "GBP", name: "Pound sterling", decimals: 2,
-    aliases: ["gbp", "pound", "sterling", "£"],
+    aliases: ["gbp", "pound", "sterling", "£", "fiat:iso4217/gbp"],
   },
   {
     id: "iso4217:USD", symbol: "USD", name: "United States dollar", decimals: 2,
-    aliases: ["usd", "dollar", "$"],
+    aliases: ["usd", "dollar", "$", "fiat:iso4217/usd"],
   },
   {
     id: "iso4217:EUR", symbol: "EUR", name: "Euro", decimals: 2,
-    aliases: ["eur", "euro", "€"],
+    aliases: ["eur", "euro", "€", "fiat:iso4217/eur"],
   },
   {
     id: `${BTC_CAIP2}/slip44:0`, symbol: "BTC", name: "Bitcoin", decimals: 8,
@@ -65,7 +65,8 @@ for (const a of ASSETS) {
 }
 
 export function resolveAsset(idOrAlias: string): AssetRow | undefined {
-  return byKey.get(decodeURIComponent(idOrAlias).trim().toLowerCase());
+  // Hono has already percent-decoded the param — decoding again crashes on a raw '%'.
+  return byKey.get(idOrAlias.trim().toLowerCase());
 }
 
 // Substring search across id / symbol / name / aliases — the disambiguation

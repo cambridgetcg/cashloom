@@ -4,8 +4,9 @@
  * carries the recompute recipe. Fetchers are injectable so tests never touch
  * the network.
  *
- * BTC: esplora fee-estimates, 3-block target, served as sat/vB × 100 (2 dp).
- * Base: eth_gasPrice via the public RPC, served in wei (0 dp — wei IS minor).
+ * BTC: esplora fee-estimates, 3-block target — value is sat/vB × 100, read as
+ * BTC/vB at 10 dp (the unit/decimals contract holds: value × 10^-decimals IS
+ * the unit). Base: eth_gasPrice — value is wei, read as ETH/gas at 18 dp.
  */
 
 import { makeFact, type MoneyFact } from "./money-fact.ts";
@@ -42,10 +43,13 @@ const defaultFetchers: FeeFetchers = {
 };
 
 // esplora reports sat/vB as a JSON number with sub-sat precision (e.g. 12.5).
-// ×100 into an integer string via toFixed(2) — decimal notation is guaranteed
-// (no exponent form), the rounding is toFixed's and is declared in recompute.
+// Rounded to 2 dp by toFixed (IEEE-754 semantics — 1.005 may land on 100, not
+// 101; declared in recompute), then ×100 into an integer string. toFixed emits
+// decimal notation below 1e21; estimates that large are refused as nonsense.
 export function satPerVbTimes100(estimate: number): string {
-  if (!Number.isFinite(estimate) || estimate < 0) throw new Error(`bad fee estimate ${estimate}`);
+  if (!Number.isFinite(estimate) || estimate < 0 || estimate >= 1e21) {
+    throw new Error(`bad fee estimate ${estimate}`);
+  }
   return BigInt(estimate.toFixed(2).replace(".", "")).toString();
 }
 
@@ -68,7 +72,7 @@ export const FEE_ENTRIES: FeeEntry[] = [
         predicate: "fee_per_vbyte_sat",
         value: satPerVbTimes100(target3),
         unit: `${BTC_CAIP2}/slip44:0`,
-        decimals: 2, // value × 10^-2 = sat/vB
+        decimals: 10, // unit is BTC: value × 10^-10 BTC/vB (sat/vB × 100, 1 sat = 10^-8 BTC)
         plane: "public",
         method: "observed",
         proof_state: "tested",
@@ -78,7 +82,7 @@ export const FEE_ENTRIES: FeeEntry[] = [
         ],
         observed_at: new Date().toISOString(),
         stale_after_s: 60,
-        recompute: { how: `GET /fee-estimates → key "3" (3-block target), × 100 rounded to 2 dp` },
+        recompute: { how: `GET /fee-estimates → key "3" (3-block target), rounded to 2 dp (IEEE-754 toFixed), × 100; read as BTC/vB at 10 dp` },
       });
     },
   },
@@ -93,7 +97,7 @@ export const FEE_ENTRIES: FeeEntry[] = [
         predicate: "gas_price_wei",
         value: wei.toString(),
         unit: `${BASE_CAIP2}/slip44:60`,
-        decimals: 0, // wei is already the minor unit
+        decimals: 18, // unit is ETH: value × 10^-18 ETH per gas (the value IS wei)
         plane: "public",
         method: "observed",
         proof_state: "tested",
@@ -109,22 +113,58 @@ export const FEE_ENTRIES: FeeEntry[] = [
   },
 ];
 
-export async function readFees(
-  chainFilter?: string,
-  fetchers: FeeFetchers = defaultFetchers,
-): Promise<{ facts: MoneyFact[]; failed: { chain: string; label: string }[]; unknown?: string }> {
-  const wanted = chainFilter
-    ? FEE_ENTRIES.filter(
-        (e) => e.chain === chainFilter || e.chain.toLowerCase() === chainFilter.toLowerCase(),
-      )
-    : FEE_ENTRIES;
-  if (chainFilter && wanted.length === 0) return { facts: [], failed: [], unknown: chainFilter };
-  const results = await Promise.allSettled(wanted.map((e) => e.read(fetchers)));
+const CHAIN_ALIASES: Record<string, string> = {
+  btc: BTC_CAIP2, bitcoin: BTC_CAIP2, base: BASE_CAIP2, "base-mainnet": BASE_CAIP2,
+};
+
+export function supportedFeeChains(): string[] {
+  return FEE_ENTRIES.map((e) => `${e.chain} (${e.label})`);
+}
+
+// 30s micro-cache + in-flight dedupe for the default (network) path only —
+// honest by the facts' own stale_after_s labels; injected test fetchers bypass.
+let feeCache: { at: number; result: Awaited<ReturnType<typeof readAll>> } | null = null;
+let feeInflight: Promise<Awaited<ReturnType<typeof readAll>>> | null = null;
+
+async function readAll(fetchers: FeeFetchers) {
+  const results = await Promise.allSettled(FEE_ENTRIES.map((e) => e.read(fetchers)));
   const facts: MoneyFact[] = [];
   const failed: { chain: string; label: string }[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") facts.push(r.value);
-    else failed.push({ chain: wanted[i].chain, label: wanted[i].label });
+    else failed.push({ chain: FEE_ENTRIES[i].chain, label: FEE_ENTRIES[i].label });
   });
   return { facts, failed };
+}
+
+export async function readFees(
+  chainFilter?: string,
+  fetchers: FeeFetchers = defaultFetchers,
+): Promise<{ facts: MoneyFact[]; failed: { chain: string; label: string }[]; unknown?: string }> {
+  const wanted = chainFilter?.trim()
+    ? (() => {
+        const needle = chainFilter.trim().toLowerCase();
+        const canonical = CHAIN_ALIASES[needle] ?? chainFilter.trim();
+        return FEE_ENTRIES.filter((e) => e.chain.toLowerCase() === canonical.toLowerCase());
+      })()
+    : FEE_ENTRIES;
+  if (chainFilter?.trim() && wanted.length === 0) return { facts: [], failed: [], unknown: chainFilter };
+  let all;
+  if (fetchers === defaultFetchers) {
+    if (feeCache && Date.now() - feeCache.at < 30_000) all = feeCache.result;
+    else {
+      feeInflight ??= readAll(fetchers).then((r) => {
+        feeCache = { at: Date.now(), result: r };
+        return r;
+      }).finally(() => { feeInflight = null; });
+      all = await feeInflight;
+    }
+  } else {
+    all = await readAll(fetchers);
+  }
+  const wantedIds = new Set(wanted.map((e) => e.chain));
+  return {
+    facts: all.facts.filter((f) => [...wantedIds].some((id) => f.subject.startsWith(id))),
+    failed: all.failed.filter((f) => wantedIds.has(f.chain)),
+  };
 }

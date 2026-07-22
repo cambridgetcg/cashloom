@@ -110,7 +110,7 @@ for (const e of ENTRIES) {
 }
 
 export function resolveChain(caip2OrAlias: string): ChainEntry | undefined {
-  const raw = decodeURIComponent(caip2OrAlias);
+  const raw = caip2OrAlias; // Hono has already percent-decoded — a second decode crashes on raw '%'
   return byKey.get(raw) ?? byKey.get(raw.toLowerCase());
 }
 
