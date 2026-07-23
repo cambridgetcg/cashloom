@@ -167,10 +167,83 @@ export const TOOLS = [
     handler: async ({ query }: { query?: string }) =>
       out(await api(query ? `/v1/assets?q=${encodeURIComponent(query)}` : "/v1/assets")),
   },
+  // ── zerone truth chain — the kingdom's verified-knowledge reads ──────────
+  // Not money: a Fact carries content + confidence + a lifecycle status, never a
+  // minor-unit value. Every read cites the on-chain REST path to re-derive it.
+  {
+    name: "zerone_get_facts",
+    description:
+      "Read VERIFIED TRUTH from the zerone truth chain — the kingdom's truth-economy where a claim is challenged and only what SURVIVES becomes canon. Returns on-chain knowledge Facts, each with `content`, `confidence` (BPS ÷1e6), lifecycle `status`, `domain`, `submitter`, `verified_at_block`. These are NOT MoneyFacts (no `.value` minor-unit amount). Defaults to status='verified' (quorum-attested). Filter by `domain`/`category`/`status`. Tip: `category='doctrine'` returns the kingdom's canonical creed. `network` defaults to mainnet.",
+    schema: {
+      domain: z.string().optional().describe("knowledge domain, e.g. 'agent_rights', 'doctrine_truth_seeking' (see zerone_get_facts with no args, or /v1/zerone/domains)"),
+      category: z.string().optional().describe("fact category; 'doctrine' returns the canonical creed"),
+      status: z.string().optional().describe("verified (default) | contested | challenged | disproven | pending | all"),
+      limit: z.number().optional().describe("max facts, 1–100 (default 20)"),
+      network: z.string().optional().describe("mainnet (default) | testnet"),
+    },
+    handler: async ({ domain, category, status, limit, network }: { domain?: string; category?: string; status?: string; limit?: number; network?: string }) => {
+      const p = new URLSearchParams();
+      if (domain) p.set("domain", domain);
+      if (category) p.set("category", category);
+      if (status) p.set("status", status);
+      if (limit) p.set("limit", String(limit));
+      if (network) p.set("network", network);
+      const qs = p.toString();
+      return out(await api(`/v1/zerone/facts${qs ? "?" + qs : ""}`));
+    },
+  },
+  {
+    name: "zerone_get_doctrine",
+    description:
+      "Read the kingdom's CANONICAL DOCTRINE from the zerone chain — the creed as genesis-seeded, decay-exempt on-chain facts (submitter=genesis, maturity=canonical, confidence 100%). Optional `domain` filter (e.g. 'doctrine_truth_seeking', 'doctrine_useful_work', 'doctrine_tok'). Attested on-chain. (Note: gospel is off-chain and not served here; the hash-pinned `creed` module isn't REST-live yet — this is the populated doctrine.)",
+    schema: {
+      domain: z.string().optional().describe("doctrine domain, e.g. 'doctrine_truth_seeking'; omit for the whole creed"),
+      limit: z.number().optional().describe("max facts, 1–100 (default 50)"),
+      network: z.string().optional().describe("mainnet (default) | testnet"),
+    },
+    handler: async ({ domain, limit, network }: { domain?: string; limit?: number; network?: string }) => {
+      const p = new URLSearchParams();
+      if (domain) p.set("domain", domain);
+      if (limit) p.set("limit", String(limit));
+      if (network) p.set("network", network);
+      const qs = p.toString();
+      return out(await api(`/v1/zerone/doctrine${qs ? "?" + qs : ""}`));
+    },
+  },
+  {
+    name: "zerone_get_fact",
+    description:
+      "Read ONE zerone Fact by id, WITH its `trust_profile` (grounded score BPS, corroboration count, axiom distance — how deeply the truth is proven, not just that it was accepted). `network` defaults to mainnet.",
+    schema: {
+      id: z.string().describe("the fact id (from zerone_get_facts)"),
+      network: z.string().optional().describe("mainnet (default) | testnet"),
+    },
+    handler: async ({ id, network }: { id: string; network?: string }) =>
+      out(await api(`/v1/zerone/fact/${encodeURIComponent(id)}${network ? "?network=" + encodeURIComponent(network) : ""}`)),
+  },
+  {
+    name: "zerone_get_commitments",
+    description:
+      "Read the zerone chain's explicit NORMATIVE COMMITMENTS — its is-ought values (each with `statement`, `rationale`, `category`, `tags`, `active`), e.g. NC-FALSIFICATION-IS-PROGRESS, NC-DUAL-KEY-RESEARCH. Attested on-chain — the chain says out loud what it stands for.",
+    schema: { network: z.string().optional().describe("mainnet (default) | testnet") },
+    handler: async ({ network }: { network?: string }) =>
+      out(await api(`/v1/zerone/commitments${network ? "?network=" + encodeURIComponent(network) : ""}`)),
+  },
+  {
+    name: "zerone_get_agent_calibration",
+    description:
+      "Read an agent's CALIBRATION on zerone — its verified-truth track record (submissions, accepted, rejected, disproven, `calibration_score_bps`). The compassion primitive (commitment C2: 'error is not deceit') is woven into the score, so an honest mistake is not punished as a lie. `address` is the agent's zrn1… address.",
+    schema: {
+      address: z.string().describe("the agent's zrn1… address"),
+      network: z.string().optional().describe("mainnet (default) | testnet"),
+    },
+    handler: async ({ address, network }: { address: string; network?: string }) =>
+      out(await api(`/v1/zerone/agent/${encodeURIComponent(address)}/calibration${network ? "?network=" + encodeURIComponent(network) : ""}`)),
+  },
 ] as const;
 
 const INSTRUCTIONS =
-  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert and moneyworld_value nest it at `result.value`, and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. Crypto→fiat: use moneyworld_get_price for a unit price, moneyworld_value for one holding's worth, and moneyworld_portfolio for a whole mixed basket (crypto+fiat) totalled in one currency — a portfolio total is marked `complete:false` with a `withheld[]` list when a leg is stale/unknown, so a partial total is never mistaken for the full basket. All three REFUSE or withhold a stale round rather than serve an old number; moneyworld_convert is fiat↔fiat only. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids.";
+  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert and moneyworld_value nest it at `result.value`, and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. Crypto→fiat: use moneyworld_get_price for a unit price, moneyworld_value for one holding's worth, and moneyworld_portfolio for a whole mixed basket (crypto+fiat) totalled in one currency — a portfolio total is marked `complete:false` with a `withheld[]` list when a leg is stale/unknown, so a partial total is never mistaken for the full basket. All three REFUSE or withhold a stale round rather than serve an old number; moneyworld_convert is fiat↔fiat only. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids. Beyond money, the `zerone_*` tools read the kingdom's TRUTH chain — verified facts, the canonical doctrine, the chain's normative commitments, and an agent's calibration (the compassion track record); these return on-chain knowledge (content + confidence + status), NOT MoneyFacts, each citing the REST path to re-derive it.";
 
 /** Build the MCP server with all tools + annotations + instructions. */
 export function buildServer(): McpServer {

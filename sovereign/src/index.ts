@@ -23,6 +23,7 @@ import { mountMoneyworld } from "./info/router.ts";
 import { authorizeAgentPayment_wired } from "./pay/agent-pay.ts";
 import { mountInfoDoors } from "./info/doors.ts";
 import { mountPriceDoors } from "./info/price-door.ts";
+import { mountZeroneTruth } from "./info/zerone-truth.ts";
 import { readFileSync } from "node:fs";
 
 const app = new Hono();
@@ -70,6 +71,7 @@ app.get("/api/zerone/balance/:address", async (c) => {
 mountMoneyworld(app);
 mountInfoDoors(app); // fees · assets · convert · guide — same covenant, same side of the gate
 mountPriceDoors(app); // spot price · prices board · value — on-chain oracle, crypto→fiat, refuses when stale
+mountZeroneTruth(app); // zerone truth chain — verified facts · doctrine · commitments · calibration (read-only, cited)
 
 // The rights the doors stand on, served AT the door — a guest should never
 // need the git repo to read what this node has promised. Bytes cached at boot.
