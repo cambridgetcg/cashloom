@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const dataDir = mkdtempSync(join(tmpdir(), "cashloom-evm-nonce-migration-test-"));
 process.env.CASHLOOM_DATA_DIR = dataDir;
@@ -55,11 +56,33 @@ VALUES
 `);
 legacy.close();
 
+// Exercise the real startup race: both processes open the same legacy file
+// before either one can assume the additive payment column already exists.
+const dbModuleUrl = pathToFileURL(join(import.meta.dir, "../db.ts")).href;
+const workers = Array.from({ length: 2 }, () =>
+  Bun.spawn([process.execPath, "-e", `await import(${JSON.stringify(dbModuleUrl)})`], {
+    env: { ...process.env, CASHLOOM_DATA_DIR: dataDir },
+    stdout: "pipe",
+    stderr: "pipe",
+  }),
+);
+const workerResults = await Promise.all(
+  workers.map(async (worker) => ({
+    status: await worker.exited,
+    stderr: await new Response(worker.stderr).text(),
+  })),
+);
+
 const { db } = await import("../db.ts");
 const { reserveEvmNonce } = await import("./evm-nonce.ts");
 
 describe("EVM nonce migration", () => {
   it("grows an existing sovereign database in place and preserves payment state", () => {
+    expect(
+      workerResults.map(({ status }) => status),
+      JSON.stringify(workerResults),
+    ).toEqual([0, 0]);
+
     const columns = new Set(
       (
         db.query("PRAGMA table_info(evm_nonce_reservations)").all() as Array<{
@@ -81,9 +104,20 @@ describe("EVM nonce migration", () => {
     }
 
     const legacyPayment = db
-      .query("SELECT status, detail FROM payments WHERE id = 'legacy-payment'")
-      .get() as { status: string; detail: string | null };
-    expect(legacyPayment).toEqual({ status: "confirmed", detail: null });
+      .query(
+        `SELECT status, detail, execution_fee_ceiling_minor
+         FROM payments WHERE id = 'legacy-payment'`,
+      )
+      .get() as {
+      status: string;
+      detail: string | null;
+      execution_fee_ceiling_minor: string | null;
+    };
+    expect(legacyPayment).toEqual({
+      status: "confirmed",
+      detail: null,
+      execution_fee_ceiling_minor: null,
+    });
     expect(
       reserveEvmNonce({
         paymentId: "legacy-payment",
@@ -102,5 +136,27 @@ describe("EVM nonce migration", () => {
     );
     expect(indexes.has("idx_evm_nonce_live")).toBe(true);
     expect(indexes.has("idx_evm_nonce_hash")).toBe(true);
+
+    const signedColumns = new Set(
+      (
+        db.query("PRAGMA table_info(evm_signed_transactions)").all() as Array<{
+          name: string;
+        }>
+      ).map(({ name }) => name),
+    );
+    for (const column of [
+      "payment_id",
+      "chain_id",
+      "from_address",
+      "nonce",
+      "unsigned_payload",
+      "unsigned_payload_sha256",
+      "signed_payload",
+      "signed_payload_sha256",
+      "tx_hash",
+      "created_at",
+    ]) {
+      expect(signedColumns.has(column), column).toBe(true);
+    }
   });
 });

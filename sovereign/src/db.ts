@@ -19,12 +19,30 @@ export const DB_PATH = join(dataDir, "sovereign.db");
 
 export const db = new Database(DB_PATH, { create: true });
 
-// WAL: safe concurrent reads while a sync writes; still a single local file.
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA foreign_keys = ON;");
-// A second process on the same file (a stray dev node) must make writers
-// wait, not throw SQLITE_BUSY mid-payment-bookkeeping.
+// Install the wait policy before WAL negotiation: two fresh processes can
+// otherwise race on PRAGMA journal_mode before either connection has a busy
+// handler. A second local node waits instead of failing during startup or
+// payment bookkeeping.
 db.exec("PRAGMA busy_timeout = 5000;");
+// WAL: safe concurrent reads while a sync writes; still a single local file.
+// SQLite's journal-mode transition does not invoke the configured busy handler
+// in Bun 1.3, so two processes opening a legacy non-WAL file need one bounded
+// explicit retry loop around this one startup pragma.
+const walDeadline = Date.now() + 5_000;
+for (;;) {
+  try {
+    db.exec("PRAGMA journal_mode = WAL;");
+    break;
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    if (code !== "SQLITE_BUSY" || Date.now() >= walDeadline) throw error;
+    Bun.sleepSync(25);
+  }
+}
+db.exec("PRAGMA foreign_keys = ON;");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS settings (
@@ -90,6 +108,7 @@ CREATE TABLE IF NOT EXISTS payments (
   asset        TEXT NOT NULL,
   amount_minor TEXT NOT NULL,
   fee_minor    TEXT,
+  execution_fee_ceiling_minor TEXT,
   status       TEXT NOT NULL,                    -- quoted|confirmed|broadcast|failed
   tx_hash      TEXT,
   error        TEXT,
@@ -128,13 +147,100 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_evm_nonce_live
 CREATE UNIQUE INDEX IF NOT EXISTS idx_evm_nonce_hash
   ON evm_nonce_reservations(chain_id, tx_hash)
   WHERE tx_hash IS NOT NULL;
+
+-- Exact public transaction evidence is committed in the same SQLite
+-- transaction that advances the account nonce to "signed". A restart can
+-- therefore distinguish "never signed" from "signed; do not retry" without
+-- asking an RPC or reopening the vault.
+CREATE TABLE IF NOT EXISTS evm_signed_transactions (
+  payment_id              TEXT PRIMARY KEY REFERENCES payments(id),
+  chain_id                INTEGER NOT NULL,
+  from_address            TEXT NOT NULL CHECK (from_address = lower(from_address)),
+  nonce                   INTEGER NOT NULL CHECK (nonce >= 0),
+  unsigned_payload        BLOB NOT NULL,
+  unsigned_payload_sha256 TEXT NOT NULL,
+  signed_payload          BLOB NOT NULL,
+  signed_payload_sha256   TEXT NOT NULL,
+  tx_hash                 TEXT NOT NULL UNIQUE,
+  created_at              TEXT NOT NULL
+);
+
+-- Stripe-hosted Checkout is an inbound collection for one connected seller,
+-- not an outbound PaymentSender. Keep its asynchronous provider lifecycle and
+-- idempotency evidence separate from crypto payments and their negative ledger
+-- entries. This first contract is sandbox-only: livemode can never be true.
+CREATE TABLE IF NOT EXISTS stripe_checkout_operations (
+  id                     TEXT PRIMARY KEY,
+  intent_id              TEXT NOT NULL UNIQUE,
+  account_id             TEXT NOT NULL REFERENCES accounts(id),
+  connected_account_id   TEXT NOT NULL,
+  currency               TEXT NOT NULL,
+  amount_minor           TEXT NOT NULL,
+  purpose                TEXT NOT NULL,
+  return_base_url        TEXT NOT NULL,
+  idempotency_key        TEXT NOT NULL UNIQUE,
+  request_sha256         TEXT NOT NULL,
+  request_json           TEXT NOT NULL,
+  status                 TEXT NOT NULL CHECK (
+    status IN (
+      'prepared',
+      'submitting',
+      'submitted',
+      'submission_unknown',
+      'provider_reported_paid',
+      'expired',
+      'rejected'
+    )
+  ),
+  checkout_session_id    TEXT,
+  payment_intent_id      TEXT,
+  checkout_url           TEXT,
+  livemode               INTEGER NOT NULL DEFAULT 0 CHECK (livemode = 0),
+  error_code             TEXT,
+  created_at             TEXT NOT NULL,
+  updated_at             TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stripe_checkout_session
+  ON stripe_checkout_operations(checkout_session_id)
+  WHERE checkout_session_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stripe_checkout_payment_intent
+  ON stripe_checkout_operations(payment_intent_id)
+  WHERE payment_intent_id IS NOT NULL;
+
+-- Raw webhook bodies are verified but deliberately not retained. The digest
+-- gives replay/tamper evidence without turning the local ledger into a store
+-- for customer-shaped provider payloads.
+CREATE TABLE IF NOT EXISTS stripe_webhook_inbox (
+  event_id                TEXT PRIMARY KEY,
+  payload_sha256          TEXT NOT NULL,
+  operation_id            TEXT REFERENCES stripe_checkout_operations(id),
+  connected_account_id    TEXT NOT NULL,
+  event_type              TEXT NOT NULL,
+  object_id               TEXT,
+  disposition             TEXT NOT NULL CHECK (
+    disposition IN ('applied', 'ignored', 'refused', 'unmatched')
+  ),
+  received_at             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stripe_webhook_operation
+  ON stripe_webhook_inbox(operation_id, received_at);
 `);
 
-// payments.detail arrived with the BTC sender; CREATE TABLE IF NOT EXISTS
-// cannot grow an existing file, so probe and patch — idempotent.
-const paymentColumns = db.query("PRAGMA table_info(payments)").all() as { name: string }[];
-if (!paymentColumns.some((c) => c.name === "detail")) {
-  db.exec("ALTER TABLE payments ADD COLUMN detail TEXT");
-}
+// Forward-only additive payment fields: CREATE TABLE IF NOT EXISTS cannot grow
+// an existing file, so probe and patch — idempotent.
+const growPayments = db.transaction(() => {
+  const paymentColumns = db.query("PRAGMA table_info(payments)").all() as {
+    name: string;
+  }[];
+  if (!paymentColumns.some((c) => c.name === "detail")) {
+    db.exec("ALTER TABLE payments ADD COLUMN detail TEXT");
+  }
+  if (!paymentColumns.some((c) => c.name === "execution_fee_ceiling_minor")) {
+    db.exec("ALTER TABLE payments ADD COLUMN execution_fee_ceiling_minor TEXT");
+  }
+});
+// The probe runs after the writer lock is held, so two fresh CashLoom processes
+// cannot both decide to add the same legacy column.
+growPayments.immediate();
 
 export const newId = (): string => crypto.randomUUID();

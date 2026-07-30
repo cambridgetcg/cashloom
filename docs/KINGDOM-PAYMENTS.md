@@ -93,6 +93,20 @@ Until those checks exist, authorization evidence and payment execution stay
 separate. This is a deliberate refusal to turn a valid capability into vague
 signing power.
 
+There is also a Base-specific blocker before that binding may broadcast.
+`gasLimit × maxFeePerGas` caps only L2 execution. Base separately charges L1
+security/data (and OP Stack can charge operator) fees that a standard EOA
+EIP-1559 transaction cannot hard-cap through inclusion. CashLoom now quotes a
+current total estimate separately, decodes and recovers every signed EIP-1559
+field, and atomically persists exact unsigned/signed bytes before egress; it
+does **not** reinterpret Agent Wallet `max_fee` as an L2-only promise.
+
+Resolving this requires an explicit protocol semantic change, a sponsor or
+paymaster mechanism with bounded sender exposure, or another rail whose signed
+transaction can cap the sender's total fee. An estimate alone is insufficient.
+See [Base network fees](https://docs.base.org/base-chain/network-information/network-fees)
+and [OP Stack transaction fees](https://docs.optimism.io/op-stack/transactions/fees).
+
 ### x402
 
 AgentTool's current custom-facilitator client expects x402 v2-compatible
@@ -145,14 +159,23 @@ Primary references:
 
 Implementation rules:
 
-- add a new outbound `PaymentSender`; never add movement to the read-only
-  Stripe connector;
+- model hosted Checkout as a separate inbound collection operation; never
+  pretend that a buyer paying a connected seller is an outbound
+  `PaymentSender`, and never add movement to the read-only Stripe connector;
 - use a separate, least-authority write credential reference;
 - send one provider idempotency key derived from the CashLoom intent ID;
 - persist the PaymentIntent/Checkout Session ID before returning;
 - ingest signed webhooks into a deduplicated append-only inbox before changing
   payment state; and
 - reconcile asynchronous methods from provider events, not browser redirects.
+
+The repository now ships the credential-free part of that contract in
+`sovereign/src/processors/stripe-checkout.ts`: exact direct-charge request
+compilation, connected-account scoping, durable idempotency before an injected
+transport, sticky unknown outcomes, test-mode response checks, raw-body HMAC
+verification, event deduplication, and monotonic paid/expired projection. It
+does not ship a Stripe key resolver, HTTP transport, public webhook, onboarding,
+or live-mode path.
 
 ### 2. GoCardless for mandates and recurring bank collection
 
@@ -196,23 +219,22 @@ launch.
 
 ## Release order
 
-1. **Shipped:** EVM persist-before-submit, quote-bound fees, atomic
+1. **Shipped:** EVM exact-byte decode/recovery and atomic signed-payload
+   persistence, separate Base total-estimate/L2-ceiling disclosure, atomic
    confirmation, cross-process durable EVM account-nonce coordination, and
    durable Agent Wallet authorization evidence with signed intent-nonce
    replay protection.
-2. **Next:** add a deliberately narrow Agent Wallet → CashLoom binding for a
-   newly signed Base-mainnet EOA/native-ETH profile. It must re-check validity
-   at sign time, bind the already-reserved signed intent nonce, bind the
-   actual quote fee, and decode/recover the exact EIP-1559 bytes before
-   egress. A separate Sepolia adapter can canary that contract before live
-   execution.
-3. **Then:** implement Stripe Connect direct-charge Checkout in sandbox with
-   signed webhook ingestion and idempotency tests.
-4. **In parallel:** add AgentTool origin-scoped custom-facilitator auth; keep
+2. **Shipped offline:** Stripe Connect direct-charge Checkout sandbox contract
+   with injected transport, durable idempotency, and signed webhook tests.
+3. **Next:** resolve an enforceable total-fee contract, then add the narrow
+   Agent Wallet → CashLoom one-to-one binding for a newly signed profile.
+4. **Then:** add a separately scoped Stripe test transport and sandbox webhook
+   endpoint; run a provider-backed test only with explicit sandbox credentials.
+5. **In parallel:** add AgentTool origin-scoped custom-facilitator auth; keep
    payouts hard-resting.
-5. **Canary:** x402 v2 on Base Sepolia, then a tightly allowlisted mainnet
+6. **Canary:** x402 v2 on Base Sepolia, then a tightly allowlisted mainnet
    facilitator only after threat review and operational/legal sign-off.
-6. **Expand:** GoCardless mandates; Adyen only if multi-party platform
+7. **Expand:** GoCardless mandates; Adyen only if multi-party platform
    requirements and liability justify it.
 
 ## Deployment boundary

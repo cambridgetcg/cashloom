@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, keccak256 } from "viem";
 
 const dataDir = mkdtempSync(join(tmpdir(), "cashloom-evm-nonce-test-"));
 process.env.CASHLOOM_DATA_DIR = dataDir;
@@ -17,7 +19,17 @@ const {
 } = await import("./evm-nonce.ts");
 
 const CHAIN = 8453;
-const HASH = `0x${"ab".repeat(32)}`;
+const UNSIGNED_PAYLOAD = new Uint8Array([1, 2, 3]);
+const SIGNED_PAYLOAD = new Uint8Array([4, 5, 6]);
+const HASH = keccak256(bytesToHex(SIGNED_PAYLOAD));
+const sha256Id = (payload: Uint8Array): string =>
+  `sha256:${Buffer.from(sha256(payload)).toString("hex")}`;
+const payloadEvidence = {
+  unsignedPayload: UNSIGNED_PAYLOAD,
+  unsignedPayloadSha256: sha256Id(UNSIGNED_PAYLOAD),
+  signedPayload: SIGNED_PAYLOAD,
+  signedPayloadSha256: sha256Id(SIGNED_PAYLOAD),
+};
 const workerPath = join(import.meta.dir, "evm-nonce.worker.ts");
 
 const makePayment = (
@@ -147,7 +159,30 @@ describe("durable EVM nonce reservations", () => {
       fromAddress: from,
       nonce,
       txHash: HASH,
+      ...payloadEvidence,
     });
+    const signed = db
+      .query(
+        `SELECT unsigned_payload_sha256, signed_payload_sha256, tx_hash
+         FROM evm_signed_transactions WHERE payment_id = ?`,
+      )
+      .get(first) as {
+        unsigned_payload_sha256: string;
+        signed_payload_sha256: string;
+        tx_hash: string;
+      };
+    expect(signed).toEqual({
+      unsigned_payload_sha256: payloadEvidence.unsignedPayloadSha256,
+      signed_payload_sha256: payloadEvidence.signedPayloadSha256,
+      tx_hash: HASH,
+    });
+    expect(
+      (
+        db.query("SELECT tx_hash FROM payments WHERE id = ?").get(first) as {
+          tx_hash: string;
+        }
+      ).tx_hash,
+    ).toBe(HASH);
     expect(
       reserveEvmNonce({
         paymentId: second,
@@ -179,7 +214,7 @@ describe("durable EVM nonce reservations", () => {
         fromAddress: from,
         nonce,
       }),
-    ).toThrow(/expected "reserved" or "signed"/);
+    ).toThrow(/expected "reserved"/);
     expect(
       reserveEvmNonce({
         paymentId: third,
@@ -261,7 +296,46 @@ describe("durable EVM nonce reservations", () => {
         fromAddress: from,
         nonce: nonce + 1,
         txHash: HASH,
+        ...payloadEvidence,
       }),
     ).toThrow(/expected "reserved"/);
+  });
+
+  it("rolls back nonce, payment hash, and signed evidence together on invalid bytes", () => {
+    const from = `0x${"7".repeat(40)}`;
+    const paymentId = makePayment();
+    const nonce = reserveEvmNonce({
+      paymentId,
+      chainId: CHAIN,
+      fromAddress: from,
+      pendingNonce: 9,
+    });
+
+    expect(() =>
+      markEvmNonceSigned({
+        paymentId,
+        chainId: CHAIN,
+        fromAddress: from,
+        nonce,
+        txHash: HASH,
+        ...payloadEvidence,
+        signedPayloadSha256: `sha256:${"0".repeat(64)}`,
+      }),
+    ).toThrow(/does not match/);
+    expect(getEvmNonceReservation(paymentId)?.state).toBe("reserved");
+    expect(
+      (
+        db.query("SELECT tx_hash FROM payments WHERE id = ?").get(paymentId) as {
+          tx_hash: string | null;
+        }
+      ).tx_hash,
+    ).toBeNull();
+    expect(
+      (
+        db.query(
+          "SELECT COUNT(*) AS count FROM evm_signed_transactions WHERE payment_id = ?",
+        ).get(paymentId) as { count: number }
+      ).count,
+    ).toBe(0);
   });
 });

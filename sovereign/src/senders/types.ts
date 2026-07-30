@@ -33,10 +33,13 @@ export interface SenderContext {
 
 /** The fee disclosure, produced BEFORE any signature exists. */
 export interface PaymentQuote {
-  /** Network fee, integer minor units of feeAsset, as a string. An upper
-   *  bound on rails that re-estimate (EVM); EXACT on rails that sign the
-   *  persisted selection (BTC). */
+  /** Network/provider fee disclosure, integer minor units of feeAsset. Exact
+   *  for a persisted BTC selection; an explicitly labelled current estimate
+   *  for Base, whose L1 data/operator components have no EIP-1559 hard cap. */
   feeMinor: string;
+  /** Transaction-field ceiling when it differs from the total estimate. On
+   * Base this is gasLimit × maxFeePerGas (L2 execution only). */
+  executionFeeCeilingMinor?: string;
   /** Asset the fee is paid in (EVM: always the native asset; BTC: BTC). */
   feeAsset: string;
   /** Human line for the confirm screen — states amount, asset, destination, fee. */

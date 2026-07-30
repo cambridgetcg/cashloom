@@ -11,6 +11,8 @@
  */
 
 import { db } from "../db.ts";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, keccak256 } from "viem";
 
 export type EvmNonceState =
   | "reserved"
@@ -42,8 +44,16 @@ interface SignedReservation extends ReservationIdentity {
   txHash: string;
 }
 
+export interface EvmSignedTransactionEvidence extends SignedReservation {
+  unsignedPayload: Uint8Array;
+  unsignedPayloadSha256: string;
+  signedPayload: Uint8Array;
+  signedPayloadSha256: string;
+}
+
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
 const normalizedAddress = (address: string): string => {
   if (!ADDRESS_PATTERN.test(address)) {
@@ -71,6 +81,23 @@ const safeHash = (hash: string): string => {
     throw new Error("EVM nonce state requires a canonical transaction hash.");
   }
   return hash.toLowerCase();
+};
+
+const safePayload = (payload: Uint8Array, label: string): Uint8Array => {
+  if (!(payload instanceof Uint8Array) || payload.byteLength === 0 || payload.byteLength > 131_072) {
+    throw new Error(`${label} must contain bounded transaction bytes.`);
+  }
+  return Uint8Array.prototype.slice.call(payload);
+};
+
+const sha256Id = (payload: Uint8Array): string =>
+  `sha256:${Buffer.from(sha256(payload)).toString("hex")}`;
+
+const safeSha256 = (value: string, payload: Uint8Array, label: string): string => {
+  if (!SHA256_PATTERN.test(value) || value !== sha256Id(payload)) {
+    throw new Error(`${label} does not match its transaction bytes.`);
+  }
+  return value;
 };
 
 const currentState = (paymentId: string): string => {
@@ -162,29 +189,81 @@ export const reserveEvmNonce = (input: {
   return reserve.immediate();
 };
 
-export const markEvmNonceSigned = (input: SignedReservation): void => {
+export const markEvmNonceSigned = (input: EvmSignedTransactionEvidence): void => {
   const chainId = safeChainId(input.chainId);
   const fromAddress = normalizedAddress(input.fromAddress);
   const nonce = safeNonce(input.nonce, "Reserved EVM nonce");
   const txHash = safeHash(input.txHash);
-  const changed = db
-    .query(
-      `UPDATE evm_nonce_reservations
-       SET state = 'signed', tx_hash = ?, updated_at = ?
-       WHERE payment_id = ? AND chain_id = ? AND from_address = ?
-         AND nonce = ? AND state = 'reserved' AND tx_hash IS NULL`,
-    )
-    .run(
-      txHash,
-      new Date().toISOString(),
+  const unsignedPayload = safePayload(input.unsignedPayload, "Unsigned EVM payload");
+  const signedPayload = safePayload(input.signedPayload, "Signed EVM payload");
+  const unsignedPayloadSha256 = safeSha256(
+    input.unsignedPayloadSha256,
+    unsignedPayload,
+    "Unsigned EVM payload SHA-256",
+  );
+  const signedPayloadSha256 = safeSha256(
+    input.signedPayloadSha256,
+    signedPayload,
+    "Signed EVM payload SHA-256",
+  );
+  if (keccak256(bytesToHex(signedPayload)) !== txHash) {
+    throw new Error("Signed EVM payload does not match its transaction hash.");
+  }
+
+  const persist = db.transaction(() => {
+    const now = new Date().toISOString();
+    const changed = db
+      .query(
+        `UPDATE evm_nonce_reservations
+         SET state = 'signed', tx_hash = ?, updated_at = ?
+         WHERE payment_id = ? AND chain_id = ? AND from_address = ?
+           AND nonce = ? AND state = 'reserved' AND tx_hash IS NULL`,
+      )
+      .run(
+        txHash,
+        now,
+        input.paymentId,
+        chainId,
+        fromAddress,
+        nonce,
+      );
+    if (changed.changes !== 1) {
+      throw transitionRefused(input.paymentId, '"reserved"', "signed");
+    }
+
+    db.query(
+      `INSERT INTO evm_signed_transactions
+         (payment_id, chain_id, from_address, nonce, unsigned_payload,
+          unsigned_payload_sha256, signed_payload, signed_payload_sha256,
+          tx_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
       input.paymentId,
       chainId,
       fromAddress,
       nonce,
+      unsignedPayload,
+      unsignedPayloadSha256,
+      signedPayload,
+      signedPayloadSha256,
+      txHash,
+      now,
     );
-  if (changed.changes !== 1) {
-    throw transitionRefused(input.paymentId, '"reserved"', "signed");
-  }
+
+    const payment = db
+      .query(
+        `UPDATE payments
+         SET tx_hash = ?, updated_at = ?
+         WHERE id = ? AND status = 'confirmed'`,
+      )
+      .run(txHash, now, input.paymentId);
+    if (payment.changes !== 1) {
+      throw new Error(
+        `Payment ${input.paymentId} is no longer confirmed; refusing signed EVM persistence.`,
+      );
+    }
+  });
+  persist.immediate();
 };
 
 export const markEvmNonceSubmitting = (input: SignedReservation): void => {
@@ -271,7 +350,7 @@ export const releaseEvmNoncePreSubmit = (input: ReservationIdentity): void => {
       `UPDATE evm_nonce_reservations
        SET state = 'released_pre_submit', updated_at = ?
        WHERE payment_id = ? AND chain_id = ? AND from_address = ?
-         AND nonce = ? AND state IN ('reserved', 'signed')`,
+         AND nonce = ? AND state = 'reserved'`,
     )
     .run(
       new Date().toISOString(),
@@ -283,7 +362,7 @@ export const releaseEvmNoncePreSubmit = (input: ReservationIdentity): void => {
   if (changed.changes !== 1) {
     throw transitionRefused(
       input.paymentId,
-      '"reserved" or "signed"',
+      '"reserved"',
       "released_pre_submit",
     );
   }
