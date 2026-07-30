@@ -7,13 +7,13 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch src/index.ts",
     "build:ui": "cd ui && bun install && bun run build",
-    "test": "bunx vitest run src/connectors src/utils src/info && bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/zerone.test.ts",
+    "test": "bun run test:connectors && bun run test:node",
     "test:connectors": "bunx vitest run src/connectors src/utils src/info",
-    "test:node": "bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/zerone.test.ts",
+    "test:node": "bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/senders/evm.sender.test.ts src/zerone.test.ts && bun test src/pay/agent-pay.test.ts && bun test src/pay/agent-pay-migration.test.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
-    "@agenttool/wallet": "^0.1.0",
+    "@agenttool/wallet": "0.1.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@noble/curves": "~2.2.0",
     "@noble/hashes": "^2.0.1",

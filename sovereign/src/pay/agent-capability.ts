@@ -2,13 +2,11 @@
  * The pre-broadcast gate for AGENT-submitted payments — cashloom dogfooding the
  * kingdom's own @agenttool/wallet primitive (Apache-2.0, love-package/v1).
  *
- * cashloom's pay()/PaymentSender must call this BEFORE it ever signs or
- * broadcasts an agent's transaction: an agent's signed INTENT is authorized only
- * if it fits a signed, unexpired, unrevoked CAPABILITY and a matching
- * SIMULATION — allowlist, per-intent AND cumulative spend caps, fee bounds, and
- * a host-supplied durable usage count are all checked here. The whole point:
- * a soul can pay, but a prompt-injected soul cannot be DRAINED — the cap is
- * enforced against the host's own record of what has already been spent.
+ * This verifier is one part of the agent-payment boundary: an agent's signed
+ * INTENT is eligible only if it fits a signed, active CAPABILITY and matching
+ * SIMULATION. The caller is still responsible for authenticating the simulator
+ * and atomically supplying + reserving durable host usage. agent-pay.ts is the
+ * local host implementation of those responsibilities.
  *
  * This module holds NO keys, contacts NO RPC, and moves NO money. It only
  * verifies signatures and returns a yes (an AuthorizedIntent) or throws a no.
@@ -40,6 +38,22 @@ export interface AgentPaymentRequest {
   context: AuthorizationContext;
 }
 
+/** Verify every signed record once and retain the runtime verification brands
+ * required by @agenttool/wallet's static authorization helper. */
+export function verifyAgentPaymentRecords(
+  req: Pick<
+    AgentPaymentRequest,
+    "descriptorJson" | "capabilityJson" | "intentJson" | "simulationJson"
+  >,
+) {
+  return {
+    descriptor: verifyWalletDescriptor(req.descriptorJson),
+    capability: verifyWalletCapability(req.capabilityJson),
+    intent: verifyTransactionIntent(req.intentJson),
+    simulation: verifySimulationReceipt(req.simulationJson),
+  };
+}
+
 /**
  * Authorize (or refuse) an agent payment. Returns a frozen AuthorizedIntent on
  * success; THROWS on any violation — bad signature, expiry, revocation, an
@@ -47,10 +61,7 @@ export interface AgentPaymentRequest {
  * drain the wallet past its granted total.
  */
 export function authorizeAgentPayment(req: AgentPaymentRequest): Readonly<AuthorizedIntent> {
-  const descriptor = verifyWalletDescriptor(req.descriptorJson);
-  const capability = verifyWalletCapability(req.capabilityJson);
-  const intent = verifyTransactionIntent(req.intentJson);
-  const simulation = verifySimulationReceipt(req.simulationJson);
+  const { descriptor, capability, intent, simulation } = verifyAgentPaymentRecords(req);
   return assertIntentWithinCapabilityStatic({
     descriptor,
     capability,

@@ -285,11 +285,11 @@ app.post("/api/pay/confirm", async (c) => {
 
 app.get("/api/payments", (c) => c.json({ payments: listPayments() }));
 
-// Agent payment authorization — the capability gate, in the pay flow. An agent
-// submits its signed {descriptor, capability, intent, simulation} + the host's
-// durable usage; the gate authorizes only a within-grant intent and the vault
-// signs the authorization. Nothing is broadcast: a pass records permission,
-// the deliberate confirm step still does the send.
+// Agent Wallet authorization evidence. CashLoom trusts only locally configured
+// simulation keys, derives + reserves usage in SQLite, and vault-signs the
+// result. This is intentionally NOT wired to confirmPayment yet: until an
+// adapter binds exact chain bytes to a CashLoom quote, the returned status is
+// `authorized-not-bound` and cannot move money.
 app.post("/api/pay/agent/authorize", async (c) => {
   try {
     return c.json(await authorizeAgentPayment_wired(await c.req.json()));

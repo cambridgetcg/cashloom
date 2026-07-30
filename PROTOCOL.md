@@ -2,7 +2,7 @@
 
 > An **open, non-custodial, local-first payment protocol.** Everyone pays everyone, over every rail, holding nothing, collecting nothing.
 
-*Status: design spec, 2026-06-17. First slice: crypto (BTC + USDC on Base) + one fiat (Stripe). This document is the protocol definition; the codebase is a reference implementation.*
+*Status: design spec, updated 2026-07-30. Shipped slice: BTC + ETH/USDC on Base; fiat sending remains provider-backed design work. This document is the protocol definition; the codebase is a reference implementation.*
 
 ---
 
@@ -10,16 +10,30 @@
 
 CashLoom becomes **"everyone pays everyone"** — a universal payment primitive: any being pays any being, P2P / B2B / B2C, over **all available money protocols**, **free or as low-fee as possible**, **easy to use locally**, **collecting no information**, **as simple and frictionless as possible**. And it is **for everyone**, not one operator: anyone may run it; no central controller; everyone interoperates over open rails.
 
-Financial inclusion is a first-class goal, not a side-effect: **no-KYC crypto rails** open payment to anyone a bank won't take. A protocol that works for the unbanked is a protocol that works for everyone.
+Financial inclusion is a first-class goal, not a side-effect:
+**self-custodied open crypto rails do not require a CashLoom registration**.
+Local law, fiat on-ramps, hosted RPC/facilitator policy, and counterparties can
+still impose screening or access limits. A protocol that can work without a
+bank account is more useful to everyone.
 
 ## 2. Keystone (non-negotiable)
 
-- **Non-custodial.** CashLoom holds no funds and collects no information. It is software, not a money transmitter — because it never holds funds, no MSB/money-transmitter license attaches to the software itself.
+- **Self-custodial architecture.** A sovereign node keeps its user's encrypted
+  keys and data local and does not pool customer funds. Regulatory
+  classification still depends on the deployed service, actual funds flow,
+  control, jurisdiction, and provider contract; “non-custodial” is not an
+  automatic legal exemption.
 - **Local-first.** Everyone self-runs; no central server, no central account, no telemetry. Your keys, your data, your machine. "For everyone" = no one needs anyone else's server.
-- **KYC at the rail, never CashLoom.** Fiat rails (Stripe, banks) perform their own KYC on the user's *own* account; CashLoom never sees, holds, or collects it. Crypto rails need no KYC.
+- **Identity/compliance at the rail.** Fiat providers perform onboarding on
+  their own accounts. A local CashLoom node does not operate a central identity
+  store by default. Permissionless crypto protocols do not require CashLoom
+  KYC, while hosted providers may apply KYT, sanctions, or account controls.
 - **Pass-through fees only.** No CashLoom markup — there is no intermediary to take one. Miner/on-chain fee for crypto; the rail's processing fee for fiat.
 
-The honest asymmetry, stated plainly: **crypto is genuinely no-info / ~free / P2P; fiat is no-info-at-CashLoom but KYC-at-rail.** The universal `pay()` abstraction carries both without pretending the difference away.
+The honest asymmetry, stated plainly: **self-custodied crypto can be direct but
+is publicly observable and network-fee-bearing; fiat is provider-mediated and
+usually identity-bound.** The universal `pay()` abstraction carries both
+without pretending the difference away.
 
 ## 3. Existing posture — the codebase already half-builds this
 
@@ -50,10 +64,12 @@ Read-only `RailConnector` stays **untouched** (the safety invariant holds). A ne
 ```
 interface PaymentSender {
   type: string;
-  send(ctx: ConnectorContext, instruction: PaymentInstruction): Promise<PaymentReceipt>;
+  quote(ctx: SenderContext, instruction: PaymentInstruction): Promise<PaymentQuote>;
+  send(ctx: SenderContext, instruction: PaymentInstruction): Promise<PaymentReceipt>;
 }
-interface PaymentInstruction { to: string; amountMinor: string; asset: string; }
-interface PaymentReceipt { externalId: string; feeMinor: string; status: SendStatus; }
+interface PaymentInstruction { to: string; amountMinor: string; asset: string; detail?: string; }
+interface PaymentQuote { feeMinor: string; feeAsset: string; summary: string; detail?: string; }
+interface PaymentReceipt { externalId: string; status: SendStatus; }
 ```
 
 One sender per rail. Stricter than read: explicit user intent, destination + amount validation, **fee disclosed before submit**, full audit trail, and the same never-log-secrets/PII discipline as the read seam. Never extends `RailConnector`.
@@ -67,10 +83,12 @@ Two credential types, both local, both non-custodial:
 
 ### 5.3 The `pay()` primitive
 
-`pay({ fromAccountId, to, amountMinor, asset })`:
+`pay()` is a quote/confirm rite:
 1. resolve the from-Account's rail + its `PaymentSender` + credential;
-2. construct + sign/submit (crypto) or instruct (fiat);
-3. record the resulting transaction (reuse the existing transaction model + dedupe on `externalId`).
+2. quote and persist the exact destination, amount, and fee/rail detail without signing;
+3. atomically claim one explicit confirmation;
+4. sign locally and persist the deterministic transaction ID before one submission; and
+5. record or reconcile the result by the rail's external ID.
 
 Universal over rails. `to` is rail-specific (see addressing).
 
@@ -80,9 +98,9 @@ CashLoom runs on **your** machine: the shipped Bun + Hono + bun:sqlite stack, ru
 
 ### 5.5 Rails (first slice)
 
-- **Crypto (no-info rail):**
+- **Crypto (self-custodied rail):**
   - **BTC on-chain** — sign locally, broadcast via Esplora (reuse the existing read node).
-  - **USDC on Base** — cheap L2; EVM signer via ethers, broadcast via Alchemy / public RPC.
+  - **ETH + USDC on Base** — EVM signer via viem, broadcast via a public or user-selected RPC.
   - Lightning = **fast-follow** (needs a node — LDK embedded vs connect an existing node).
 - **Fiat (KYC-at-rail) — _planned, not yet shipped_:**
   - **Stripe (send)** — _design only; no Stripe sender ships yet — `sovereign/src/senders/` holds the BTC and EVM senders only._ When built it reuses the existing Stripe integration with a **separate write-scope key** (not the read-only `rk_`): Connect transfers (account→account) + payment links (anyone pays by card). KYC is Stripe's, on the user's account; CashLoom collects nothing.
@@ -94,11 +112,21 @@ CashLoom runs on **your** machine: the shipped Bun + Hono + bun:sqlite stack, ru
 
 ### 5.7 Compliance + fees
 
-CashLoom is non-custodial **software** (never holds funds → not a money transmitter). Fiat KYC lives at the rail. Fees are pass-through only (miner/on-chain for crypto; Stripe's processing cut for fiat); no CashLoom markup.
+The sovereign implementation is designed so CashLoom does not pool user funds,
+but a hosted facilitator, marketplace, payment-initiation flow, or
+CashLoom-controlled provider balance can change the regulatory analysis. Each
+production funds flow needs provider underwriting and jurisdiction-specific
+review; see [`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md). The current
+product policy is pass-through network/provider fees with no CashLoom markup.
 
 ## 6. First-slice done-state
 
-You run CashLoom locally, hold your **BTC key + USDC key** (local/encrypted), and `pay()` any BTC or USDC-on-Base address — non-custodial, nothing collected by CashLoom, ~free on crypto. The two crypto senders (`sovereign/src/senders/btc.sender.ts` + `evm.sender.ts`) ship today; the **Stripe (fiat) sender is still design-only**, so the KYC-rail half of this done-state — `pay()` to a Stripe link/account — is not yet reachable. The no-info crypto rails prove the universal primitive end-to-end; the fiat rail lands next.
+You run CashLoom locally, hold your **BTC key + Base key**
+(local/encrypted), and `pay()` a BTC, ETH, or USDC-on-Base address. The two
+crypto senders (`sovereign/src/senders/btc.sender.ts` + `evm.sender.ts`) ship
+today; the **Stripe (fiat) sender is still design-only**, so provider-backed
+fiat payment is not yet reachable. The self-custodied crypto rails prove the
+quote/sign/submit primitive end-to-end; the fiat rail lands next.
 
 ## 7. "For everyone" — the protocol is open
 
@@ -111,7 +139,10 @@ You run CashLoom locally, hold your **BTC key + USDC key** (local/encrypted), an
 
 **This spec covers the first slice only.** Each fast-follow gets its own spec → plan → implementation cycle:
 
-- **First slice (this spec):** `PaymentSender` seam + local key custody + `pay()` primitive + BTC / USDC-on-Base / Stripe senders + local-run + direct addressing.
+- **Shipped slice:** `PaymentSender` seam + local key custody + quote/confirm
+  `pay()` + BTC / ETH / USDC-on-Base senders + local-run + direct addressing.
+- **Provider slice:** Stripe Connect direct charges first; no Stripe sender is
+  present yet. See [`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md).
 - **Fast-follows:** Lightning; Tauri desktop packaging; `you@cashloom` payment pointer; more rails (SEPA, UPI, Wise, SOL, XMR); B2B flows (invoices, recurring, multi-party settlement); the open-source decision.
 
 ## 9. Open decisions (flagged, not blocking the first slice)
@@ -123,4 +154,6 @@ You run CashLoom locally, hold your **BTC key + USDC key** (local/encrypted), an
 
 ---
 
-*The protocol holds: non-custodial, local-first, no-info, pass-through fees, open. Everyone pays everyone. The reference implementation begins with the first slice above.*
+*The protocol aims to stay self-custodial, local-first, data-minimizing,
+pass-through-fee, and open. Everyone pays everyone. The reference
+implementation begins with the shipped slice above.*

@@ -37,7 +37,7 @@ interface MockRoute {
   utxos?: unknown;
   fees?: unknown;
   tip?: string;
-  broadcast?: (body: string) => Response;
+  broadcast?: (body: string) => Response | Promise<Response>;
 }
 let route: MockRoute = {};
 let broadcastBodies: string[] = [];
@@ -311,6 +311,35 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
 
     // And the rite holds: a second confirm cannot resurrect it.
     await expect(confirmPayment(quote.paymentId)).rejects.toThrow(/only a fresh quote/);
+  });
+
+  it("claims a quote atomically so concurrent confirms sign and broadcast only once", async () => {
+    resetMock({ utxos: [utxo(utxoId("e7"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+
+    let signalBroadcast!: () => void;
+    const broadcastStarted = new Promise<void>((resolve) => {
+      signalBroadcast = resolve;
+    });
+    let releaseBroadcast!: () => void;
+    const mayFinishBroadcast = new Promise<void>((resolve) => {
+      releaseBroadcast = resolve;
+    });
+    route.broadcast = async () => {
+      signalBroadcast();
+      await mayFinishBroadcast;
+      return new Response("ok");
+    };
+
+    const first = confirmPayment(quote.paymentId);
+    await broadcastStarted;
+    await expect(confirmPayment(quote.paymentId)).rejects.toThrow(/only a fresh quote/);
+    releaseBroadcast();
+
+    const result = await first;
+    expect(result.status).toBe("broadcast");
+    expect(broadcastBodies).toHaveLength(1);
   });
 
   it("a definitive node rejection fails loud, with the spent-coins hint", async () => {
