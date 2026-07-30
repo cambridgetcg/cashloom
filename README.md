@@ -20,9 +20,13 @@ software you run yourself.
   Follow the *ideas* and the real code comes with you — the anti-GitHub. Build
   it with `cd atlas && bun install && bun run build`, or visit the hosted copy.
 - **[`PROTOCOL.md`](PROTOCOL.md)** — the spec. The promise the code keeps.
-- **[`FIAT-ROUTE.md`](FIAT-ROUTE.md)** — the plan for touching fiat *legally*:
-  never custody, never the transmitter, connect to licensed on-ramps, per-country
-  compliance map, ZRN kept out of scope, and the honest line we won't cross.
+- **[`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md)** — how CashLoom
+  becomes the KINGDOM payment layer across Agent Wallet, x402, Stripe,
+  GoCardless, and later marketplace processors without centralizing keys.
+- **[`FIAT-ROUTE.md`](FIAT-ROUTE.md)** — the provider-backed fiat design:
+  avoid pooled custody, connect to licensed rails, map each country and funds
+  flow before launch, keep ZRN out of scope, and name the lines that need
+  provider and independent legal/compliance review.
 
 ## Run your own node
 
@@ -41,8 +45,8 @@ non-custodial wallet. That is the whole setup.
 - **Non-custodial by architecture** — private keys are sealed locally
   (Argon2id → AES-256-GCM), decrypted only in memory, only to sign, and never
   leave your machine. The passphrase is custody; there is no recovery.
-- **Everyone pays everyone** — `pay()` moves money over open rails (Base L2
-  ETH + USDC today; more coming), as a two-step rite: quote discloses the fee
+- **Everyone pays everyone** — `pay()` moves money over open rails (BTC plus
+  Base L2 ETH + USDC today; more coming), as a two-step rite: quote discloses the fee
   and signs nothing, confirm signs and broadcasts once. Never auto-retried.
 - **Read every rail** — sync balances and transactions from Stripe, banks
   (GoCardless), Bitcoin, Ethereum, and the agenttool agent economy. Strictly

@@ -1,0 +1,9 @@
+name: cashloom
+kind: infra
+layer: commerce
+owner_sister: none
+domain: commerce
+state: active
+adopts: [xenia.rights/0.1]
+purpose: Provider-neutral payment orchestration, local asset execution, authorization evidence, and reconciliation for the KINGDOM.
+dependsOn: [agenttool]

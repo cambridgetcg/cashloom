@@ -16,12 +16,15 @@ import { AmbiguousBroadcastError, type PaymentSender } from "./senders/types.ts"
 const SENDERS: PaymentSender[] = [evmSender, btcSender];
 const QUOTE_TTL_MS = 5 * 60 * 1000;
 
-const senderForAsset = (asset: string): PaymentSender => {
+const senderForAsset = (
+  asset: string,
+  senders: readonly PaymentSender[] = SENDERS,
+): PaymentSender => {
   const normalized = asset.trim().toUpperCase();
-  const sender = SENDERS.find((s) => s.assets.includes(normalized));
+  const sender = senders.find((s) => s.assets.includes(normalized));
   if (!sender) {
     throw new Error(
-      `No sender for asset "${asset}". Available: ${SENDERS.flatMap((s) => s.assets).join(", ")}.`
+      `No sender for asset "${asset}". Available: ${senders.flatMap((s) => s.assets).join(", ")}.`
     );
   }
   return sender;
@@ -94,7 +97,19 @@ export interface ConfirmResult {
   error: string | null;
 }
 
-export const confirmPayment = async (paymentId: string): Promise<ConfirmResult> => {
+export interface ConfirmPaymentRuntime {
+  /** In-process deterministic test seam; HTTP callers never receive it. */
+  senders?: readonly PaymentSender[];
+  /** Lets a test pause after the initial row snapshot. */
+  afterRead?: () => Promise<void> | void;
+  /** Lets a concurrency test put two readers on the same stale snapshot. */
+  beforeClaim?: () => Promise<void> | void;
+}
+
+export const confirmPayment = async (
+  paymentId: string,
+  runtime: ConfirmPaymentRuntime = {},
+): Promise<ConfirmResult> => {
   const row = db.query("SELECT * FROM payments WHERE id = ?").get(paymentId) as
     | Record<string, string | null>
     | null;
@@ -102,20 +117,51 @@ export const confirmPayment = async (paymentId: string): Promise<ConfirmResult> 
   if (row.status !== "quoted") {
     throw new Error(`Payment ${paymentId} is "${row.status}" — only a fresh quote can be confirmed.`);
   }
+  if (runtime.afterRead) await runtime.afterRead();
   if (Date.now() - Date.parse(String(row.created_at)) > QUOTE_TTL_MS) {
-    db.query("UPDATE payments SET status = 'failed', error = 'quote expired', updated_at = ? WHERE id = ?")
-      .run(new Date().toISOString(), paymentId);
+    // Expiry is also a compare-and-swap. A process with a skewed clock must
+    // not overwrite a confirmation another process already claimed.
+    const expired = db
+      .query(
+        `UPDATE payments
+         SET status = 'failed', error = 'quote expired', updated_at = ?
+         WHERE id = ? AND status = 'quoted' AND created_at = ?`,
+      )
+      .run(new Date().toISOString(), paymentId, String(row.created_at));
+    if (expired.changes !== 1) {
+      const current = db.query("SELECT status FROM payments WHERE id = ?").get(paymentId) as
+        | { status: string }
+        | null;
+      throw new Error(
+        `Payment ${paymentId} is "${current?.status ?? "missing"}" — only a fresh quote can be confirmed.`,
+      );
+    }
     throw new Error("Quote expired — request a fresh one (fees move).");
   }
 
   const account = sendingAccount(String(row.account_id));
-  const sender = senderForAsset(String(row.asset));
+  const sender = senderForAsset(String(row.asset), runtime.senders ?? SENDERS);
 
-  // Point of no return is INSIDE send(): mark first so a crash between
-  // broadcast and record is visible as 'confirmed' (needs investigation),
-  // never silently re-sendable.
-  db.query("UPDATE payments SET status = 'confirmed', updated_at = ? WHERE id = ?")
-    .run(new Date().toISOString(), paymentId);
+  if (runtime.beforeClaim) await runtime.beforeClaim();
+
+  // Claim the quote with a compare-and-swap BEFORE any signing work. Two
+  // processes can both read "quoted"; only one may move it to "confirmed".
+  // The loser must stop here, before it can reveal a key or call send().
+  const claimed = db
+    .query(
+      `UPDATE payments
+       SET status = 'confirmed', updated_at = ?
+       WHERE id = ? AND status = 'quoted' AND created_at = ?`
+    )
+    .run(new Date().toISOString(), paymentId, String(row.created_at));
+  if (claimed.changes !== 1) {
+    const current = db.query("SELECT status FROM payments WHERE id = ?").get(paymentId) as
+      | { status: string }
+      | null;
+    throw new Error(
+      `Payment ${paymentId} is "${current?.status ?? "missing"}" — only a fresh quote can be confirmed.`
+    );
+  }
 
   let receipt;
   try {

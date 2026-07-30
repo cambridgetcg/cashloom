@@ -1,7 +1,7 @@
 /**
- * End-to-end proof that the capability gate is WIRED into the pay flow, with a
- * real vault-signed authorization. Run against a THROWAWAY vault so it touches
- * nothing real:
+ * End-to-end proof of CashLoom's durable Agent Wallet authorization boundary,
+ * with a real vault-signed attestation. This is evidence-only: it is not bound
+ * to a CashLoom quote and cannot execute a payment.
  *
  *   CASHLOOM_DATA_DIR="$(mktemp -d)" bun src/pay/agent-pay.demo.ts
  */
@@ -18,19 +18,20 @@ const base = {
   intentJson: by.intent,
   simulationJson: by.simulation,
 };
-const ASSET = "eip155:84532/slip44:60";
+const trustedAdapter = by.simulation.adapter.key_id as string;
+const runtime = {
+  now: () => "2026-07-21T10:02:00.000Z",
+  trustedSimulationKeyIds: [trustedAdapter],
+};
 
 await vault.initialize("throwaway-passphrase");
 await vault.unlock("throwaway-passphrase");
 console.log("\nvault: initialized + unlocked (throwaway)\n");
 
-// PASS — an honest, within-grant payment.
-const res = await authorizeAgentPayment_wired({
-  ...base,
-  context: { now: "2026-07-21T10:02:00.000Z", usage: { revocation_nonce: 0, intent_count: 0, spent: [], host_verified_approval_ids: [] } },
-});
+// PASS — an honest, within-grant intent under a locally trusted simulation.
+const res = await authorizeAgentPayment_wired(base, runtime);
 const a = res.attestation;
-console.log("✅ AUTHORIZED (within grant, NOT broadcast)");
+console.log("✅ AUTHORIZED (within grant, NOT bound or broadcast)");
 console.log("   host authority :", a.host_authority.slice(0, 20) + "…");
 console.log("   intent         :", a.intent_id, "→", a.payees[0]?.slice(0, 22) + "…");
 console.log("   vault signature:", a.signature.slice(0, 28) + "…");
@@ -42,19 +43,16 @@ const pub = new Uint8Array(Buffer.from(a.host_authority, "base64url"));
 const good = await ed25519.verifyAsync(sig, digest, pub);
 console.log("   → signature verifies against the host key:", good, "\n");
 
-// REFUSE — the same intent would drain past the cumulative cap.
+// REFUSE — replaying the same signed intent cannot mint another reservation.
 let refused = false;
 try {
-  await authorizeAgentPayment_wired({
-    ...base,
-    context: { now: "2026-07-21T10:02:00.000Z", usage: { revocation_nonce: 0, intent_count: 0, spent: [{ asset_id: ASSET, amount_atomic: "20" }], host_verified_approval_ids: [] } },
-  });
+  await authorizeAgentPayment_wired(base, runtime);
 } catch (e: any) {
   refused = true;
-  console.log("⛔ REFUSED (would drain):", String(e?.message ?? e).slice(0, 60));
+  console.log("⛔ REFUSED (replay):", String(e?.message ?? e).slice(0, 72));
 }
 
 const ok = res.authorized && good && refused;
-console.log(`\n${ok ? "✅ WIRED PROOF HOLDS" : "❌ unexpected"}: a within-grant payment is authorized + vault-signed; a drain is refused; nothing is broadcast.\n`);
+console.log(`\n${ok ? "✅ HOST PROOF HOLDS" : "❌ unexpected"}: trusted evidence is reserved + vault-signed once; replay is refused; nothing is bound or broadcast.\n`);
 vault.lock();
 process.exit(ok ? 0 : 1);

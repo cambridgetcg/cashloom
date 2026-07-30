@@ -5,7 +5,7 @@
     "": {
       "name": "cashloom-sovereign",
       "dependencies": {
-        "@agenttool/wallet": "^0.1.0",
+        "@agenttool/wallet": "0.1.3",
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@noble/curves": "~2.2.0",
         "@noble/hashes": "^2.0.1",
@@ -26,7 +26,7 @@
   "packages": {
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.1", "", {}, "sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ=="],
 
-    "@agenttool/wallet": ["@agenttool/wallet@0.1.0", "", { "dependencies": { "@noble/ed25519": "^2.2.3", "@noble/hashes": "^2.0.1" } }, "sha512-EGf36qr78pXlz+xse1AtFpzqeFvjkLuBJ3kEetw2ji8d45kw/UbUefz/bcXaPly0MlaKDyJBMLl92AW8vVXEaw=="],
+    "@agenttool/wallet": ["@agenttool/wallet@0.1.3", "", { "dependencies": { "@noble/ed25519": "^2.3.0", "@noble/hashes": "^2.0.1" } }, "sha512-DVfFZFhMoH7x4V1yBiNP/1W7Owzr9pQyu6kK77hP2upQJSh6J3yxhsC2MDwhIaNF1v58mlXUMRI7u2TEgWZIow=="],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.28.1", "", { "os": "aix", "cpu": "ppc64" }, "sha512-Svl7tq8k/08+p6CXPpRjQ1fKX+1odH/BQbb48fV6fj3CWHhsoIOoY87w1oHXm0qEpkIK3ZfVgp0hed3XBXzXMQ=="],
 

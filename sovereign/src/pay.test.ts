@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PaymentSender } from "./senders/types.ts";
 
 process.env.CASHLOOM_DATA_DIR = mkdtempSync(join(tmpdir(), "cashloom-pay-test-"));
 
@@ -54,6 +55,89 @@ describe("pay — quote/confirm discipline", () => {
     expect(row.status).toBe("failed");
     // A second confirm cannot resurrect it — no auto-retry, no replay.
     await expect(confirmPayment(paymentId)).rejects.toThrow(/only a fresh quote/);
+  });
+
+  it("does not let a stale expiry snapshot overwrite a confirmation claimed elsewhere", async () => {
+    const accountId = makeAccount(newId());
+    const paymentId = newId();
+    const staleIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    db.query(
+      `INSERT INTO payments
+         (id, account_id, rail, to_addr, asset, amount_minor, status, created_at)
+       VALUES (?, ?, 'evm-base', ?, 'USDC', '1', 'quoted', ?)`,
+    ).run(paymentId, accountId, "0x" + "1".repeat(40), staleIso);
+
+    let signalRead!: () => void;
+    const snapshotRead = new Promise<void>((resolve) => {
+      signalRead = resolve;
+    });
+    let resume!: () => void;
+    const mayExpire = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const confirming = confirmPayment(paymentId, {
+      afterRead: async () => {
+        signalRead();
+        await mayExpire;
+      },
+    });
+    await snapshotRead;
+    db.query("UPDATE payments SET status = 'confirmed' WHERE id = ?").run(paymentId);
+    resume();
+
+    await expect(confirming).rejects.toThrow(/only a fresh quote/);
+    const row = db.query("SELECT status FROM payments WHERE id = ?").get(paymentId) as {
+      status: string;
+    };
+    expect(row.status).toBe("confirmed");
+  });
+
+  it("uses a compare-and-swap claim when two confirms read the same quote", async () => {
+    const accountId = makeAccount(newId());
+    const paymentId = newId();
+    db.query(
+      `INSERT INTO payments
+         (id, account_id, rail, to_addr, asset, amount_minor, fee_minor, status, created_at)
+       VALUES (?, ?, 'test', 'test-destination', 'TEST', '7', '0', 'quoted', ?)`,
+    ).run(paymentId, accountId, new Date().toISOString());
+
+    let sends = 0;
+    const sender: PaymentSender = {
+      type: "test",
+      assets: ["TEST"],
+      async quote() {
+        throw new Error("not used");
+      },
+      async send(_ctx, _instruction, hooks) {
+        sends += 1;
+        hooks?.onSigned?.("test-operation");
+        return { externalId: "test-operation", status: "broadcast" };
+      },
+    };
+
+    let arrivals = 0;
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const beforeClaim = async () => {
+      arrivals += 1;
+      if (arrivals === 2) release();
+      await bothRead;
+    };
+
+    const results = await Promise.allSettled([
+      confirmPayment(paymentId, { senders: [sender], beforeClaim }),
+      confirmPayment(paymentId, { senders: [sender], beforeClaim }),
+    ]);
+
+    expect(sends).toBe(1);
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find(({ status }) => status === "rejected");
+    expect(rejected?.status).toBe("rejected");
+    expect(String((rejected as PromiseRejectedResult).reason)).toMatch(
+      /only a fresh quote/,
+    );
   });
 });
 
