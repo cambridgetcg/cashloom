@@ -1,9 +1,16 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as ed25519 from "@noble/ed25519";
-import { canonicalJsonBytes } from "@agenttool/wallet";
+import {
+  canonicalJsonBytes,
+  sealSimulationReceipt,
+  sealTransactionIntent,
+  sealWalletCapability,
+  sealWalletDescriptor,
+  type RecordSigner,
+} from "@agenttool/wallet";
 import vectors from "@agenttool/wallet/vectors.json";
 import { sha256 } from "@noble/hashes/sha2.js";
 
@@ -28,10 +35,32 @@ const runtime = {
   trustedSimulationKeyIds: [String(by.simulation.adapter.key_id)],
 };
 
+const testSigner = async (seedByte: number) => {
+  const privateKey = new Uint8Array(32).fill(seedByte);
+  const publicKey = await ed25519.getPublicKeyAsync(privateKey);
+  const public_key = Buffer.from(publicKey).toString("base64url");
+  const identity = {
+    algorithm: "Ed25519" as const,
+    key_id: `sha256:${Buffer.from(sha256(publicKey)).toString("hex")}` as const,
+    public_key,
+  };
+  const signer: RecordSigner = {
+    public_key,
+    async sign_digest(digest) {
+      return Buffer.from(await ed25519.signAsync(digest, privateKey)).toString(
+        "base64url",
+      );
+    },
+  };
+  return { identity, signer };
+};
+
+beforeAll(async () => {
+  await vault.initialize("correct horse battery staple");
+});
+
 describe("Agent Wallet host boundary", () => {
   it("fails closed on adapter trust, reserves local usage atomically, attests once, and refuses replay", async () => {
-    await vault.initialize("correct horse battery staple");
-
     await expect(
       authorizeAgentPayment_wired(request, {
         ...runtime,
@@ -105,5 +134,107 @@ describe("Agent Wallet host boundary", () => {
       .query("SELECT COUNT(*) AS count FROM agent_authorizations")
       .get() as { count: number };
     expect(count.count).toBe(1);
+  });
+
+  it("durably consumes the signed intent nonce even when record ids change", async () => {
+    const authority = await testSigner(11);
+    const delegate = await testSigner(12);
+    const adapter = await testSigner(13);
+    const unsigned = (record: Record<string, any>) => {
+      const { record_id: _recordId, signature: _signature, ...core } = record;
+      return core;
+    };
+
+    const descriptor = await sealWalletDescriptor(
+      {
+        ...unsigned(by.descriptor),
+        wallet_id: "77777777-7777-4777-8777-777777777777",
+        authority: authority.identity,
+      } as any,
+      authority.signer,
+    );
+    const capability = await sealWalletCapability(
+      {
+        ...unsigned(by.capability),
+        grant_id: "88888888-8888-4888-8888-888888888888",
+        wallet_id: descriptor.wallet_id,
+        descriptor_id: descriptor.record_id,
+        issuer: authority.identity,
+        delegate: delegate.identity,
+      } as any,
+      authority.signer,
+    );
+
+    const makeIntentPair = async (suffix: "1" | "2") => {
+      const intent = await sealTransactionIntent(
+        {
+          ...unsigned(by.intent),
+          intent_id: `55555555-5555-4555-8555-55555555555${suffix}`,
+          wallet_id: descriptor.wallet_id,
+          descriptor_id: descriptor.record_id,
+          grant_id: capability.grant_id,
+          capability_record_id: capability.record_id,
+          delegate: delegate.identity,
+          nonce: "same-signed-agent-nonce",
+        } as any,
+        delegate.signer,
+      );
+      const simulation = await sealSimulationReceipt(
+        {
+          ...unsigned(by.simulation),
+          simulation_id: `66666666-6666-4666-8666-66666666666${suffix}`,
+          intent_id: intent.intent_id,
+          intent_record_id: intent.record_id,
+          adapter: adapter.identity,
+        } as any,
+        adapter.signer,
+      );
+      return { intent, simulation };
+    };
+
+    const first = await makeIntentPair("1");
+    const second = await makeIntentPair("2");
+    const signedNonceRuntime = {
+      ...runtime,
+      trustedSimulationKeyIds: [adapter.identity.key_id],
+    };
+
+    await expect(
+      authorizeAgentPayment_wired(
+        {
+          descriptorJson: descriptor,
+          capabilityJson: capability,
+          intentJson: first.intent,
+          simulationJson: first.simulation,
+        },
+        signedNonceRuntime,
+      ),
+    ).resolves.toMatchObject({
+      authorized: true,
+      attestation: { status: "authorized-not-bound", payment_id: null },
+    });
+
+    // Different signed intent/simulation record IDs are not enough to reuse
+    // the same semantic nonce inside one wallet/grant/source scope.
+    await expect(
+      authorizeAgentPayment_wired(
+        {
+          descriptorJson: descriptor,
+          capabilityJson: capability,
+          intentJson: second.intent,
+          simulationJson: second.simulation,
+        },
+        signedNonceRuntime,
+      ),
+    ).rejects.toThrow(/already reserved|replay refused/);
+
+    const stored = db
+      .query(
+        `SELECT intent_nonce
+         FROM agent_authorizations
+         WHERE intent_record_id = ?`,
+      )
+      .get(first.intent.record_id) as { intent_nonce: string };
+    expect(stored.intent_nonce).toBe("same-signed-agent-nonce");
   });
 });

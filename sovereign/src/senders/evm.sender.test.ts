@@ -34,6 +34,9 @@ const makeHarness = () => {
     nonce: 17,
     signFailure: null as Error | null,
     dispatchFailure: null as Error | null,
+    markSignedFailure: null as Error | null,
+    markSubmittingFailure: null as Error | null,
+    markSubmittedFailure: null as Error | null,
     submittedHash: LOCAL_HASH as Hex,
   };
   const calls = {
@@ -69,6 +72,28 @@ const makeHarness = () => {
     async getPendingNonce() {
       return state.nonce;
     },
+    async reserveNonce(_ctx, _address, pendingNonce) {
+      calls.order.push(`reserve:${pendingNonce}`);
+      return state.nonce;
+    },
+    async markNonceSigned() {
+      calls.order.push("nonce:signed");
+      if (state.markSignedFailure) throw state.markSignedFailure;
+    },
+    async markNonceSubmitting() {
+      calls.order.push("nonce:submitting");
+      if (state.markSubmittingFailure) throw state.markSubmittingFailure;
+    },
+    async markNonceSubmitted() {
+      calls.order.push("nonce:submitted");
+      if (state.markSubmittedFailure) throw state.markSubmittedFailure;
+    },
+    async markNonceSubmissionUnknown() {
+      calls.order.push("nonce:unknown");
+    },
+    async releaseNoncePreSubmit() {
+      calls.order.push("nonce:released");
+    },
     async signTransaction(_ctx, expectedFrom, request) {
       calls.order.push("sign");
       calls.signed.push({ expectedFrom, request });
@@ -87,7 +112,7 @@ const makeHarness = () => {
     sender: createEvmSender(dependencies),
     state,
     calls,
-    ctx: { vaultKeyId: "test-evm-key" },
+    ctx: { vaultKeyId: "test-evm-key", paymentId: "test-payment" },
   };
 };
 
@@ -155,7 +180,15 @@ describe("evm sender — quote-bound raw transaction", () => {
     );
 
     expect(receipt).toEqual({ externalId: LOCAL_HASH, status: "broadcast" });
-    expect(calls.order).toEqual(["sign", `persist:${LOCAL_HASH}`, "dispatch"]);
+    expect(calls.order).toEqual([
+      "reserve:17",
+      "sign",
+      "nonce:signed",
+      `persist:${LOCAL_HASH}`,
+      "nonce:submitting",
+      "dispatch",
+      "nonce:submitted",
+    ]);
     expect(calls.dispatched).toEqual([SERIALIZED]);
     expect(calls.signed).toEqual([
       {
@@ -200,6 +233,14 @@ describe("evm sender — quote-bound raw transaction", () => {
       async getPendingNonce() {
         return 17;
       },
+      async reserveNonce(_ctx, _address, pendingNonce) {
+        return pendingNonce;
+      },
+      async markNonceSigned() {},
+      async markNonceSubmitting() {},
+      async markNonceSubmitted() {},
+      async markNonceSubmissionUnknown() {},
+      async releaseNoncePreSubmit() {},
       async signTransaction(_ctx, expectedFrom, request) {
         expect(expectedFrom).toBe(account.address);
         return account.signTransaction(request);
@@ -248,9 +289,10 @@ describe("evm sender — quote-bound raw transaction", () => {
     expect(caught).toBeInstanceOf(AmbiguousBroadcastError);
     expect((caught as AmbiguousBroadcastError).externalId).toBe(LOCAL_HASH);
     expect(calls.dispatched).toEqual([SERIALIZED]);
+    expect(calls.order).toContain("nonce:unknown");
   });
 
-  it("treats signing and signed-hash persistence failures as pre-dispatch failures", async () => {
+  it("releases signing and pre-submit persistence failures before any dispatch", async () => {
     {
       const { sender, ctx, state, calls } = makeHarness();
       const quote = await sender.quote(ctx, instruction);
@@ -261,6 +303,7 @@ describe("evm sender — quote-bound raw transaction", () => {
       expect(error).toBeInstanceOf(Error);
       expect(error).not.toBeInstanceOf(AmbiguousBroadcastError);
       expect(calls.dispatched).toHaveLength(0);
+      expect(calls.order).toContain("nonce:released");
     }
 
     {
@@ -276,7 +319,37 @@ describe("evm sender — quote-bound raw transaction", () => {
       expect(error).toBeInstanceOf(Error);
       expect(error).not.toBeInstanceOf(AmbiguousBroadcastError);
       expect(calls.dispatched).toHaveLength(0);
+      expect(calls.order).toContain("nonce:released");
     }
+
+    {
+      const { sender, ctx, state, calls } = makeHarness();
+      const quote = await sender.quote(ctx, instruction);
+      state.markSubmittingFailure = new Error("nonce database refused");
+      const error = await sender
+        .send(ctx, { ...instruction, detail: quote.detail })
+        .then(() => null, (caught: Error) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(AmbiguousBroadcastError);
+      expect(calls.dispatched).toHaveLength(0);
+      expect(calls.order.at(-1)).toBe("nonce:released");
+    }
+  });
+
+  it("keeps post-egress nonce bookkeeping failures sticky and ambiguous", async () => {
+    const { sender, ctx, state, calls } = makeHarness();
+    const quote = await sender.quote(ctx, instruction);
+    state.markSubmittedFailure = new Error("disk full after RPC acknowledgement");
+
+    const error = await sender
+      .send(ctx, { ...instruction, detail: quote.detail })
+      .then(() => null, (caught: Error) => caught);
+
+    expect(error).toBeInstanceOf(AmbiguousBroadcastError);
+    expect((error as AmbiguousBroadcastError).externalId).toBe(LOCAL_HASH);
+    expect(calls.dispatched).toEqual([SERIALIZED]);
+    expect(calls.order).toContain("nonce:unknown");
+    expect(calls.order).not.toContain("nonce:released");
   });
 
   it("rejects an accepted gas limit that became insufficient before signing", async () => {

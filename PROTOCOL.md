@@ -132,7 +132,10 @@ quote/sign/submit primitive end-to-end; the fiat rail lands next.
 
 - CashLoom is an **open payment protocol**. This document is the spec; the codebase is a **reference implementation**. Anyone may implement or run it.
 - **No central dependency** — everyone self-runs a non-custodial node; interoperability is via open rails (crypto networks) + shared fiat rails, never via a CashLoom-operated server.
-- **Financial inclusion** — no-KYC crypto rails open payment to anyone a bank won't take; that's what makes it genuinely "for everyone."
+- **Financial inclusion** — self-custodied rails can reduce dependence on a
+  single provider, but they do not erase jurisdictional law, sanctions,
+  network access, counterparty screening, or the practical barriers people
+  face.
 - **Open-source the reference implementation** — *decided 2026-07-04: **yes, MIT** ([`LICENSE`](LICENSE)).* The reference implementation (the `sovereign/` node) is open so everyone can run, audit, fork, and build on it — "everyone runs their own" is only true if everyone can see and hold the code. The [`atlas/`](atlas/) is the interactive human door to it. MIT was chosen for maximum frictionless adoption (flip to Apache-2.0 if an explicit patent grant is ever wanted).
 
 ## 8. Decomposition / scope
@@ -140,7 +143,8 @@ quote/sign/submit primitive end-to-end; the fiat rail lands next.
 **This spec covers the first slice only.** Each fast-follow gets its own spec → plan → implementation cycle:
 
 - **Shipped slice:** `PaymentSender` seam + local key custody + quote/confirm
-  `pay()` + BTC / ETH / USDC-on-Base senders + local-run + direct addressing.
+  `pay()` + BTC / ETH / USDC-on-Base senders + durable cross-process EVM
+  account-nonce reservations + local-run + direct addressing.
 - **Provider slice:** Stripe Connect direct charges first; no Stripe sender is
   present yet. See [`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md).
 - **Fast-follows:** Lightning; Tauri desktop packaging; `you@cashloom` payment pointer; more rails (SEPA, UPI, Wise, SOL, XMR); B2B flows (invoices, recurring, multi-party settlement); the open-source decision.

@@ -96,6 +96,40 @@ export interface EvmSenderDependencies {
     maxPriorityFeePerGas: bigint;
   }>;
   getPendingNonce(address: Address): Promise<number>;
+  reserveNonce(
+    ctx: SenderContext,
+    address: Address,
+    pendingNonce: number
+  ): Promise<number>;
+  markNonceSigned(
+    ctx: SenderContext,
+    address: Address,
+    nonce: number,
+    txHash: Hex
+  ): Promise<void>;
+  markNonceSubmitting(
+    ctx: SenderContext,
+    address: Address,
+    nonce: number,
+    txHash: Hex
+  ): Promise<void>;
+  markNonceSubmitted(
+    ctx: SenderContext,
+    address: Address,
+    nonce: number,
+    txHash: Hex
+  ): Promise<void>;
+  markNonceSubmissionUnknown(
+    ctx: SenderContext,
+    address: Address,
+    nonce: number,
+    txHash: Hex
+  ): Promise<void>;
+  releaseNoncePreSubmit(
+    ctx: SenderContext,
+    address: Address,
+    nonce: number
+  ): Promise<void>;
   signTransaction(
     ctx: SenderContext,
     expectedFrom: Address,
@@ -283,6 +317,78 @@ const defaultDependencies: EvmSenderDependencies = {
     return publicClient().getTransactionCount({ address, blockTag: "pending" });
   },
 
+  async reserveNonce(ctx, address, pendingNonce) {
+    if (!ctx.paymentId) {
+      throw new Error("An EVM send requires a persisted payment before nonce reservation.");
+    }
+    const { reserveEvmNonce } = await import("./evm-nonce.ts");
+    return reserveEvmNonce({
+      paymentId: ctx.paymentId,
+      chainId: base.id,
+      fromAddress: address,
+      pendingNonce,
+    });
+  },
+
+  async markNonceSigned(ctx, address, nonce, txHash) {
+    if (!ctx.paymentId) throw new Error("EVM nonce state requires a payment id.");
+    const { markEvmNonceSigned } = await import("./evm-nonce.ts");
+    markEvmNonceSigned({
+      paymentId: ctx.paymentId,
+      chainId: base.id,
+      fromAddress: address,
+      nonce,
+      txHash,
+    });
+  },
+
+  async markNonceSubmitting(ctx, address, nonce, txHash) {
+    if (!ctx.paymentId) throw new Error("EVM nonce state requires a payment id.");
+    const { markEvmNonceSubmitting } = await import("./evm-nonce.ts");
+    markEvmNonceSubmitting({
+      paymentId: ctx.paymentId,
+      chainId: base.id,
+      fromAddress: address,
+      nonce,
+      txHash,
+    });
+  },
+
+  async markNonceSubmitted(ctx, address, nonce, txHash) {
+    if (!ctx.paymentId) throw new Error("EVM nonce state requires a payment id.");
+    const { markEvmNonceSubmitted } = await import("./evm-nonce.ts");
+    markEvmNonceSubmitted({
+      paymentId: ctx.paymentId,
+      chainId: base.id,
+      fromAddress: address,
+      nonce,
+      txHash,
+    });
+  },
+
+  async markNonceSubmissionUnknown(ctx, address, nonce, txHash) {
+    if (!ctx.paymentId) throw new Error("EVM nonce state requires a payment id.");
+    const { markEvmNonceSubmissionUnknown } = await import("./evm-nonce.ts");
+    markEvmNonceSubmissionUnknown({
+      paymentId: ctx.paymentId,
+      chainId: base.id,
+      fromAddress: address,
+      nonce,
+      txHash,
+    });
+  },
+
+  async releaseNoncePreSubmit(ctx, address, nonce) {
+    if (!ctx.paymentId) throw new Error("EVM nonce state requires a payment id.");
+    const { releaseEvmNoncePreSubmit } = await import("./evm-nonce.ts");
+    releaseEvmNoncePreSubmit({
+      paymentId: ctx.paymentId,
+      chainId: base.id,
+      fromAddress: address,
+      nonce,
+    });
+  },
+
   async signTransaction(ctx, expectedFrom, request) {
     // Reveal lives for exactly this scope: derive the signer, sign, done.
     const account = privateKeyToAccount(
@@ -391,55 +497,109 @@ export const createEvmSender = (
       );
     }
 
-    const nonce = await dependencies.getPendingNonce(from);
-    if (!Number.isSafeInteger(nonce) || nonce < 0) {
+    const pendingNonce = await dependencies.getPendingNonce(from);
+    if (!Number.isSafeInteger(pendingNonce) || pendingNonce < 0) {
       throw new Error("The Base RPC returned an invalid pending nonce.");
     }
 
-    const serializedTransaction = await dependencies.signTransaction(ctx, from, {
-      chainId: base.id,
-      type: "eip1559",
-      to: request.to,
-      value: request.value,
-      data: request.data,
-      gas,
-      maxFeePerGas,
-      maxPriorityFeePerGas,
-      nonce,
-    });
-    if (
-      !isHex(serializedTransaction) ||
-      serializedTransaction === "0x" ||
-      serializedTransaction.length % 2 !== 0
-    ) {
-      throw new Error("Local EVM signing returned a malformed transaction.");
-    }
-
-    // EVM transaction hashes are keccak256(signed serialized bytes), stable
-    // before any RPC sees them. A persistence failure is pre-dispatch and
-    // remains an ordinary failure; the network has heard nothing.
-    const hash = keccak256(serializedTransaction);
-    hooks?.onSigned?.(hash);
-
-    let submittedHash: Hex;
+    let nonce: number | null = null;
+    let hash: Hex | null = null;
+    let submitting = false;
     try {
-      // One attempt only. Once this call begins, every error is ambiguous:
-      // the RPC may have accepted and relayed the exact signed bytes.
-      submittedHash = await dependencies.sendRawTransaction(serializedTransaction);
-    } catch {
-      throw new AmbiguousBroadcastError(
-        `Signed EVM transaction ${hash} was submitted, but the RPC outcome is unknown. Do not retry; reconcile this hash on Base.`,
-        hash
-      );
-    }
-    if (!HASH_PATTERN.test(submittedHash) || !sameHex(submittedHash, hash)) {
-      throw new AmbiguousBroadcastError(
-        `The Base RPC did not acknowledge signed EVM transaction ${hash} consistently. Do not retry; reconcile this hash on Base.`,
-        hash
-      );
-    }
+      // The RPC value is a lower bound. SQLite serializes all CashLoom
+      // processes sharing this sovereign database and fills the first locally
+      // free nonce at or above it. The transaction commits before vault access.
+      nonce = await dependencies.reserveNonce(ctx, from, pendingNonce);
+      if (!Number.isSafeInteger(nonce) || nonce < pendingNonce) {
+        throw new Error("Durable EVM nonce reservation returned an invalid nonce.");
+      }
 
-    return { externalId: hash, status: "broadcast" };
+      const serializedTransaction = await dependencies.signTransaction(ctx, from, {
+        chainId: base.id,
+        type: "eip1559",
+        to: request.to,
+        value: request.value,
+        data: request.data,
+        gas,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+        nonce,
+      });
+      if (
+        !isHex(serializedTransaction) ||
+        serializedTransaction === "0x" ||
+        serializedTransaction.length % 2 !== 0
+      ) {
+        throw new Error("Local EVM signing returned a malformed transaction.");
+      }
+
+      // EVM transaction hashes are keccak256(signed serialized bytes), stable
+      // before any RPC sees them. Both the nonce record and payment row become
+      // reconcilable before the durable "submitting" boundary is crossed.
+      hash = keccak256(serializedTransaction);
+      await dependencies.markNonceSigned(ctx, from, nonce, hash);
+      hooks?.onSigned?.(hash);
+      await dependencies.markNonceSubmitting(ctx, from, nonce, hash);
+      submitting = true;
+
+      let submittedHash: Hex;
+      try {
+        // One attempt only. "submitting" was committed before this call, so a
+        // crash or any exception from here is sticky and never auto-released.
+        submittedHash = await dependencies.sendRawTransaction(serializedTransaction);
+      } catch {
+        try {
+          await dependencies.markNonceSubmissionUnknown(ctx, from, nonce, hash);
+        } catch {
+          // "submitting" is already a live, non-reusable state.
+        }
+        throw new AmbiguousBroadcastError(
+          `Signed EVM transaction ${hash} was submitted, but the RPC outcome is unknown. Do not retry; reconcile this hash on Base.`,
+          hash,
+        );
+      }
+      if (!HASH_PATTERN.test(submittedHash) || !sameHex(submittedHash, hash)) {
+        try {
+          await dependencies.markNonceSubmissionUnknown(ctx, from, nonce, hash);
+        } catch {
+          // "submitting" is already a live, non-reusable state.
+        }
+        throw new AmbiguousBroadcastError(
+          `The Base RPC did not acknowledge signed EVM transaction ${hash} consistently. Do not retry; reconcile this hash on Base.`,
+          hash,
+        );
+      }
+
+      try {
+        await dependencies.markNonceSubmitted(ctx, from, nonce, hash);
+      } catch {
+        try {
+          await dependencies.markNonceSubmissionUnknown(ctx, from, nonce, hash);
+        } catch {
+          // A submitted/submitting reservation is already non-reusable.
+        }
+        throw new AmbiguousBroadcastError(
+          `Base acknowledged signed EVM transaction ${hash}, but CashLoom could not persist the submitted nonce state. Do not retry; reconcile this hash on Base.`,
+          hash,
+        );
+      }
+
+      return { externalId: hash, status: "broadcast" };
+    } catch (error) {
+      if (!submitting && nonce !== null) {
+        try {
+          await dependencies.releaseNoncePreSubmit(ctx, from, nonce);
+        } catch (releaseError) {
+          const reason =
+            releaseError instanceof Error ? releaseError.message : "unknown release error";
+          throw new Error(
+            `EVM dispatch never began, but nonce ${nonce} could not be released safely: ${reason}`,
+            { cause: error },
+          );
+        }
+      }
+      throw error;
+    }
   },
 });
 

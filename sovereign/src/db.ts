@@ -97,6 +97,37 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at   TEXT
 );
+
+-- EVM nonces are an account-wide sequence, not a payment-local field. Two
+-- different confirmed payments may otherwise read the same RPC "pending"
+-- nonce and sign conflicting transactions. Reservations are durable and
+-- scoped by chain + normalized sender. Only a state that proves raw dispatch
+-- never began may release its nonce for reuse.
+CREATE TABLE IF NOT EXISTS evm_nonce_reservations (
+  payment_id   TEXT PRIMARY KEY REFERENCES payments(id),
+  chain_id     INTEGER NOT NULL,
+  from_address TEXT NOT NULL CHECK (from_address = lower(from_address)),
+  nonce        INTEGER NOT NULL CHECK (nonce >= 0),
+  state        TEXT NOT NULL CHECK (
+    state IN (
+      'reserved',
+      'signed',
+      'submitting',
+      'submitted',
+      'submission_unknown',
+      'released_pre_submit'
+    )
+  ),
+  tx_hash      TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evm_nonce_live
+  ON evm_nonce_reservations(chain_id, from_address, nonce)
+  WHERE state != 'released_pre_submit';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evm_nonce_hash
+  ON evm_nonce_reservations(chain_id, tx_hash)
+  WHERE tx_hash IS NOT NULL;
 `);
 
 // payments.detail arrived with the BTC sender; CREATE TABLE IF NOT EXISTS

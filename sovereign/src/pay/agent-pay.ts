@@ -4,7 +4,8 @@
  * This endpoint verifies signed descriptor/capability/intent/simulation
  * records, requires the simulation signer to be locally trusted, derives
  * capability usage from CashLoom's own SQLite file, and atomically reserves
- * the intent count + spend before returning a vault-signed attestation.
+ * the signed intent nonce + intent count + spend before returning a
+ * vault-signed attestation.
  *
  * It deliberately does NOT claim to execute a payment. No chain payload is
  * decoded here and no CashLoom payment quote is bound to the intent yet. The
@@ -48,7 +49,8 @@ db.query(
      simulation_record_id     TEXT,
      policy_hash              TEXT,
      simulation_adapter_key_id TEXT,
-     authorized_at            TEXT
+     authorized_at            TEXT,
+     intent_nonce             TEXT
    )`,
 ).run();
 
@@ -65,6 +67,7 @@ for (const column of [
   "policy_hash",
   "simulation_adapter_key_id",
   "authorized_at",
+  "intent_nonce",
 ]) {
   if (!authorizationColumns.has(column)) {
     db.exec(`ALTER TABLE agent_authorizations ADD COLUMN ${column} TEXT`);
@@ -74,6 +77,14 @@ db.exec(
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_authorization_intent_record
    ON agent_authorizations(intent_record_id)
    WHERE intent_record_id IS NOT NULL`,
+);
+db.exec(
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_authorization_signed_nonce
+   ON agent_authorizations(wallet_id, grant_id, source_account, intent_nonce)
+   WHERE wallet_id IS NOT NULL
+     AND grant_id IS NOT NULL
+     AND source_account IS NOT NULL
+     AND intent_nonce IS NOT NULL`,
 );
 
 db.exec(`
@@ -260,10 +271,24 @@ const reserveAndRecord = (
     const replay = db
       .query(
         `SELECT id FROM agent_authorizations
-         WHERE intent_record_id = ? OR intent_id = ?
+         WHERE intent_record_id = ?
+            OR intent_id = ?
+            OR (
+              wallet_id = ?
+              AND grant_id = ?
+              AND source_account = ?
+              AND intent_nonce = ?
+            )
          LIMIT 1`,
       )
-      .get(records.intent.record_id, records.intent.intent_id);
+      .get(
+        records.intent.record_id,
+        records.intent.intent_id,
+        records.descriptor.wallet_id,
+        records.capability.grant_id,
+        records.intent.source_account,
+        records.intent.nonce,
+      );
     if (replay) {
       throw new Error("This Agent Wallet intent was already reserved; replay refused.");
     }
@@ -313,8 +338,8 @@ const reserveAndRecord = (
           host_authority, body_sha256, signature, status, created_at,
           wallet_id, capability_record_id, intent_record_id,
           simulation_record_id, policy_hash, simulation_adapter_key_id,
-          authorized_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          authorized_at, intent_nonce)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       newId(),
       body.intent_id,
@@ -334,6 +359,7 @@ const reserveAndRecord = (
       body.policy_hash,
       body.simulation_adapter_key_id,
       now,
+      records.intent.nonce,
     );
 
     db.query(
