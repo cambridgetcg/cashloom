@@ -51,7 +51,11 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 - **Vault** — passphrase custody, generate/import EVM keys, lock/unlock.
 - **Pay** — `pay()` over **BTC mainnet** and Base L2 **ETH + USDC**, as a two-step rite —
   `quote` (fee disclosed, nothing signed) → `confirm` (signed + broadcast,
-  once). The signed transaction ID is persisted before network submission;
+  once). Base quotes separately disclose the current total-fee estimate and
+  the EIP-1559 L2 execution ceiling because L1 data/operator fees are not
+  transaction-capped. The exact unsigned bytes, signed bytes, SHA-256
+  commitments, recovered signer, and transaction ID are atomically persisted
+  with nonce state before network submission;
   uncertain submissions remain sticky and are **never auto-retried**. EVM
   nonces are reserved atomically in SQLite across CashLoom processes and
   restarts; only a proven pre-submit failure releases one for reuse.
@@ -59,7 +63,14 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   simulation-adapter trust, durable spend/replay/signed-intent-nonce
   reservation, and a vault-signed `authorized-not-bound` attestation. It
   cannot execute a payment until a chain adapter binds the exact intent bytes
-  to a CashLoom quote.
+  to a CashLoom quote. Base-mainnet EOA execution remains deliberately blocked:
+  Agent Wallet `max_fee` cannot currently hard-cap Base's non-EIP-1559 L1
+  data/operator fee components.
+- **Stripe Checkout sandbox contract** — a separate inbound connected-seller
+  collection lifecycle with exact request compilation, durable provider
+  idempotency, injected transport, test-mode-only response binding, and
+  HMAC-authenticated/deduplicated Connect webhooks. It has no real transport,
+  route, credential, onboarding, payout, refund, or production claim.
 - **Read rails** — sync balances + transactions from Stripe, GoCardless,
   Bitcoin (Esplora), Ethereum (Alchemy), and the agenttool agent economy.
   Strictly read-only: nothing behind a connector can move money.
@@ -68,10 +79,14 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 
 ## What's next (honest roadmap)
 
-- **Agent intent execution binding** — exact chain-byte/quote binding,
-  sign-time validity checks, and a separate durable reservation of the signed
-  Agent Wallet intent nonce. This is not the same as the shipped EVM account
-  nonce coordinator.
+- **Agent intent execution binding** — first resolve total-fee semantics (or
+  use a sponsor/paymaster/rail that can enforce the full signed cap), then add
+  exact quote binding, sign-time validity checks, and atomic one-to-one
+  authorization/payment reservation. Existing `authorized-not-bound` records
+  are never upgraded in place.
+- **Stripe sandbox transport + endpoint** — add a separately scoped test key
+  and webhook secret only when an operator deliberately configures a Stripe
+  sandbox; keep Checkout collection separate from outbound `PaymentSender`.
 - **Lightning**, **fiat sending through licensed processors**, **more rails**
   (SEPA, UPI, SOL), **payment pointers**
   (`you@cashloom`), **CSV/receipt import** without any cloud AI.

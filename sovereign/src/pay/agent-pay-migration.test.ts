@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import vectors from "@agenttool/wallet/vectors.json";
 
 process.env.CASHLOOM_DATA_DIR = mkdtempSync(
@@ -49,10 +50,36 @@ db.query(
   "2026-07-21T10:01:00.000Z",
 );
 
+const agentPayModuleUrl = pathToFileURL(join(import.meta.dir, "agent-pay.ts")).href;
+const workers = Array.from({ length: 2 }, () =>
+  Bun.spawn(
+    [process.execPath, "-e", `await import(${JSON.stringify(agentPayModuleUrl)})`],
+    {
+      env: {
+        ...process.env,
+        CASHLOOM_DATA_DIR: process.env.CASHLOOM_DATA_DIR!,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ),
+);
+const workerResults = await Promise.all(
+  workers.map(async (worker) => ({
+    status: await worker.exited,
+    stderr: await new Response(worker.stderr).text(),
+  })),
+);
+
 const { authorizeAgentPayment_wired } = await import("./agent-pay.ts");
 
 describe("Agent Wallet host migration", () => {
   it("grows the old table in place and carries legacy spend into the cap", async () => {
+    expect(
+      workerResults.map(({ status }) => status),
+      JSON.stringify(workerResults),
+    ).toEqual([0, 0]);
+
     const columns = new Set(
       (
         db.query("PRAGMA table_info(agent_authorizations)").all() as Array<{

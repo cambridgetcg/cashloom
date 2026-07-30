@@ -54,25 +54,30 @@ db.query(
    )`,
 ).run();
 
-const authorizationColumns = new Set(
-  (
-    db.query("PRAGMA table_info(agent_authorizations)").all() as Array<{ name: string }>
-  ).map(({ name }) => name),
-);
-for (const column of [
-  "wallet_id",
-  "capability_record_id",
-  "intent_record_id",
-  "simulation_record_id",
-  "policy_hash",
-  "simulation_adapter_key_id",
-  "authorized_at",
-  "intent_nonce",
-]) {
-  if (!authorizationColumns.has(column)) {
-    db.exec(`ALTER TABLE agent_authorizations ADD COLUMN ${column} TEXT`);
+const growAgentAuthorizations = db.transaction(() => {
+  const authorizationColumns = new Set(
+    (
+      db.query("PRAGMA table_info(agent_authorizations)").all() as Array<{ name: string }>
+    ).map(({ name }) => name),
+  );
+  for (const column of [
+    "wallet_id",
+    "capability_record_id",
+    "intent_record_id",
+    "simulation_record_id",
+    "policy_hash",
+    "simulation_adapter_key_id",
+    "authorized_at",
+    "intent_nonce",
+  ]) {
+    if (!authorizationColumns.has(column)) {
+      db.exec(`ALTER TABLE agent_authorizations ADD COLUMN ${column} TEXT`);
+    }
   }
-}
+});
+// Probe only after the writer lock is held. Concurrent sovereign processes
+// upgrading the same legacy file must not both attempt the same ALTER.
+growAgentAuthorizations.immediate();
 db.exec(
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_authorization_intent_record
    ON agent_authorizations(intent_record_id)

@@ -56,6 +56,7 @@ const sendingAccount = (accountId: string): AccountRow => {
 export interface QuoteResult {
   paymentId: string;
   feeMinor: string;
+  executionFeeCeilingMinor?: string;
   feeAsset: string;
   summary: string;
   expiresAt: string;
@@ -78,12 +79,27 @@ export const quotePayment = async (opts: {
   // selection) — stored verbatim, handed back verbatim at confirm, never
   // parsed here, never selected by listPayments.
   db.query(
-    `INSERT INTO payments (id, account_id, rail, to_addr, asset, amount_minor, fee_minor, status, detail)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'quoted', ?)`
-  ).run(id, account.id, sender.type, opts.to, opts.asset.trim().toUpperCase(), opts.amountMinor, quote.feeMinor, quote.detail ?? null);
+    `INSERT INTO payments
+       (id, account_id, rail, to_addr, asset, amount_minor, fee_minor,
+        execution_fee_ceiling_minor, status, detail)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'quoted', ?)`
+  ).run(
+    id,
+    account.id,
+    sender.type,
+    opts.to,
+    opts.asset.trim().toUpperCase(),
+    opts.amountMinor,
+    quote.feeMinor,
+    quote.executionFeeCeilingMinor ?? null,
+    quote.detail ?? null,
+  );
   return {
     paymentId: id,
     feeMinor: quote.feeMinor,
+    ...(quote.executionFeeCeilingMinor
+      ? { executionFeeCeilingMinor: quote.executionFeeCeilingMinor }
+      : {}),
     feeAsset: quote.feeAsset,
     summary: quote.summary,
     expiresAt: new Date(Date.now() + QUOTE_TTL_MS).toISOString(),
@@ -249,5 +265,5 @@ export const confirmPayment = async (
 
 export const listPayments = (limit = 50) =>
   db
-    .query("SELECT id, account_id, rail, to_addr, asset, amount_minor, fee_minor, status, tx_hash, error, created_at FROM payments ORDER BY created_at DESC LIMIT ?")
+    .query("SELECT id, account_id, rail, to_addr, asset, amount_minor, fee_minor, execution_fee_ceiling_minor, status, tx_hash, error, created_at FROM payments ORDER BY created_at DESC LIMIT ?")
     .all(limit);

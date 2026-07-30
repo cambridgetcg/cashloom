@@ -46,13 +46,19 @@ non-custodial wallet. That is the whole setup.
   (Argon2id → AES-256-GCM), decrypted only in memory, only to sign, and never
   leave your machine. The passphrase is custody; there is no recovery.
 - **Everyone pays everyone** — `pay()` moves money over open rails (BTC plus
-  Base L2 ETH + USDC today; more coming), as a two-step rite: quote discloses the fee
-  and signs nothing, confirm signs and broadcasts once. Never auto-retried.
+  Base L2 ETH + USDC today; more coming), as a two-step rite: quote discloses
+  the fee model and signs nothing, confirm signs and broadcasts once. Base
+  quotes distinguish the current total estimate from the EIP-1559 L2 ceiling;
+  its L1 data/operator components are not transaction-capped. Never auto-retried.
 - **Read every rail** — sync balances and transactions from Stripe, banks
   (GoCardless), Bitcoin, Ethereum, and the agenttool agent economy. Strictly
   read-only: a connector can never move money.
 - **Pass-through fees only** — the network's fee, nothing added. No CashLoom
   fee, ever, because there is no intermediary to take one.
+- **Processor sandbox contract** — Stripe Connect hosted Checkout now has an
+  offline, injected-transport test contract with connected-account scoping,
+  durable idempotency, test-mode refusal, and authenticated webhook replay
+  handling. It does not contain a key, call Stripe, or claim production readiness.
 
 ## Layout
 

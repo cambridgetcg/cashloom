@@ -103,7 +103,12 @@ CashLoom runs on **your** machine: the shipped Bun + Hono + bun:sqlite stack, ru
   - **ETH + USDC on Base** — EVM signer via viem, broadcast via a public or user-selected RPC.
   - Lightning = **fast-follow** (needs a node — LDK embedded vs connect an existing node).
 - **Fiat (KYC-at-rail) — _planned, not yet shipped_:**
-  - **Stripe (send)** — _design only; no Stripe sender ships yet — `sovereign/src/senders/` holds the BTC and EVM senders only._ When built it reuses the existing Stripe integration with a **separate write-scope key** (not the read-only `rk_`): Connect transfers (account→account) + payment links (anyone pays by card). KYC is Stripe's, on the user's account; CashLoom collects nothing.
+  - **Stripe (collect)** — an offline, test-mode hosted Checkout contract ships
+    in `sovereign/src/processors/stripe-checkout.ts`: it compiles a direct
+    connected-account request, commits idempotency before an injected transport,
+    and authenticates/deduplicates webhooks. No HTTP transport, credential,
+    route, onboarding, payout, refund, or live collection ships yet. Collection
+    is deliberately not an outbound `PaymentSender`.
 
 ### 5.6 Addressing
 
@@ -124,8 +129,8 @@ product policy is pass-through network/provider fees with no CashLoom markup.
 You run CashLoom locally, hold your **BTC key + Base key**
 (local/encrypted), and `pay()` a BTC, ETH, or USDC-on-Base address. The two
 crypto senders (`sovereign/src/senders/btc.sender.ts` + `evm.sender.ts`) ship
-today; the **Stripe (fiat) sender is still design-only**, so provider-backed
-fiat payment is not yet reachable. The self-custodied crypto rails prove the
+today; the **Stripe hosted-collection runtime is still unconnected**, so
+provider-backed fiat payment is not yet reachable. The self-custodied crypto rails prove the
 quote/sign/submit primitive end-to-end; the fiat rail lands next.
 
 ## 7. "For everyone" — the protocol is open
@@ -145,8 +150,9 @@ quote/sign/submit primitive end-to-end; the fiat rail lands next.
 - **Shipped slice:** `PaymentSender` seam + local key custody + quote/confirm
   `pay()` + BTC / ETH / USDC-on-Base senders + durable cross-process EVM
   account-nonce reservations + local-run + direct addressing.
-- **Provider slice:** Stripe Connect direct charges first; no Stripe sender is
-  present yet. See [`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md).
+- **Provider slice:** the offline Stripe Connect direct-charge Checkout
+  contract is present; a separately reviewed sandbox transport and signed
+  endpoint are next. See [`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md).
 - **Fast-follows:** Lightning; Tauri desktop packaging; `you@cashloom` payment pointer; more rails (SEPA, UPI, Wise, SOL, XMR); B2B flows (invoices, recurring, multi-party settlement); the open-source decision.
 
 ## 9. Open decisions (flagged, not blocking the first slice)

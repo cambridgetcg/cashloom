@@ -7,6 +7,7 @@ import {
 } from "./types";
 import { resolveCredentialRef } from "./credentials";
 import { InternalServerException } from "../utils/app-error";
+import { stripeDecimalsFor } from "../stripe-currency";
 
 // READ-ONLY Stripe connector over the plain REST API (no Stripe SDK — axios is
 // already the house HTTP client). Built for a RESTRICTED key (rk_...) carrying
@@ -29,41 +30,6 @@ const PAGE_LIMIT = 100;
 // Hard ceiling on pagination (100k transactions per sync window) so a broken
 // has_more loop can never spin forever against the live API.
 const MAX_PAGES = 1000;
-
-// Stripe's zero-decimal currencies: `amount` is already the whole unit
-// (¥500 → 500), so the minor-unit scale is 0.
-// https://docs.stripe.com/currencies#zero-decimal
-const ZERO_DECIMAL_CURRENCIES = new Set([
-  "BIF",
-  "CLP",
-  "DJF",
-  "GNF",
-  "JPY",
-  "KMF",
-  "KRW",
-  "MGA",
-  "PYG",
-  "RWF",
-  "UGX",
-  "VND",
-  "VUV",
-  "XAF",
-  "XOF",
-  "XPF",
-]);
-
-// Stripe's three-decimal currencies (BHD etc.): `amount` is in thousandths.
-// https://docs.stripe.com/currencies#three-decimal
-const THREE_DECIMAL_CURRENCIES = new Set(["BHD", "JOD", "KWD", "OMR", "TND"]);
-
-// Minor-unit scale of a Stripe `amount` for a given currency. Stripe amounts
-// are always integers in the currency's own minor unit; this just says how to
-// read them (0 JPY, 3 BHD, 2 everything else).
-const stripeDecimalsFor = (currency: string): number => {
-  if (ZERO_DECIMAL_CURRENCIES.has(currency)) return 0;
-  if (THREE_DECIMAL_CURRENCIES.has(currency)) return 3;
-  return 2;
-};
 
 // --- Stripe payload shapes (only the fields this connector reads) ----------
 

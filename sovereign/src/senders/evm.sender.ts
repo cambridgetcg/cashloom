@@ -14,12 +14,12 @@ import {
   http,
   isAddress,
   isHex,
-  keccak256,
   type Address,
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
+import { estimateTotalFee } from "viem/op-stack";
 import { revealForSigning } from "../vault.ts";
 import {
   AmbiguousBroadcastError,
@@ -30,6 +30,11 @@ import {
   type SenderContext,
   type SendHooks,
 } from "./types.ts";
+import {
+  assertExactSignedEip1559Transaction,
+  type ExactSignedEip1559Evidence,
+  type ExactEip1559Transaction,
+} from "./evm-transaction.ts";
 
 // Native USDC on Base (Circle-issued), 6 decimals.
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
@@ -55,17 +60,10 @@ interface EvmRequest {
   data: Hex;
 }
 
-interface EvmSignRequest extends EvmRequest {
-  chainId: number;
-  type: "eip1559";
-  gas: bigint;
-  maxFeePerGas: bigint;
-  maxPriorityFeePerGas: bigint;
-  nonce: number;
-}
+type EvmSignRequest = ExactEip1559Transaction;
 
 interface EvmDetail {
-  v: 1;
+  v: 2;
   chainId: number;
   asset: EvmAsset;
   from: Address;
@@ -79,7 +77,8 @@ interface EvmDetail {
     maxFeePerGas: string;
     maxPriorityFeePerGas: string;
   };
-  feeWei: string;
+  l2ExecutionFeeCeilingWei: string;
+  estimatedTotalFeeWei: string;
 }
 
 /**
@@ -90,11 +89,15 @@ export interface EvmSenderDependencies {
   getSenderAddress(ctx: SenderContext): Promise<Address>;
   /** Independent payments.fee_minor value accepted by the confirm flow. */
   getAcceptedFeeMinor(ctx: SenderContext): Promise<string>;
+  /** Persisted EIP-1559 execution ceiling accepted with the quote. */
+  getAcceptedExecutionFeeCeilingMinor(ctx: SenderContext): Promise<string>;
   estimateGas(from: Address, request: EvmRequest): Promise<bigint>;
   estimateFeesPerGas(): Promise<{
     maxFeePerGas: bigint;
     maxPriorityFeePerGas: bigint;
   }>;
+  /** Current OP Stack total estimate: L1 data + L2 execution + operator fee. */
+  estimateTotalFee(from: Address, request: EvmRequest): Promise<bigint>;
   getPendingNonce(address: Address): Promise<number>;
   reserveNonce(
     ctx: SenderContext,
@@ -105,7 +108,7 @@ export interface EvmSenderDependencies {
     ctx: SenderContext,
     address: Address,
     nonce: number,
-    txHash: Hex
+    evidence: ExactSignedEip1559Evidence,
   ): Promise<void>;
   markNonceSubmitting(
     ctx: SenderContext,
@@ -200,7 +203,8 @@ const parseDetail = (
   gas: bigint;
   maxFeePerGas: bigint;
   maxPriorityFeePerGas: bigint;
-  feeWei: bigint;
+  l2ExecutionFeeCeilingWei: bigint;
+  estimatedTotalFeeWei: bigint;
 } => {
   if (!raw) {
     throw new Error(`This payment has no stored EVM quote to sign.${REQUOTE}`);
@@ -214,7 +218,7 @@ const parseDetail = (
   }
 
   if (
-    detail?.v !== 1 ||
+    detail?.v !== 2 ||
     detail.chainId !== base.id ||
     detail.asset !== expected.asset ||
     typeof detail.from !== "string" ||
@@ -257,10 +261,22 @@ const parseDetail = (
     stored.maxPriorityFeePerGas,
     "maximum priority fee per gas"
   );
-  const feeWei = parseQuantity(detail.feeWei, "total fee ceiling", { positive: true });
+  const l2ExecutionFeeCeilingWei = parseQuantity(
+    detail.l2ExecutionFeeCeilingWei,
+    "L2 execution fee ceiling",
+    { positive: true },
+  );
+  const estimatedTotalFeeWei = parseQuantity(
+    detail.estimatedTotalFeeWei,
+    "estimated total fee",
+    { positive: true },
+  );
 
-  if (maxPriorityFeePerGas > maxFeePerGas || gas * maxFeePerGas !== feeWei) {
-    throw new Error(`The stored EVM fee ceiling does not reconcile.${REQUOTE}`);
+  if (
+    maxPriorityFeePerGas > maxFeePerGas
+    || gas * maxFeePerGas !== l2ExecutionFeeCeilingWei
+  ) {
+    throw new Error(`The stored EVM L2 execution fee ceiling does not reconcile.${REQUOTE}`);
   }
 
   return {
@@ -268,7 +284,8 @@ const parseDetail = (
     gas,
     maxFeePerGas,
     maxPriorityFeePerGas,
-    feeWei,
+    l2ExecutionFeeCeilingWei,
+    estimatedTotalFeeWei,
   };
 };
 
@@ -301,6 +318,22 @@ const defaultDependencies: EvmSenderDependencies = {
     return String(row.fee_minor);
   },
 
+  async getAcceptedExecutionFeeCeilingMinor(ctx) {
+    if (!ctx.paymentId) {
+      throw new Error("An EVM send requires a persisted payment quote.");
+    }
+    const { db } = await import("../db.ts");
+    const row = db
+      .query("SELECT execution_fee_ceiling_minor FROM payments WHERE id = ?")
+      .get(ctx.paymentId) as { execution_fee_ceiling_minor: string | null } | null;
+    if (!row?.execution_fee_ceiling_minor) {
+      throw new Error(
+        `No persisted L2 execution fee ceiling exists for EVM payment ${ctx.paymentId}.`,
+      );
+    }
+    return String(row.execution_fee_ceiling_minor);
+  },
+
   async estimateGas(from, request) {
     return publicClient().estimateGas({ account: from, ...request });
   },
@@ -311,6 +344,13 @@ const defaultDependencies: EvmSenderDependencies = {
       maxFeePerGas: fees.maxFeePerGas,
       maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
     };
+  },
+
+  async estimateTotalFee(from, request) {
+    return estimateTotalFee(publicClient(), {
+      account: from,
+      ...request,
+    });
   },
 
   async getPendingNonce(address) {
@@ -330,15 +370,20 @@ const defaultDependencies: EvmSenderDependencies = {
     });
   },
 
-  async markNonceSigned(ctx, address, nonce, txHash) {
+  async markNonceSigned(ctx, address, nonce, evidence) {
     if (!ctx.paymentId) throw new Error("EVM nonce state requires a payment id.");
     const { markEvmNonceSigned } = await import("./evm-nonce.ts");
+    const { hexToBytes } = await import("viem");
     markEvmNonceSigned({
       paymentId: ctx.paymentId,
       chainId: base.id,
       fromAddress: address,
       nonce,
-      txHash,
+      txHash: evidence.txHash,
+      unsignedPayload: hexToBytes(evidence.unsignedPayload),
+      unsignedPayloadSha256: evidence.unsignedPayloadSha256,
+      signedPayload: hexToBytes(evidence.signedPayload),
+      signedPayloadSha256: evidence.signedPayloadSha256,
     });
   },
 
@@ -416,9 +461,10 @@ export const createEvmSender = (
     const from = await dependencies.getSenderAddress(ctx);
     const request = buildRequest(to, amount, asset);
 
-    const [gas, fees] = await Promise.all([
+    const [gas, fees, estimatedTotalFeeWei] = await Promise.all([
       dependencies.estimateGas(from, request),
       dependencies.estimateFeesPerGas(),
+      dependencies.estimateTotalFee(from, request),
     ]);
     if (
       gas <= 0n ||
@@ -426,19 +472,22 @@ export const createEvmSender = (
       fees.maxFeePerGas <= 0n ||
       fees.maxFeePerGas > UINT256_MAX ||
       fees.maxPriorityFeePerGas < 0n ||
-      fees.maxPriorityFeePerGas > fees.maxFeePerGas
+      fees.maxPriorityFeePerGas > fees.maxFeePerGas ||
+      estimatedTotalFeeWei <= 0n ||
+      estimatedTotalFeeWei > UINT256_MAX
     ) {
       throw new Error("The Base RPC returned an invalid EVM gas or fee estimate.");
     }
 
-    // Disclose and persist the upper bound. send() reuses these exact fields;
-    // a busier chain may delay/refuse the transaction, never silently raise it.
-    const feeWei = gas * fees.maxFeePerGas;
-    if (feeWei > UINT256_MAX) {
+    // Persist both distinct facts: the EIP-1559 fields hard-cap only L2
+    // execution, while the current OP Stack estimate also includes L1 data
+    // and operator fees that the transaction format cannot hard-cap.
+    const l2ExecutionFeeCeilingWei = gas * fees.maxFeePerGas;
+    if (l2ExecutionFeeCeilingWei > UINT256_MAX) {
       throw new Error("The Base RPC returned an EVM fee estimate outside uint256 range.");
     }
     const detail: EvmDetail = {
-      v: 1,
+      v: 2,
       chainId: base.id,
       asset,
       from,
@@ -452,16 +501,23 @@ export const createEvmSender = (
         maxFeePerGas: fees.maxFeePerGas.toString(),
         maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString(),
       },
-      feeWei: feeWei.toString(),
+      l2ExecutionFeeCeilingWei: l2ExecutionFeeCeilingWei.toString(),
+      estimatedTotalFeeWei: estimatedTotalFeeWei.toString(),
     };
     const amountHuman =
       asset === "USDC"
         ? `${formatUnits(amount, USDC_DECIMALS)} USDC`
         : `${amount} wei`;
     return {
-      feeMinor: feeWei.toString(),
+      feeMinor: estimatedTotalFeeWei.toString(),
+      executionFeeCeilingMinor: l2ExecutionFeeCeilingWei.toString(),
       feeAsset: "ETH(wei)",
-      summary: `Send ${amountHuman} on Base to ${to} — network fee at most ${feeWei} wei (~${formatEther(feeWei)} ETH). No CashLoom fee, ever.`,
+      summary:
+        `Send ${amountHuman} on Base to ${to} — current total network-fee estimate `
+        + `${estimatedTotalFeeWei} wei (~${formatEther(estimatedTotalFeeWei)} ETH); `
+        + `signed L2 execution ceiling ${l2ExecutionFeeCeilingWei} wei. `
+        + "Base L1 data/operator fees can change and are not capped by EIP-1559. "
+        + "No CashLoom fee, ever.",
       detail: JSON.stringify(detail),
     };
   },
@@ -473,17 +529,34 @@ export const createEvmSender = (
   ): Promise<PaymentReceipt> {
     const { to, amount, asset } = parseInstruction(instruction);
     const from = await dependencies.getSenderAddress(ctx);
-    const { request, gas, maxFeePerGas, maxPriorityFeePerGas } = parseDetail(
+    const {
+      request,
+      gas,
+      maxFeePerGas,
+      maxPriorityFeePerGas,
+      estimatedTotalFeeWei,
+    } = parseDetail(
       instruction.detail,
       { from, to, amount, asset }
     );
-    const acceptedFeeMinor = await dependencies.getAcceptedFeeMinor(ctx);
+    const [acceptedFeeMinor, acceptedExecutionFeeCeilingMinor] = await Promise.all([
+      dependencies.getAcceptedFeeMinor(ctx),
+      dependencies.getAcceptedExecutionFeeCeilingMinor(ctx),
+    ]);
     if (
       !QUANTITY_PATTERN.test(acceptedFeeMinor) ||
-      BigInt(acceptedFeeMinor) !== gas * maxFeePerGas
+      BigInt(acceptedFeeMinor) !== estimatedTotalFeeWei
     ) {
       throw new Error(
-        `The stored EVM fee ceiling differs from the accepted payment fee.${REQUOTE}`
+        `The stored EVM total-fee estimate differs from the accepted payment fee.${REQUOTE}`
+      );
+    }
+    if (
+      !QUANTITY_PATTERN.test(acceptedExecutionFeeCeilingMinor)
+      || BigInt(acceptedExecutionFeeCeilingMinor) !== gas * maxFeePerGas
+    ) {
+      throw new Error(
+        `The stored EVM L2 execution fee ceiling differs from the accepted payment fee.${REQUOTE}`,
       );
     }
 
@@ -504,6 +577,7 @@ export const createEvmSender = (
 
     let nonce: number | null = null;
     let hash: Hex | null = null;
+    let signedPersisted = false;
     let submitting = false;
     try {
       // The RPC value is a lower bound. SQLite serializes all CashLoom
@@ -532,12 +606,28 @@ export const createEvmSender = (
       ) {
         throw new Error("Local EVM signing returned a malformed transaction.");
       }
+      const evidence = await assertExactSignedEip1559Transaction(
+        serializedTransaction,
+        from,
+        {
+          chainId: base.id,
+          type: "eip1559",
+          to: request.to,
+          value: request.value,
+          data: request.data,
+          gas,
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+          nonce,
+        },
+      );
 
       // EVM transaction hashes are keccak256(signed serialized bytes), stable
       // before any RPC sees them. Both the nonce record and payment row become
       // reconcilable before the durable "submitting" boundary is crossed.
-      hash = keccak256(serializedTransaction);
-      await dependencies.markNonceSigned(ctx, from, nonce, hash);
+      hash = evidence.txHash;
+      await dependencies.markNonceSigned(ctx, from, nonce, evidence);
+      signedPersisted = true;
       hooks?.onSigned?.(hash);
       await dependencies.markNonceSubmitting(ctx, from, nonce, hash);
       submitting = true;
@@ -586,7 +676,7 @@ export const createEvmSender = (
 
       return { externalId: hash, status: "broadcast" };
     } catch (error) {
-      if (!submitting && nonce !== null) {
+      if (!submitting && nonce !== null && !signedPersisted) {
         try {
           await dependencies.releaseNoncePreSubmit(ctx, from, nonce);
         } catch (releaseError) {
@@ -597,6 +687,12 @@ export const createEvmSender = (
             { cause: error },
           );
         }
+      }
+      if (!submitting && signedPersisted && hash !== null) {
+        throw new AmbiguousBroadcastError(
+          `Signed EVM transaction ${hash} is durably reserved, but raw submission did not begin. Do not retry automatically; inspect the local signed record before any manual recovery.`,
+          hash,
+        );
       }
       throw error;
     }
