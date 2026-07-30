@@ -68,6 +68,7 @@ describe("Agent Wallet host migration", () => {
       "policy_hash",
       "simulation_adapter_key_id",
       "authorized_at",
+      "intent_nonce",
     ]) {
       expect(columns.has(column), column).toBe(true);
     }
@@ -94,5 +95,14 @@ describe("Agent Wallet host migration", () => {
       .get() as { status: string; declared_spends: string };
     expect(legacy.status).toBe("authorized-not-broadcast");
     expect(JSON.parse(legacy.declared_spends)[0].amount_atomic).toBe("20");
+
+    const indexes = new Set(
+      (
+        db.query("PRAGMA index_list(agent_authorizations)").all() as Array<{
+          name: string;
+        }>
+      ).map(({ name }) => name),
+    );
+    expect(indexes.has("idx_agent_authorization_signed_nonce")).toBe(true);
   });
 });

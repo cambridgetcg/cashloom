@@ -9,7 +9,7 @@
     "build:ui": "cd ui && bun install && bun run build",
     "test": "bun run test:connectors && bun run test:node",
     "test:connectors": "bunx vitest run src/connectors src/utils src/info",
-    "test:node": "bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/senders/evm.sender.test.ts src/zerone.test.ts && bun test src/pay/agent-pay.test.ts && bun test src/pay/agent-pay-migration.test.ts",
+    "test:node": "bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/senders/evm.sender.test.ts src/zerone.test.ts && bun test src/senders/evm-nonce.test.ts && bun test src/senders/evm-nonce-migration.test.ts && bun test src/pay/agent-pay.test.ts && bun test src/pay/agent-pay-migration.test.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {

@@ -52,11 +52,14 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 - **Pay** — `pay()` over **BTC mainnet** and Base L2 **ETH + USDC**, as a two-step rite —
   `quote` (fee disclosed, nothing signed) → `confirm` (signed + broadcast,
   once). The signed transaction ID is persisted before network submission;
-  uncertain submissions remain sticky and are **never auto-retried**.
+  uncertain submissions remain sticky and are **never auto-retried**. EVM
+  nonces are reserved atomically in SQLite across CashLoom processes and
+  restarts; only a proven pre-submit failure releases one for reuse.
 - **Agent Wallet authorization evidence** — signed AgentTool records, local
-  simulation-adapter trust, durable spend/replay reservation, and a
-  vault-signed `authorized-not-bound` attestation. It cannot execute a payment
-  until a chain adapter binds the exact intent bytes to a CashLoom quote.
+  simulation-adapter trust, durable spend/replay/signed-intent-nonce
+  reservation, and a vault-signed `authorized-not-bound` attestation. It
+  cannot execute a payment until a chain adapter binds the exact intent bytes
+  to a CashLoom quote.
 - **Read rails** — sync balances + transactions from Stripe, GoCardless,
   Bitcoin (Esplora), Ethereum (Alchemy), and the agenttool agent economy.
   Strictly read-only: nothing behind a connector can move money.
@@ -65,8 +68,10 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 
 ## What's next (honest roadmap)
 
-- **Agent intent execution binding** — exact chain-byte/quote binding and
-  durable EVM nonce coordination.
+- **Agent intent execution binding** — exact chain-byte/quote binding,
+  sign-time validity checks, and a separate durable reservation of the signed
+  Agent Wallet intent nonce. This is not the same as the shipped EVM account
+  nonce coordinator.
 - **Lightning**, **fiat sending through licensed processors**, **more rails**
   (SEPA, UPI, SOL), **payment pointers**
   (`you@cashloom`), **CSV/receipt import** without any cloud AI.

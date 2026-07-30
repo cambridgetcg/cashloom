@@ -72,7 +72,8 @@ currently:
 
 - verifies descriptor, capability, intent, and simulation signatures;
 - requires the simulation adapter key ID to be locally trusted;
-- derives cumulative spend and replay state from local SQLite;
+- derives cumulative spend, record replay, and signed intent-nonce state from
+  local SQLite;
 - repeats the capability check inside an atomic reservation;
 - returns a vault-signed `authorized-not-bound` attestation.
 
@@ -82,7 +83,8 @@ The next adapter slice must:
 1. decode the chain-native intent payload;
 2. bind chain, source account, destination, asset, amount, nonce, calldata, and
    maximum fee to one CashLoom quote;
-3. reserve the account nonce or UTXO set atomically;
+3. re-check and bind the existing durable signed-intent-nonce reservation to
+   the EVM account-nonce reservation (or a UTXO reservation) at sign time;
 4. verify the exact signed bytes and source account;
 5. persist the signed payload hash before network egress; and
 6. make the CashLoom confirmation consume that one authorization exactly once.
@@ -194,10 +196,16 @@ launch.
 
 ## Release order
 
-1. **Now:** ship EVM persist-before-submit, quote-bound fees, atomic
-   confirmation, and durable Agent Wallet authorization evidence.
-2. **Next:** add the exact Agent Wallet → CashLoom quote/bytes binding on Base
-   Sepolia, including durable EVM nonce coordination.
+1. **Shipped:** EVM persist-before-submit, quote-bound fees, atomic
+   confirmation, cross-process durable EVM account-nonce coordination, and
+   durable Agent Wallet authorization evidence with signed intent-nonce
+   replay protection.
+2. **Next:** add a deliberately narrow Agent Wallet → CashLoom binding for a
+   newly signed Base-mainnet EOA/native-ETH profile. It must re-check validity
+   at sign time, bind the already-reserved signed intent nonce, bind the
+   actual quote fee, and decode/recover the exact EIP-1559 bytes before
+   egress. A separate Sepolia adapter can canary that contract before live
+   execution.
 3. **Then:** implement Stripe Connect direct-charge Checkout in sandbox with
    signed webhook ingestion and idempotency tests.
 4. **In parallel:** add AgentTool origin-scoped custom-facilitator auth; keep
