@@ -121,6 +121,7 @@ export interface PayLinkAcceptanceProjection {
   kind: "acceptance";
   acceptance_id: string;
   pay_link_id: string;
+  intent_record_id: string;
   request_record_id: string;
   merchant_key_id: string;
   payer_key_id: string;
@@ -142,6 +143,56 @@ export interface PayLinkAcceptanceProjection {
 export type PayLinkProjection =
   | PayLinkRequestProjection
   | PayLinkAcceptanceProjection;
+
+/**
+ * Exact, server-derived review of one locally bound Bitcoin execution.
+ * Preparing this review may reserve coins, but it never signs or broadcasts.
+ */
+export interface PayLinkExecutionReview {
+  review_id: string;
+  payment_id: string;
+  intent_record_id: string;
+  request_record_id: string;
+  merchant_key_id: string;
+  network: "Bitcoin mainnet";
+  account_id: string;
+  account_label: string;
+  source_address: string;
+  destination: string;
+  asset: "BTC";
+  amount_sats: string;
+  fee_sats: string;
+  total_sats: string;
+  max_fee_sats: string;
+  quote_expires_at: string;
+  intent_expires_at: string;
+  confirm_before: string;
+  fee_is_exact: true;
+  cashloom_fee_sats: "0";
+  no_money_moved: true;
+  transaction_not_signed: true;
+}
+
+export interface PayLinkExecutionResult {
+  payment_id: string;
+  review_id: string;
+  status: "broadcast" | "broadcast_unknown" | "failed";
+  tx_hash: string | null;
+  error: string | null;
+}
+
+export interface PayLinkExecutionSnapshot {
+  payment_id: string;
+  review_id: string;
+  intent_record_id: string;
+  status:
+    | PayLinkExecutionResult["status"]
+    | "awaiting_confirmation"
+    | "not_sent";
+  can_confirm: boolean;
+  tx_hash: string | null;
+  error: string | null;
+}
 
 // zerone — the truth chain front (public, read-only).
 export interface ZeroneNetworkStatus {

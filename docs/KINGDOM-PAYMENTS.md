@@ -1,6 +1,6 @@
 # CashLoom as the KINGDOM payment layer
 
-Status: architecture contract for the current sovereign node, 2026-07-30.
+Status: architecture contract for the current sovereign node, 2026-07-31.
 
 ## Decision
 
@@ -247,9 +247,11 @@ launch.
    requests and merchant-addressed private `.cashloom-accept` evidence work
    by local file or paste, with no hosted CashLoom account, registry, external
    fetch, processor, or money movement.
-5. **Next:** bind a verified Bitcoin acceptance one-to-one to the existing
-   exact quote/confirm sender behind a fresh explicit confirmation; keep the
-   portable artifact non-executable.
+5. **Shipped execution:** the payer's sovereign node can bind its own active
+   acceptance intent one-to-one to an exact BTC account, UTXO selection,
+   canonical PSBT and fee review. A separate final confirmation creates the
+   signed execution commitment and atomically permits one sign/broadcast
+   attempt; portable artifacts and merchant imports remain non-executable.
 6. **Then:** resolve an enforceable total-fee contract, then add the narrow
    Agent Wallet → CashLoom one-to-one binding for a newly signed profile.
 7. **Then:** add a separately scoped Stripe test transport and sandbox webhook

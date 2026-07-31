@@ -19,10 +19,14 @@ import {
   type AssetTrustPolicy,
 } from "./asset-trust.ts";
 import type { V2NodeAuthorityProvider } from "./node-authority.ts";
-import type { CashLoomV2RecordStore } from "./record-store.ts";
+import {
+  V2RecordStoreError,
+  type CashLoomV2RecordStore,
+} from "./record-store.ts";
 import {
   V2_SCHEMAS,
   createAssetTrustManifestRecord,
+  createExecutionCommitment,
   createNodeDescriptor,
   createPaymentIntent,
   createPaymentRequest,
@@ -32,6 +36,7 @@ import {
   verifyV2Record,
   type AssetTrustManifestRecordCore,
   type AssetTrustBinding,
+  type ExecutionCommitmentCore,
   type NodeDescriptorCore,
   type NodeRole,
   type PaymentIntentCore,
@@ -49,7 +54,11 @@ export type V2LocalServiceErrorCode =
   | "ASSET_TRUST_ASSET_MISMATCH"
   | "ASSET_TRUST_RAIL_MISMATCH"
   | "ASSET_TRUST_DISCLOSURE_MISMATCH"
-  | "ASSET_POLICY_REJECTED";
+  | "ASSET_POLICY_REJECTED"
+  | "LOCAL_PAYMENT_INTENT_REQUIRED"
+  | "PAYMENT_INTENT_INACTIVE"
+  | "INVALID_EXECUTION_WINDOW"
+  | "EXECUTION_COMMITMENT_CONFLICT";
 
 export class V2LocalServiceError extends Error {
   readonly code: V2LocalServiceErrorCode;
@@ -115,6 +124,13 @@ export interface CreatePaymentIntentInput {
   readonly ttl_seconds?: number;
 }
 
+export interface CreateExecutionCommitmentInput {
+  readonly intent_record_id: string;
+  readonly reservation_id: string;
+  readonly unsigned_payload_hash: string;
+  readonly expires_at: string;
+}
+
 export interface CreatedWithAssetTrust<T> {
   readonly record: T;
   readonly asset_trust: AssetTrustDecision;
@@ -124,6 +140,11 @@ export interface CreatedIntentWithAssetTrust {
   readonly record: VerifiedV2Record<PaymentIntentCore>;
   readonly payment_asset_trust: AssetTrustDecision;
   readonly fee_asset_trust: AssetTrustDecision;
+}
+
+export interface CreatedExecutionCommitment {
+  readonly record: VerifiedV2Record<ExecutionCommitmentCore>;
+  readonly reused: boolean;
 }
 
 interface ResolvedAssetTrust {
@@ -185,6 +206,29 @@ function activeRecord<T extends NodeDescriptorCore | PaymentRequestCore>(
   now: string,
 ): VerifiedV2Record<T> {
   return verifyV2Record(record, { now }) as unknown as VerifiedV2Record<T>;
+}
+
+function sameExecutionCommitmentInput(
+  record: VerifiedV2Record<ExecutionCommitmentCore>,
+  input: CreateExecutionCommitmentInput,
+): boolean {
+  return record.reservation_id === input.reservation_id
+    && record.unsigned_payload_hash === input.unsigned_payload_hash
+    && record.expires_at === input.expires_at;
+}
+
+function executionCommitmentConflict(
+  existing: VerifiedV2Record<ExecutionCommitmentCore> | null,
+  cause?: unknown,
+): V2LocalServiceError {
+  const error = new V2LocalServiceError(
+    "EXECUTION_COMMITMENT_CONFLICT",
+    existing === null
+      ? "The payment intent already has an execution commitment that is not an exact local retry."
+      : `Payment intent already has different execution commitment ${existing.record_id}.`,
+  );
+  if (cause !== undefined) error.cause = cause;
+  return error;
 }
 
 export function createV2LocalService(dependencies: V2LocalServiceDependencies) {
@@ -483,6 +527,129 @@ export function createV2LocalService(dependencies: V2LocalServiceDependencies) {
         payment_asset_trust: paymentTrust.decision,
         fee_asset_trust: feeTrust.decision,
       });
+    },
+
+    async createExecutionCommitment(
+      input: CreateExecutionCommitmentInput,
+    ): Promise<CreatedExecutionCommitment> {
+      const issuedAt = localNow(now);
+      const descriptor = await signingDescriptor(issuedAt, "payer");
+      const context = await authorityProvider.signingContext();
+      if (
+        context.authority.key_id !== descriptor.authority.key_id
+        || context.authority.public_key !== descriptor.authority.public_key
+      ) {
+        throw new V2LocalServiceError(
+          "NODE_NOT_ACTIVATED",
+          "The current signing authority does not match the active payer descriptor.",
+        );
+      }
+
+      assertSha256Id(input.intent_record_id, "intent_record_id");
+      assertSha256Id(input.reservation_id, "reservation_id");
+      assertSha256Id(input.unsigned_payload_hash, "unsigned_payload_hash");
+      try {
+        assertTimestamp(input.expires_at, "expires_at");
+      } catch (cause) {
+        const error = new V2LocalServiceError(
+          "INVALID_EXECUTION_WINDOW",
+          "expires_at must be a real canonical RFC3339 UTC timestamp with milliseconds.",
+        );
+        error.cause = cause;
+        throw error;
+      }
+
+      const storedIntent = store.localPaymentIntentById(
+        input.intent_record_id,
+        context.authority.key_id,
+      );
+      if (storedIntent === null) {
+        throw new V2LocalServiceError(
+          "LOCAL_PAYMENT_INTENT_REQUIRED",
+          "Execution requires a locally authored payment intent signed by the current payer authority.",
+        );
+      }
+
+      let intent: VerifiedV2Record<PaymentIntentCore>;
+      try {
+        intent = verifyV2Record(storedIntent, {
+          now: issuedAt,
+        }) as VerifiedV2Record<PaymentIntentCore>;
+      } catch (cause) {
+        const error = new V2LocalServiceError(
+          "PAYMENT_INTENT_INACTIVE",
+          "The locally authored payment intent is not active at commitment creation time.",
+        );
+        error.cause = cause;
+        throw error;
+      }
+
+      if (
+        Date.parse(input.expires_at) <= Date.parse(issuedAt)
+        || Date.parse(input.expires_at) > Date.parse(intent.expires_at)
+      ) {
+        throw new V2LocalServiceError(
+          "INVALID_EXECUTION_WINDOW",
+          "Execution commitment expires_at must be later than issued_at and no later than the payment intent expiry.",
+        );
+      }
+
+      const existing = store.localExecutionCommitmentFor(
+        intent.record_id,
+        context.authority.key_id,
+      );
+      if (existing !== null) {
+        if (sameExecutionCommitmentInput(existing, input)) {
+          return Object.freeze({ record: existing, reused: true });
+        }
+        throw executionCommitmentConflict(existing);
+      }
+
+      const record = await signV2Record(
+        createExecutionCommitment({
+          authority: context.authority,
+          audience: intent.audience,
+          disclosure: "private",
+          nonce: nonce(),
+          issued_at: issuedAt,
+          expires_at: input.expires_at,
+          parent_record_id: intent.record_id,
+          rail: intent.rail,
+          source_account: intent.source_account,
+          destination: intent.destination,
+          asset_id: intent.asset_id,
+          amount_atomic: intent.amount_atomic,
+          fee_asset_id: intent.fee_asset_id,
+          fee_limit_scope: intent.fee_limit_scope,
+          max_fee_atomic: intent.max_fee_atomic,
+          reservation_id: input.reservation_id as Sha256Id,
+          unsigned_payload_hash: input.unsigned_payload_hash as Sha256Id,
+        }),
+        context.signer,
+      );
+
+      try {
+        store.append(v2RecordBytes(record), "local");
+        return Object.freeze({ record, reused: false });
+      } catch (cause) {
+        if (
+          cause instanceof V2RecordStoreError
+          && cause.code === "TRANSITION_CONFLICT"
+        ) {
+          const winner = store.localExecutionCommitmentFor(
+            intent.record_id,
+            context.authority.key_id,
+          );
+          if (
+            winner !== null
+            && sameExecutionCommitmentInput(winner, input)
+          ) {
+            return Object.freeze({ record: winner, reused: true });
+          }
+          throw executionCommitmentConflict(winner, cause);
+        }
+        throw cause;
+      }
     },
   });
 }

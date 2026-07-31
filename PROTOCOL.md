@@ -3,10 +3,10 @@
 > An **open, non-custodial, local-first payment protocol.** Everyone pays everyone, over every rail, holding nothing, collecting nothing.
 
 *Status: design spec, updated 2026-07-31. Shipped slices: BTC + ETH/USDC on
-Base, the operatorless CashLoom v2 signed-record foundation, and portable
-Bitcoin-mainnet request/acceptance handoff; fiat sending remains
-provider-backed design work. This document is the protocol definition; the
-codebase is a reference implementation.*
+Base, the operatorless CashLoom v2 signed-record foundation, portable
+Bitcoin-mainnet request/acceptance handoff, and payer-local exact BTC execution
+binding; fiat sending remains provider-backed design work. This document is
+the protocol definition; the codebase is a reference implementation.*
 
 ---
 
@@ -123,7 +123,10 @@ CashLoom runs on **your** machine: the shipped Bun + Hono + bun:sqlite stack, ru
   No CashLoom URL, hosted account, lookup service, processor, or
   internet-reachable node is required; each signer still uses its own local
   sovereign node and unlocked vault. Neither file executes or proves
-  settlement.
+  settlement. The payer's node may separately bind its own active intent to
+  one exact BTC account and PSBT review; only a fresh, explicitly labelled
+  final confirmation creates the execution commitment and permits one
+  sign/broadcast attempt.
 - **Fast-follow:** a `you@cashloom` payment pointer resolving to that being's preferred rail destinations — the "everyone reaches everyone" simplicity that hides rail complexity behind a name.
 
 ### 5.7 Compliance + fees

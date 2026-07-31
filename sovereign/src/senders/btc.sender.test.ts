@@ -10,11 +10,16 @@ process.env.CASHLOOM_DATA_DIR ||= mkdtempSync(join(tmpdir(), "cashloom-btc-test-
 
 const { db, newId } = await import("../db.ts");
 const vault = await import("../vault.ts");
-const { btcSender } = await import("./btc.sender.ts");
+const {
+  btcSender,
+  bitcoinTxidForUnsignedPayload,
+  bitcoinUnsignedPayloadFor,
+} = await import("./btc.sender.ts");
 const { AmbiguousBroadcastError } = await import("./types.ts");
 const { quotePayment, confirmPayment } = await import("../pay.ts");
-const { Address, NETWORK, OutScript, RawTx, WIF } = await import("@scure/btc-signer");
+const { Address, NETWORK, OutScript, RawTx, Transaction, WIF } = await import("@scure/btc-signer");
 const { hex } = await import("@scure/base");
+const { sha256BytesId } = await import("@agenttool/wallet");
 
 const PASS = "correct horse battery staple";
 if (!vault.isInitialized()) await vault.initialize(PASS);
@@ -135,6 +140,52 @@ describe("btc sender — quote discipline", () => {
     expect(totalIn - 150_000n - BigInt(detail.changeSat)).toBe(BigInt(detail.feeSat));
   });
 
+  it("commits the exact canonical PSBT v0, including every prevout and output", async () => {
+    resetMock({
+      utxos: [utxo(T1, 2, 100_000), utxo(T2, 7, 250_000)],
+      tip: "903123",
+    });
+    const instruction = { to: DEST, amountMinor: "150000", asset: "BTC" };
+    const quote = await btcSender.quote(ctx, instruction);
+    expect(quote.unsignedPayload).toBeInstanceOf(Uint8Array);
+    expect(hex.encode(quote.unsignedPayload!.slice(0, 5))).toBe("70736274ff");
+    expect(quote.unsignedPayloadHash).toBe(sha256BytesId(quote.unsignedPayload!));
+
+    const detail = JSON.parse(quote.detail!) as DetailShape;
+    const keyless = await bitcoinUnsignedPayloadFor(ctx, {
+      ...instruction,
+      detail: quote.detail,
+    });
+    expect(keyless.hash).toBe(quote.unsignedPayloadHash!);
+    expect(Array.from(keyless.payload)).toEqual(Array.from(quote.unsignedPayload!));
+
+    const parsed = Transaction.fromPSBT(keyless.payload);
+    expect(bitcoinTxidForUnsignedPayload(keyless.payload)).toBe(
+      Transaction.fromRaw(parsed.unsignedTx).id,
+    );
+    expect(parsed.lockTime).toBe(903123);
+    expect(parsed.inputsLength).toBe(detail.inputs.length);
+    expect(parsed.outputsLength).toBe(BigInt(detail.changeSat) > 0n ? 2 : 1);
+    for (const [index, selected] of detail.inputs.entries()) {
+      const input = parsed.getInput(index);
+      expect(hex.encode(input.txid!)).toBe(selected.txid);
+      expect(input.index).toBe(selected.vout);
+      expect(input.sequence).toBe(0xfffffffd);
+      expect(input.witnessUtxo?.amount).toBe(BigInt(selected.sat));
+      expect(hex.encode(input.witnessUtxo!.script)).toBe(scriptOf(SELF));
+    }
+    const destination = parsed.getOutput(0);
+    expect(destination.amount).toBe(150_000n);
+    expect(hex.encode(destination.script!)).toBe(scriptOf(DEST));
+    if (BigInt(detail.changeSat) > 0n) {
+      const change = parsed.getOutput(1);
+      expect(change.amount).toBe(BigInt(detail.changeSat));
+      expect(hex.encode(change.script!)).toBe(scriptOf(SELF));
+    }
+    // A decode/re-encode must retain exactly the canonical PSBT v0 bytes.
+    expect(Array.from(parsed.toPSBT(0))).toEqual(Array.from(keyless.payload));
+  });
+
   it("refuses a sub-dust destination amount at QUOTE time, per script type", async () => {
     resetMock({ utxos: [utxo(T1, 0, 100_000)] });
     await expect(
@@ -232,6 +283,15 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     expect(result.status).toBe("broadcast");
     expect(result.txHash).toMatch(/^[0-9a-f]{64}$/);
     expect(txHashAtBroadcast as string | null).toBe(result.txHash);
+    const quotedPayload = await bitcoinUnsignedPayloadFor(ctx, {
+      to: DEST,
+      amountMinor: "150000",
+      asset: "BTC",
+      detail: stored.detail,
+    });
+    expect(result.txHash).toBe(
+      bitcoinTxidForUnsignedPayload(quotedPayload.payload),
+    );
 
     // Decode what actually left the box.
     const raw = RawTx.decode(hex.decode(broadcastBodies[0]!));
@@ -256,6 +316,42 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
       .get(result.txHash) as { amount_minor: string; source: string };
     expect(ledger.source).toBe("PAYMENT");
     expect(BigInt(ledger.amount_minor)).toBe(-(150_000n + BigInt(quote.feeMinor)));
+  });
+
+  it("detects a payload-changing detail tamper before attempting key reveal", async () => {
+    resetMock({ utxos: [utxo(utxoId("91"), 0, 100_000)] });
+    // This row has the right public BTC address but deliberately unusable
+    // encrypted bytes. A test that reached revealForSigning would fail with a
+    // vault/decryption error; the exact payload guard must win first.
+    const poisonedKeyId = newId();
+    db.query(
+      `INSERT INTO vault_keys (id, label, kind, address, enc_blob)
+       VALUES (?, 'public-only payload guard', 'btc', ?, ?)`,
+    ).run(poisonedKeyId, SELF, new Uint8Array([0xde, 0xad]));
+    const publicOnlyCtx = { vaultKeyId: poisonedKeyId };
+    const instruction = { to: DEST, amountMinor: "50000", asset: "BTC" };
+    const quote = await btcSender.quote(publicOnlyCtx, instruction);
+    const expected = await bitcoinUnsignedPayloadFor(publicOnlyCtx, {
+      ...instruction,
+      detail: quote.detail,
+    });
+    const doctored = JSON.parse(quote.detail!) as DetailShape;
+    doctored.lockTime += 1;
+
+    await expect(
+      btcSender.send(
+        {
+          ...publicOnlyCtx,
+          expectedUnsignedPayload: expected.payload,
+          expectedUnsignedPayloadHash: expected.hash,
+        },
+        {
+          ...instruction,
+          detail: JSON.stringify(doctored),
+        },
+      ),
+    ).rejects.toThrow(/payload no longer matches the exact bound quote/);
+    expect(broadcastBodies).toHaveLength(0);
   });
 
   it("treats a doctored detail as hostile — reconciliation failure refuses to sign", async () => {
@@ -342,7 +438,7 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     expect(broadcastBodies).toHaveLength(1);
   });
 
-  it("a definitive node rejection fails loud, with the spent-coins hint", async () => {
+  it("keeps even an HTTP 4xx sticky once signed bytes reached an untrusted node", async () => {
     resetMock({
       utxos: [utxo(utxoId("e5"), 0, 100_000)],
       broadcast: () =>
@@ -353,9 +449,27 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     const accountId = makeBtcAccount();
     const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
     const result = await confirmPayment(quote.paymentId);
-    expect(result.status).toBe("failed");
-    expect(result.error).toMatch(/network refused/);
-    expect(result.error).toMatch(/earlier payment may have spent/);
+    expect(result.status).toBe("confirmed");
+    expect(result.txHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.error).toMatch(/outcome unknown.*HTTP 400/i);
+    expect(result.error).not.toContain("missingorspent");
+    expect(
+      db.query("SELECT status FROM payments WHERE id = ?").get(quote.paymentId),
+    ).toEqual({ status: "confirmed" });
+    await expect(confirmPayment(quote.paymentId)).rejects.toThrow(
+      /only a fresh quote/,
+    );
+
+    // A hostile or split endpoint cannot release the same input for a second
+    // payment merely by answering 4xx after receiving the signed bytes.
+    await expect(
+      quotePayment({
+        accountId,
+        to: DEST,
+        amountMinor: "50000",
+        asset: "BTC",
+      }),
+    ).rejects.toThrow(/held by payments still in flight/i);
   });
 
   it("send() without pay.ts still enforces the seam (direct AmbiguousBroadcastError shape)", async () => {

@@ -5,12 +5,14 @@
  *
  *  Quotes expire in 5 minutes. Failed sends are recorded and surfaced,
  *  NEVER auto-retried (inherited doctrine: a payout that failed is an
- *  operator decision, not a loop). Every outcome lands in the ledger.
+ *  operator decision, not a loop). Every outcome lands in durable payment
+ *  state; only a successful broadcast creates the immediate ledger row.
  */
 
 import { db, newId } from "./db.ts";
 import { btcSender } from "./senders/btc.sender.ts";
 import { evmSender } from "./senders/evm.sender.ts";
+import { sha256BytesId } from "@agenttool/wallet";
 import { AmbiguousBroadcastError, type PaymentSender } from "./senders/types.ts";
 
 const SENDERS: PaymentSender[] = [evmSender, btcSender];
@@ -62,38 +64,133 @@ export interface QuoteResult {
   expiresAt: string;
 }
 
-export const quotePayment = async (opts: {
+export interface QuotePaymentOptions {
   accountId: string;
   to: string;
   amountMinor: string;
   asset: string;
-}): Promise<QuoteResult> => {
+}
+
+/** Exact private quote material exposed only to an in-process binding seam. */
+export interface PaymentQuoteDraft {
+  readonly paymentId: string;
+  readonly accountId: string;
+  readonly vaultKeyId: string;
+  readonly senderType: string;
+  readonly to: string;
+  readonly asset: string;
+  readonly amountMinor: string;
+  readonly feeMinor: string;
+  readonly executionFeeCeilingMinor: string | null;
+  readonly feeAsset: string;
+  readonly summary: string;
+  readonly detail: string | null;
+  readonly unsignedPayload: Uint8Array | null;
+  readonly unsignedPayloadHash: `sha256:${string}` | null;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+}
+
+export interface QuotePaymentRuntime {
+  /** In-process deterministic/test seam; HTTP callers never receive it. */
+  readonly senders?: readonly PaymentSender[];
+  readonly now?: () => string;
+  /** Runs after the payment INSERT inside the same BEGIN IMMEDIATE transaction.
+   * Throwing rolls the payment back. It must not return a Promise. */
+  readonly bind?: (draft: Readonly<PaymentQuoteDraft>) => void;
+}
+
+const timestampNow = (now: (() => string) | undefined): string => {
+  const value = now?.() ?? new Date().toISOString();
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
+    throw new TypeError("The payment clock must return a valid timestamp.");
+  }
+  return value;
+};
+
+const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+  value !== null
+  && (typeof value === "object" || typeof value === "function")
+  && typeof (value as { then?: unknown }).then === "function";
+
+export const quotePayment = async (
+  opts: QuotePaymentOptions,
+  runtime: QuotePaymentRuntime = {},
+): Promise<QuoteResult> => {
   const account = sendingAccount(opts.accountId);
-  const sender = senderForAsset(opts.asset);
+  const sender = senderForAsset(opts.asset, runtime.senders ?? SENDERS);
   const quote = await sender.quote(
     { vaultKeyId: account.vault_key_id! },
     { to: opts.to, amountMinor: opts.amountMinor, asset: opts.asset }
   );
   const id = newId();
+  const createdAt = timestampNow(runtime.now);
+  const expiresAt = new Date(
+    Date.parse(createdAt) + QUOTE_TTL_MS,
+  ).toISOString();
+  const unsignedPayload = quote.unsignedPayload === undefined
+    ? null
+    : Uint8Array.from(quote.unsignedPayload);
+  const unsignedPayloadHash = quote.unsignedPayloadHash ?? null;
+  if (
+    (unsignedPayload === null) !== (unsignedPayloadHash === null)
+    || (
+      unsignedPayload !== null
+      && sha256BytesId(unsignedPayload) !== unsignedPayloadHash
+    )
+  ) {
+    throw new Error("The sender returned inconsistent unsigned quote evidence.");
+  }
+  const asset = opts.asset.trim().toUpperCase();
+  const detail = quote.detail ?? null;
+  const executionFeeCeilingMinor = quote.executionFeeCeilingMinor ?? null;
+  const draft: Readonly<PaymentQuoteDraft> = Object.freeze({
+    paymentId: id,
+    accountId: account.id,
+    vaultKeyId: account.vault_key_id!,
+    senderType: sender.type,
+    to: opts.to,
+    asset,
+    amountMinor: opts.amountMinor,
+    feeMinor: quote.feeMinor,
+    executionFeeCeilingMinor,
+    feeAsset: quote.feeAsset,
+    summary: quote.summary,
+    detail,
+    unsignedPayload: unsignedPayload === null
+      ? null
+      : Uint8Array.from(unsignedPayload),
+    unsignedPayloadHash,
+    createdAt,
+    expiresAt,
+  });
   // quote.detail is the sender's opaque persisted state (e.g. the BTC coin
   // selection) — stored verbatim, handed back verbatim at confirm, never
   // parsed here, never selected by listPayments.
-  db.query(
-    `INSERT INTO payments
-       (id, account_id, rail, to_addr, asset, amount_minor, fee_minor,
-        execution_fee_ceiling_minor, status, detail)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'quoted', ?)`
-  ).run(
-    id,
-    account.id,
-    sender.type,
-    opts.to,
-    opts.asset.trim().toUpperCase(),
-    opts.amountMinor,
-    quote.feeMinor,
-    quote.executionFeeCeilingMinor ?? null,
-    quote.detail ?? null,
-  );
+  const persist = db.transaction(() => {
+    db.query(
+      `INSERT INTO payments
+         (id, account_id, rail, to_addr, asset, amount_minor, fee_minor,
+          execution_fee_ceiling_minor, status, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'quoted', ?, ?)`,
+    ).run(
+      id,
+      account.id,
+      sender.type,
+      opts.to,
+      asset,
+      opts.amountMinor,
+      quote.feeMinor,
+      executionFeeCeilingMinor,
+      detail,
+      createdAt,
+    );
+    const bindResult = runtime.bind?.(draft) as unknown;
+    if (isThenable(bindResult)) {
+      throw new TypeError("quotePayment bind callback must be synchronous.");
+    }
+  });
+  persist.immediate();
   return {
     paymentId: id,
     feeMinor: quote.feeMinor,
@@ -102,7 +199,7 @@ export const quotePayment = async (opts: {
       : {}),
     feeAsset: quote.feeAsset,
     summary: quote.summary,
-    expiresAt: new Date(Date.now() + QUOTE_TTL_MS).toISOString(),
+    expiresAt,
   };
 };
 
@@ -120,69 +217,249 @@ export interface ConfirmPaymentRuntime {
   afterRead?: () => Promise<void> | void;
   /** Lets a concurrency test put two readers on the same stale snapshot. */
   beforeClaim?: () => Promise<void> | void;
+  /** Deterministic clock used by the atomic fresh-row claim. */
+  now?: () => string;
+  /** Required when the payment belongs to the append-only BTC v2 binding
+   * table. Exact identifiers prevent a stale or confused review from claiming
+   * a different payment. `assertClaim` runs synchronously inside the same
+   * BEGIN IMMEDIATE transaction as the fresh read and status CAS. */
+  boundClaim?: {
+    readonly intentRecordId: string;
+    readonly reviewId: string;
+    readonly unsignedPayloadHash: `sha256:${string}`;
+    readonly assertClaim: (claim: Readonly<BoundPaymentClaim>) => void;
+  };
 }
+
+export interface BoundPaymentClaim {
+  readonly paymentId: string;
+  readonly accountId: string;
+  readonly intentRecordId: string;
+  readonly reviewId: string;
+  readonly reservationId: string;
+  readonly unsignedPayload: Uint8Array;
+  readonly unsignedPayloadHash: `sha256:${string}`;
+  readonly quoteExpiresAt: string;
+  readonly bindingCreatedAt: string;
+  readonly claimedAt: string;
+}
+
+interface BtcBindingRow {
+  intent_record_id: string;
+  payment_id: string;
+  account_id: string;
+  review_id: string;
+  reservation_id: string;
+  unsigned_payload: Uint8Array;
+  unsigned_payload_hash: `sha256:${string}`;
+  quote_expires_at: string;
+  created_at: string;
+}
+
+const boundBitcoinPayment = (paymentId: string): BtcBindingRow | null =>
+  db.query(
+    `SELECT intent_record_id, payment_id, account_id, review_id,
+            reservation_id, unsigned_payload, unsigned_payload_hash,
+            quote_expires_at, created_at
+       FROM cashloom_v2_btc_payment_bindings
+      WHERE payment_id = ?`,
+  ).get(paymentId) as BtcBindingRow | null;
+
+const unavailableMessage = (paymentId: string, status: string): string =>
+  `Payment ${paymentId} is "${status}" — only a fresh quote can be confirmed.`;
 
 export const confirmPayment = async (
   paymentId: string,
   runtime: ConfirmPaymentRuntime = {},
 ): Promise<ConfirmResult> => {
-  const row = db.query("SELECT * FROM payments WHERE id = ?").get(paymentId) as
+  const initialRow = db.query("SELECT * FROM payments WHERE id = ?").get(paymentId) as
     | Record<string, string | null>
     | null;
-  if (!row) throw new Error(`No payment ${paymentId}`);
-  if (row.status !== "quoted") {
-    throw new Error(`Payment ${paymentId} is "${row.status}" — only a fresh quote can be confirmed.`);
+  if (!initialRow) throw new Error(`No payment ${paymentId}`);
+  if (initialRow.status !== "quoted") {
+    throw new Error(unavailableMessage(paymentId, String(initialRow.status)));
+  }
+  // Fail the generic door closed before callbacks or sender activity. The same
+  // check is repeated under the writer lock because a binding can race this
+  // initial snapshot.
+  if (boundBitcoinPayment(paymentId) !== null && runtime.boundClaim === undefined) {
+    throw new Error(
+      "This payment is bound to a reviewed CashLoom v2 Bitcoin intent; use the exact bound-confirmation door.",
+    );
   }
   if (runtime.afterRead) await runtime.afterRead();
-  if (Date.now() - Date.parse(String(row.created_at)) > QUOTE_TTL_MS) {
-    // Expiry is also a compare-and-swap. A process with a skewed clock must
-    // not overwrite a confirmation another process already claimed.
-    const expired = db
-      .query(
-        `UPDATE payments
-         SET status = 'failed', error = 'quote expired', updated_at = ?
-         WHERE id = ? AND status = 'quoted' AND created_at = ?`,
-      )
-      .run(new Date().toISOString(), paymentId, String(row.created_at));
-    if (expired.changes !== 1) {
-      const current = db.query("SELECT status FROM payments WHERE id = ?").get(paymentId) as
-        | { status: string }
-        | null;
-      throw new Error(
-        `Payment ${paymentId} is "${current?.status ?? "missing"}" — only a fresh quote can be confirmed.`,
-      );
-    }
-    throw new Error("Quote expired — request a fresh one (fees move).");
-  }
 
-  const account = sendingAccount(String(row.account_id));
-  const sender = senderForAsset(String(row.asset), runtime.senders ?? SENDERS);
+  // Preserve the old fail-before-claim behavior for a missing key or sender.
+  // The exact fresh row is resolved a second time inside the writer lock.
+  sendingAccount(String(initialRow.account_id));
+  senderForAsset(String(initialRow.asset), runtime.senders ?? SENDERS);
 
   if (runtime.beforeClaim) await runtime.beforeClaim();
 
-  // Claim the quote with a compare-and-swap BEFORE any signing work. Two
-  // processes can both read "quoted"; only one may move it to "confirmed".
-  // The loser must stop here, before it can reveal a key or call send().
-  const claimed = db
-    .query(
-      `UPDATE payments
-       SET status = 'confirmed', updated_at = ?
-       WHERE id = ? AND status = 'quoted' AND created_at = ?`
-    )
-    .run(new Date().toISOString(), paymentId, String(row.created_at));
-  if (claimed.changes !== 1) {
-    const current = db.query("SELECT status FROM payments WHERE id = ?").get(paymentId) as
-      | { status: string }
+  const claimWrite = db.transaction(() => {
+    // Take the claim timestamp only after BEGIN IMMEDIATE owns the writer
+    // lock. A process must not carry a pre-expiry timestamp while waiting for
+    // another process, then claim after a read-only recovery check has already
+    // proved the review expired.
+    const claimedAt = timestampNow(runtime.now);
+    const freshRow = db.query("SELECT * FROM payments WHERE id = ?").get(paymentId) as
+      | Record<string, string | null>
       | null;
-    throw new Error(
-      `Payment ${paymentId} is "${current?.status ?? "missing"}" — only a fresh quote can be confirmed.`
+    if (freshRow === null || freshRow.status !== "quoted") {
+      return {
+        kind: "unavailable" as const,
+        status: freshRow?.status ?? "missing",
+      };
+    }
+
+    const binding = boundBitcoinPayment(paymentId);
+    let expectedPayload: Uint8Array | null = null;
+    let expectedPayloadHash: `sha256:${string}` | null = null;
+    if (binding !== null) {
+      const requested = runtime.boundClaim;
+      if (requested === undefined) {
+        throw new Error(
+          "This payment is bound to a reviewed CashLoom v2 Bitcoin intent; use the exact bound-confirmation door.",
+        );
+      }
+      if (
+        requested.intentRecordId !== binding.intent_record_id
+        || requested.reviewId !== binding.review_id
+        || requested.unsignedPayloadHash !== binding.unsigned_payload_hash
+      ) {
+        throw new Error(
+          "The bound Bitcoin confirmation does not match this intent, review, and unsigned payload.",
+        );
+      }
+      if (
+        binding.account_id !== freshRow.account_id
+        || !(binding.unsigned_payload instanceof Uint8Array)
+        || sha256BytesId(binding.unsigned_payload)
+          !== binding.unsigned_payload_hash
+      ) {
+        throw new Error(
+          "The stored Bitcoin execution binding no longer matches its payment or payload hash.",
+        );
+      }
+      expectedPayload = Uint8Array.from(binding.unsigned_payload);
+      expectedPayloadHash = binding.unsigned_payload_hash;
+    } else if (runtime.boundClaim !== undefined) {
+      throw new Error(
+        "This payment has no CashLoom v2 Bitcoin binding to claim.",
+      );
+    }
+
+    const createdAtMs = Date.parse(String(freshRow.created_at));
+    const boundExpiryMs = binding === null ? null : Date.parse(binding.quote_expires_at);
+    const expired = !Number.isFinite(createdAtMs)
+      || Date.parse(claimedAt) - createdAtMs > QUOTE_TTL_MS
+      || (
+        boundExpiryMs !== null
+        && (
+          !Number.isFinite(boundExpiryMs)
+          || Date.parse(claimedAt) >= boundExpiryMs
+        )
+      );
+    if (expired) {
+      const updated = db.query(
+        `UPDATE payments
+            SET status = 'failed', error = 'quote expired', updated_at = ?
+          WHERE id = ? AND status = 'quoted' AND created_at = ?`,
+      ).run(claimedAt, paymentId, String(freshRow.created_at));
+      if (updated.changes !== 1) {
+        const current = db.query("SELECT status FROM payments WHERE id = ?")
+          .get(paymentId) as { status: string } | null;
+        return {
+          kind: "unavailable" as const,
+          status: current?.status ?? "missing",
+        };
+      }
+      return { kind: "expired" as const };
+    }
+
+    // Only a fresh quote may advance the adapter's linked commitment. The
+    // assertion can append its own evidence here; any throw, later sender
+    // validation failure, or failed CAS rolls the entire writer transaction
+    // back together.
+    if (binding !== null) {
+      const requested = runtime.boundClaim;
+      if (requested === undefined || expectedPayload === null) {
+        throw new Error(
+          "This payment is bound to a reviewed CashLoom v2 Bitcoin intent; use the exact bound-confirmation door.",
+        );
+      }
+      const claim: Readonly<BoundPaymentClaim> = Object.freeze({
+        paymentId,
+        accountId: binding.account_id,
+        intentRecordId: binding.intent_record_id,
+        reviewId: binding.review_id,
+        reservationId: binding.reservation_id,
+        unsignedPayload: Uint8Array.from(expectedPayload),
+        unsignedPayloadHash: binding.unsigned_payload_hash,
+        quoteExpiresAt: binding.quote_expires_at,
+        bindingCreatedAt: binding.created_at,
+        claimedAt,
+      });
+      const assertionResult = requested.assertClaim(claim) as unknown;
+      if (isThenable(assertionResult)) {
+        throw new TypeError(
+          "Bound payment assertClaim callback must be synchronous.",
+        );
+      }
+    }
+
+    // Resolve from the fresh row before changing state so every local
+    // validation failure rolls the transaction back to a usable quote.
+    const account = sendingAccount(String(freshRow.account_id));
+    const sender = senderForAsset(
+      String(freshRow.asset),
+      runtime.senders ?? SENDERS,
     );
+    const claimed = db.query(
+      `UPDATE payments
+          SET status = 'confirmed', updated_at = ?
+        WHERE id = ? AND status = 'quoted' AND created_at = ?`,
+    ).run(claimedAt, paymentId, String(freshRow.created_at));
+    if (claimed.changes !== 1) {
+      const current = db.query("SELECT status FROM payments WHERE id = ?")
+        .get(paymentId) as { status: string } | null;
+      return {
+        kind: "unavailable" as const,
+        status: current?.status ?? "missing",
+      };
+    }
+    return {
+      kind: "claimed" as const,
+      row: freshRow,
+      account,
+      sender,
+      expectedPayload,
+      expectedPayloadHash,
+    };
+  });
+  const claim = claimWrite.immediate();
+  if (claim.kind === "unavailable") {
+    throw new Error(unavailableMessage(paymentId, String(claim.status)));
   }
+  if (claim.kind === "expired") {
+    throw new Error("Quote expired — request a fresh one (fees move).");
+  }
+
+  const { row, account, sender } = claim;
 
   let receipt;
   try {
     receipt = await sender.send(
-      { vaultKeyId: account.vault_key_id!, paymentId },
+      {
+        vaultKeyId: account.vault_key_id!,
+        paymentId,
+        ...(claim.expectedPayload === null
+          ? {}
+          : { expectedUnsignedPayload: Uint8Array.from(claim.expectedPayload) }),
+        ...(claim.expectedPayloadHash === null
+          ? {}
+          : { expectedUnsignedPayloadHash: claim.expectedPayloadHash }),
+      },
       {
         to: String(row.to_addr),
         amountMinor: String(row.amount_minor),

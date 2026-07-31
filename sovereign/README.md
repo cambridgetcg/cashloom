@@ -45,6 +45,9 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 | `CASHLOOM_PORT` | HTTP port (default `4747`). |
 | `CASHLOOM_BIND` | Bind address (default `127.0.0.1` — change only if you know why). |
 | `CASHLOOM_DATA_DIR` | Where the SQLite file + keys live (default `~/.cashloom`). |
+| `ESPLORA_BASE_URL` | Bitcoin indexer/read/broadcast endpoint (default `https://blockstream.info/api`). Point this at your own Esplora for a self-hosted data edge; the selected endpoint can observe address lookups and censor responses but cannot authorize or alter a signed payment. |
+| `CASHLOOM_BTC_MAX_FEE_RATE` | Local quote-time fee-rate sanity ceiling in sat/vB (default `1000`). |
+| `CASHLOOM_BTC_MAX_FEE_SAT` | Local absolute BTC network-fee sanity ceiling in sats (default `100000`). A Pay Link's signed lower ceiling still wins. |
 | `CASHLOOM_V2_REMOTE_MAX_RECORDS` | Global cap for distinct remotely admitted v2 records (default `10000`; `0` closes remote ingest). |
 | `CASHLOOM_V2_REMOTE_MAX_BYTES` | Global cap for exact remotely admitted v2 bytes (default `67108864`; `0` closes remote ingest). |
 | `CASHLOOM_BASE_RPC_URL` | Base L2 RPC for sending (default public `mainnet.base.org`). A URL, not a credential. |
@@ -86,6 +89,16 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   keys are pseudonymous rather than verified people or companies; public notes
   and Bitcoin addresses are linkable, while acceptance files are sensitive
   plaintext intended only for the merchant.
+- **Payer-local Bitcoin execution** — only the node that authored an active
+  acceptance intent can bind it to one matching local BTC account and one exact
+  canonical PSBT v0. Preparing contacts the configured Esplora service, reveals
+  the public source-address lookup to that service, and reserves the selected
+  coins, but does not create an execution commitment, reveal a private key,
+  sign, or broadcast. A separate short-lived review shows the exact fee and
+  total. Its final Send creates/reuses the exact private
+  `ExecutionCommitment`, atomically claims the quote, recompiles the PSBT before
+  key access, and broadcasts at most once. Generic payment confirmation is
+  closed for these bound rows.
 - **Stripe Checkout sandbox contract** — a separate inbound connected-seller
   collection lifecycle with exact request compilation, durable provider
   idempotency, injected transport, test-mode-only response binding, and
@@ -116,6 +129,9 @@ The sovereign listener still defaults to loopback. Its protocol doors are:
 | `POST /api/v2/pay-links/inspect` | vault session | Verify and explain a pasted request or locally addressed acceptance; no external fetch or import. |
 | `POST /api/v2/pay-links/accept` | vault session | Sign a private `.cashloom-accept`; no transaction or reservation. |
 | `POST /api/v2/pay-links/acceptances/import` | vault session | Verify and append merchant-addressed acceptance evidence; no execution. |
+| `POST /api/v2/pay-links/executions/prepare` | vault session | Bind one locally authored active BTC intent and exact local source account to a short-lived PSBT review; indexer read and coin reservation, no signing or broadcast. |
+| `POST /api/v2/pay-links/executions/confirm` | vault session | Confirm one exact review, create/reuse its private execution commitment, and make the one allowed local-sign-and-broadcast attempt. |
+| `POST /api/v2/pay-links/executions/status` | vault session | Read one exact review's local durable state after a refresh or uncertain response; no indexer read, signing, or broadcast. |
 
 The hosted `info-server.ts` intentionally has none of these doors and imports
 no vault or ledger. Publishing a sovereign node requires a separately reviewed
@@ -129,18 +145,19 @@ narrow ingress; do not expose the whole listener. See
   exact quote binding, sign-time validity checks, and atomic one-to-one
   authorization/payment reservation. Existing `authorized-not-bound` records
   are never upgraded in place.
-- **Exact Bitcoin execution binding** — compile a verified Pay Link acceptance
-  into an exact quote only after an explicit second confirmation, bind the
-  resulting transaction bytes one-to-one, and retain the existing
-  submit-once/uncertain-state discipline. Portable acceptance itself remains
-  non-executable.
-- **v2 execution evidence** — bind an exact rail payload and enforce the
-  payer's total fee-asset ceiling before exposing closed
-  `ExecutionCommitment`, `SubmissionReceipt`, and `SettlementReceipt`
-  workflows. A settlement receipt is explicitly an issuer assertion until a
-  rail-specific verifier authenticates its referenced evidence. The record
-  primitives exist; the HTTP layer does not fabricate evidence before an
-  adapter can prove it.
+- **v2 post-submission evidence** — the BTC adapter now creates the closed
+  `ExecutionCommitment` only after final user confirmation and before key
+  access. Add rail-authenticated `SubmissionReceipt` and
+  `SettlementReceipt` workflows next. A settlement receipt remains an issuer
+  assertion until a rail-specific verifier authenticates its referenced
+  evidence; the HTTP layer must not fabricate either receipt.
+- **BTC same-byte crash recovery** — persist the signed raw transaction before
+  first egress so an operator can reconcile or deliberately rebroadcast those
+  exact bytes after a crash. Never rebuild, re-sign, or silently retry a
+  transaction whose submission outcome is unknown.
+- **Bitcoin data-source plurality** — support a self-hosted node adapter and
+  bounded comparison across user-selected endpoints. A disagreement may halt
+  preparation; endpoint votes must never become payment authority.
 - **Stripe sandbox transport + endpoint** — add a separately scoped test key
   and webhook secret only when an operator deliberately configures a Stripe
   sandbox; keep Checkout collection separate from outbound `PaymentSender`.
