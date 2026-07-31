@@ -7,8 +7,10 @@ Status: architecture contract for the current sovereign node, 2026-07-30.
 CashLoom should be the KINGDOM's payment **control and execution protocol**,
 not a pooled wallet or an unlicensed shadow ledger.
 
-- `cashloom.io` is the public door: documentation, discovery, compatibility
-  metadata, and status. It does not receive private keys or user funds.
+- `cashloom.io` is an optional public information and discovery mirror. It is
+  replaceable, is never protocol identity, and is not needed once nodes have
+  exchanged their key+transport pins. It does not receive private keys or user
+  funds.
 - A CashLoom sovereign node owns local quotes, policy, encrypted signing keys,
   durable operation state, and reconciliation.
 - Licensed payment processors own fiat onboarding, card/bank collection,
@@ -45,6 +47,12 @@ The envelope is not itself signing authority. A rail adapter must bind it to
 the exact provider request or chain-native unsigned bytes and prove that
 binding again immediately before signing or submission.
 
+CashLoom v2 now implements the authority-bearing form as a chain of canonical
+signed `PaymentRequest`, `PaymentIntent`, `ExecutionCommitment`,
+`SubmissionReceipt`, and issuer-only `SettlementReceipt` records. The
+interface above remains an adapter-domain sketch, not the v2 wire format. See
+[`CASHLOOM-V2.md`](CASHLOOM-V2.md).
+
 The durable lifecycle is forward-only:
 
 ```text
@@ -60,6 +68,12 @@ terminal before egress: rejected_pre_submit | expired
 sticky after egress:    submission_unknown
 later provider events:  reversed | disputed
 ```
+
+`reversed` and `disputed` above remain projection states for future processor
+adapters. The foundation v2 record chain intentionally permits only one
+exclusive `settled` issuer assertion; it needs an explicit signed
+adjustment/supersession schema before it can represent later reversals or
+disputes.
 
 `submission_unknown` is never converted to a clean failure merely because a
 timeout occurred or a lookup returned no result. Reconciliation must use the
@@ -226,15 +240,18 @@ launch.
    replay protection.
 2. **Shipped offline:** Stripe Connect direct-charge Checkout sandbox contract
    with injected transport, durable idempotency, and signed webhook tests.
-3. **Next:** resolve an enforceable total-fee contract, then add the narrow
+3. **Shipped foundation:** operatorless v2 self-certifying records,
+   rail-bound asset policy, append-only local storage, and direct two-node
+   delivery without `cashloom.io`.
+4. **Next:** resolve an enforceable total-fee contract, then add the narrow
    Agent Wallet → CashLoom one-to-one binding for a newly signed profile.
-4. **Then:** add a separately scoped Stripe test transport and sandbox webhook
+5. **Then:** add a separately scoped Stripe test transport and sandbox webhook
    endpoint; run a provider-backed test only with explicit sandbox credentials.
-5. **In parallel:** add AgentTool origin-scoped custom-facilitator auth; keep
+6. **In parallel:** add AgentTool origin-scoped custom-facilitator auth; keep
    payouts hard-resting.
-6. **Canary:** x402 v2 on Base Sepolia, then a tightly allowlisted mainnet
+7. **Canary:** x402 v2 on Base Sepolia, then a tightly allowlisted mainnet
    facilitator only after threat review and operational/legal sign-off.
-7. **Expand:** GoCardless mandates; Adyen only if multi-party platform
+8. **Expand:** GoCardless mandates; Adyen only if multi-party platform
    requirements and liability justify it.
 
 ## Deployment boundary

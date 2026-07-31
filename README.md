@@ -23,6 +23,9 @@ software you run yourself.
 - **[`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md)** — how CashLoom
   becomes the KINGDOM payment layer across Agent Wallet, x402, Stripe,
   GoCardless, and later marketplace processors without centralizing keys.
+- **[`docs/CASHLOOM-V2.md`](docs/CASHLOOM-V2.md)** — the operatorless signed
+  record layer: self-certifying node keys, direct node-to-node delivery,
+  append-only evidence, and explicit local asset-trust policy.
 - **[`FIAT-ROUTE.md`](FIAT-ROUTE.md)** — the provider-backed fiat design:
   avoid pooled custody, connect to licensed rails, map each country and funds
   flow before launch, keep ZRN out of scope, and name the lines that need
@@ -59,6 +62,13 @@ non-custodial wallet. That is the whole setup.
   offline, injected-transport test contract with connected-account scoping,
   durable idempotency, test-mode refusal, and authenticated webhook replay
   handling. It does not contain a key, call Stripe, or claim production readiness.
+- **Operatorless v2 foundation** — two nodes can exchange signed payment terms
+  and a private intent directly, with Agent Wallet canonical records,
+  rail-bound CAIP-19 asset policy, replay protection, and no CashLoom account,
+  company identity, domain, relay, processor, or hosted database in the
+  authority path. Direct HTTP transport separately pins the chosen node key
+  and origin. The hosted site remains an information door and does not run
+  this protocol.
 
 ## Layout
 

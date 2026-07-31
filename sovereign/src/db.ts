@@ -8,16 +8,31 @@
  */
 
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { installCashLoomV2Schema } from "./protocol/v2/schema.ts";
 
 const dataDir = process.env.CASHLOOM_DATA_DIR ?? join(homedir(), ".cashloom");
-mkdirSync(dataDir, { recursive: true });
+mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+// Private v2 records and sealed vault blobs share this local directory. Fail
+// closed if an existing install cannot be tightened; a permissive data
+// directory is not an acceptable fallback.
+chmodSync(dataDir, 0o700);
 
 export const DB_PATH = join(dataDir, "sovereign.db");
 
+if (existsSync(DB_PATH)) chmodSync(DB_PATH, 0o600);
 export const db = new Database(DB_PATH, { create: true });
+// The file is empty on first creation at this point, so restrict it before
+// schema or private record bytes are written.
+chmodSync(DB_PATH, 0o600);
+
+const hardenSqliteSidecars = (): void => {
+  for (const path of [`${DB_PATH}-wal`, `${DB_PATH}-shm`]) {
+    if (existsSync(path)) chmodSync(path, 0o600);
+  }
+};
 
 // Install the wait policy before WAL negotiation: two fresh processes can
 // otherwise race on PRAGMA journal_mode before either connection has a busy
@@ -43,6 +58,7 @@ for (;;) {
   }
 }
 db.exec("PRAGMA foreign_keys = ON;");
+hardenSqliteSidecars();
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS settings (
@@ -97,6 +113,12 @@ CREATE TABLE IF NOT EXISTS vault_keys (
   enc_blob   BLOB NOT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+-- The v2 discovery authority is one stable pseudonymous node key. Concurrent
+-- first activation across processes may do redundant crypto work, but only
+-- one sealed key can win this dedicated label.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_v2_node_authority
+  ON vault_keys(label)
+  WHERE kind = 'secret' AND label = 'cashloom-v2-node-authority';
 
 -- Outbound payments: every send is quoted first (fee disclosed), confirmed
 -- explicitly, and recorded whatever happens. NEVER auto-retried.
@@ -224,7 +246,10 @@ CREATE TABLE IF NOT EXISTS stripe_webhook_inbox (
 );
 CREATE INDEX IF NOT EXISTS idx_stripe_webhook_operation
   ON stripe_webhook_inbox(operation_id, received_at);
+
 `);
+
+installCashLoomV2Schema(db);
 
 // Forward-only additive payment fields: CREATE TABLE IF NOT EXISTS cannot grow
 // an existing file, so probe and patch — idempotent.
@@ -242,5 +267,6 @@ const growPayments = db.transaction(() => {
 // The probe runs after the writer lock is held, so two fresh CashLoom processes
 // cannot both decide to add the same legacy column.
 growPayments.immediate();
+hardenSqliteSidecars();
 
 export const newId = (): string => crypto.randomUUID();
