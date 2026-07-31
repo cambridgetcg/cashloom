@@ -40,6 +40,10 @@ import {
 const NOW = "2030-01-01T00:00:00.000Z";
 const BTC_CHAIN = "bip122:000000000019d6689c085ae165831e93";
 const BTC_ASSET = `${BTC_CHAIN}/slip44:0`;
+const MERCHANT_ADDRESS =
+  "bc1qvux25709r4uw6rzc8wyl7wwecjdhrx085hm5ty";
+const PAYER_ADDRESS =
+  "bc1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j29e5za5";
 
 const manifest = (): AssetTrustManifest => ({
   schema: ASSET_TRUST_MANIFEST_SCHEMA,
@@ -136,6 +140,7 @@ async function nodeFixture(seedByte: number, role: "merchant" | "payer") {
   mountV2LocalRoutes(app, {
     store: () => store,
     service: async () => service,
+    now: () => NOW,
   });
   return { authority, node, db, store, service, descriptor, app };
 }
@@ -229,6 +234,156 @@ describe("bounded v2 HTTP doors", () => {
     expect(unlocked.status).toBe(200);
     expect(unlocked.headers.get("content-type")).toBe(V2_RECORD_MEDIA_TYPE);
     fixture.db.close();
+  });
+
+  test("keeps the portable Pay Link journey session-gated and evidence-only", async () => {
+    const merchant = await nodeFixture(54, "merchant");
+    const payer = await nodeFixture(55, "payer");
+    const json = (
+      app: Hono,
+      path: string,
+      body: unknown,
+      unlocked = true,
+    ) =>
+      app.request(path, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(unlocked
+            ? { authorization: "Bearer local-test" }
+            : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+    const locked = await json(
+      merchant.app,
+      "/api/v2/pay-links",
+      {
+        destination: MERCHANT_ADDRESS,
+        amount_sats: "25000",
+      },
+      false,
+    );
+    expect(locked.status).toBe(401);
+
+    const created = await json(merchant.app, "/api/v2/pay-links", {
+      destination: MERCHANT_ADDRESS,
+      amount_sats: "25000",
+      note: "router playground",
+      ttl_seconds: 3600,
+    });
+    if (created.status !== 201) {
+      throw new Error(`create Pay Link failed: ${await created.text()}`);
+    }
+    expect(created.status).toBe(201);
+    const offer = await created.json() as {
+      bundle: string;
+      projection: Record<string, unknown>;
+    };
+    expect(offer.projection).toMatchObject({
+      kind: "request",
+      identity_assurance: "first-contact-key",
+      signature_valid: true,
+      asset_policy_accepted: true,
+      no_money_moved: true,
+    });
+
+    const inspected = await json(
+      payer.app,
+      "/api/v2/pay-links/inspect",
+      { bundle: offer.bundle },
+    );
+    expect(inspected.status).toBe(200);
+    expect(await inspected.json()).toMatchObject({
+      projection: {
+        kind: "request",
+        amount_atomic: "25000",
+        destination: MERCHANT_ADDRESS,
+        no_money_moved: true,
+      },
+    });
+
+    const pinnedInspection = await json(
+      payer.app,
+      "/api/v2/pay-links/inspect",
+      {
+        bundle: offer.bundle,
+        expected_merchant_key_id: merchant.node.authority.key_id,
+      },
+    );
+    expect(pinnedInspection.status).toBe(200);
+    expect(await pinnedInspection.json()).toMatchObject({
+      projection: { identity_assurance: "matched-key" },
+    });
+
+    const wrongPinInspection = await json(
+      payer.app,
+      "/api/v2/pay-links/inspect",
+      {
+        bundle: offer.bundle,
+        expected_merchant_key_id: payer.node.authority.key_id,
+      },
+    );
+    expect(wrongPinInspection.status).toBe(403);
+
+    const accepted = await json(
+      payer.app,
+      "/api/v2/pay-links/accept",
+      {
+        bundle: offer.bundle,
+        source_account: PAYER_ADDRESS,
+        max_fee_sats: "1000",
+      },
+    );
+    expect(accepted.status).toBe(201);
+    const acceptance = await accepted.json() as {
+      bundle: string;
+      projection: Record<string, unknown>;
+    };
+    expect(acceptance.projection).toMatchObject({
+      kind: "acceptance",
+      source_account: PAYER_ADDRESS,
+      confidentiality: "sensitive-plaintext",
+      no_money_moved: true,
+    });
+
+    const acceptanceInspection = await json(
+      merchant.app,
+      "/api/v2/pay-links/inspect",
+      { bundle: acceptance.bundle },
+    );
+    expect(acceptanceInspection.status).toBe(200);
+    expect(await acceptanceInspection.json()).toMatchObject({
+      projection: {
+        kind: "acceptance",
+        no_money_moved: true,
+      },
+    });
+
+    const imported = await json(
+      merchant.app,
+      "/api/v2/pay-links/acceptances/import",
+      { bundle: acceptance.bundle },
+    );
+    expect(imported.status).toBe(200);
+    expect(await imported.json()).toMatchObject({
+      inserted_count: 2,
+      projection: {
+        kind: "acceptance",
+        no_money_moved: true,
+      },
+    });
+
+    const noncanonical = await json(
+      payer.app,
+      "/api/v2/pay-links/inspect",
+      { bundle: JSON.stringify(JSON.parse(offer.bundle), null, 2) },
+    );
+    expect(noncanonical.status).toBe(422);
+
+    merchant.db.close();
+    payer.db.close();
   });
 });
 

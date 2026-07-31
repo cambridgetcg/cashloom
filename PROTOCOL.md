@@ -3,9 +3,10 @@
 > An **open, non-custodial, local-first payment protocol.** Everyone pays everyone, over every rail, holding nothing, collecting nothing.
 
 *Status: design spec, updated 2026-07-31. Shipped slices: BTC + ETH/USDC on
-Base, plus the operatorless CashLoom v2 signed-record foundation; fiat sending
-remains provider-backed design work. This document is the protocol definition;
-the codebase is a reference implementation.*
+Base, the operatorless CashLoom v2 signed-record foundation, and portable
+Bitcoin-mainnet request/acceptance handoff; fiat sending remains
+provider-backed design work. This document is the protocol definition; the
+codebase is a reference implementation.*
 
 ---
 
@@ -116,6 +117,13 @@ CashLoom runs on **your** machine: the shipped Bun + Hono + bun:sqlite stack, ru
 ### 5.6 Addressing
 
 - **First slice:** direct — sender picks rail + destination (paste an address, a Stripe link, or a Stripe connected-account id).
+- **Portable v2 handoff:** a public `.cashloom-pay` carries the exact
+  Bitcoin-mainnet terms and merchant key for offline inspection; a separate
+  merchant-addressed `.cashloom-accept` returns payer-signed consent evidence.
+  No CashLoom URL, hosted account, lookup service, processor, or
+  internet-reachable node is required; each signer still uses its own local
+  sovereign node and unlocked vault. Neither file executes or proves
+  settlement.
 - **Fast-follow:** a `you@cashloom` payment pointer resolving to that being's preferred rail destinations — the "everyone reaches everyone" simplicity that hides rail complexity behind a name.
 
 ### 5.7 Compliance + fees
@@ -158,7 +166,9 @@ quote/sign/submit primitive end-to-end; the fiat rail lands next.
 
 - **Shipped slice:** `PaymentSender` seam + local key custody + quote/confirm
   `pay()` + BTC / ETH / USDC-on-Base senders + durable cross-process EVM
-  account-nonce reservations + local-run + direct addressing.
+  account-nonce reservations + local-run + direct addressing, plus the v2
+  Bitcoin `.cashloom-pay` / `.cashloom-accept` offline handoff. The latter
+  signs and imports evidence but does not call `pay()`.
 - **Provider slice:** the offline Stripe Connect direct-charge Checkout
   contract is present; a separately reviewed sandbox transport and signed
   endpoint are next. See [`docs/KINGDOM-PAYMENTS.md`](docs/KINGDOM-PAYMENTS.md).

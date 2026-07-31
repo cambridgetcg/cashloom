@@ -243,15 +243,22 @@ launch.
 3. **Shipped foundation:** operatorless v2 self-certifying records,
    rail-bound asset policy, append-only local storage, and direct two-node
    delivery without `cashloom.io`.
-4. **Next:** resolve an enforceable total-fee contract, then add the narrow
+4. **Shipped handoff:** self-contained Bitcoin-mainnet `.cashloom-pay`
+   requests and merchant-addressed private `.cashloom-accept` evidence work
+   by local file or paste, with no hosted CashLoom account, registry, external
+   fetch, processor, or money movement.
+5. **Next:** bind a verified Bitcoin acceptance one-to-one to the existing
+   exact quote/confirm sender behind a fresh explicit confirmation; keep the
+   portable artifact non-executable.
+6. **Then:** resolve an enforceable total-fee contract, then add the narrow
    Agent Wallet → CashLoom one-to-one binding for a newly signed profile.
-5. **Then:** add a separately scoped Stripe test transport and sandbox webhook
+7. **Then:** add a separately scoped Stripe test transport and sandbox webhook
    endpoint; run a provider-backed test only with explicit sandbox credentials.
-6. **In parallel:** add AgentTool origin-scoped custom-facilitator auth; keep
+8. **In parallel:** add AgentTool origin-scoped custom-facilitator auth; keep
    payouts hard-resting.
-7. **Canary:** x402 v2 on Base Sepolia, then a tightly allowlisted mainnet
+9. **Canary:** x402 v2 on Base Sepolia, then a tightly allowlisted mainnet
    facilitator only after threat review and operational/legal sign-off.
-8. **Expand:** GoCardless mandates; Adyen only if multi-party platform
+10. **Expand:** GoCardless mandates; Adyen only if multi-party platform
    requirements and liability justify it.
 
 ## Deployment boundary

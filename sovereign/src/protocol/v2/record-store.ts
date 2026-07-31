@@ -19,6 +19,7 @@ import {
   verifyV2Record,
   verifyV2RecordLink,
   type NodeDescriptorCore,
+  type PaymentIntentCore,
   type V2Schema,
   type VerifiedV2Record,
 } from "./records.ts";
@@ -48,6 +49,11 @@ export interface AppendV2RecordResult {
   record: VerifiedV2Record;
   inserted: boolean;
   canonicalBytes: number;
+  source: V2RecordSource;
+}
+
+export interface AppendV2RecordInput {
+  canonicalBytes: Uint8Array;
   source: V2RecordSource;
 }
 
@@ -369,6 +375,43 @@ export class CashLoomV2RecordStore {
     return write.immediate();
   }
 
+  /**
+   * Verify every input before opening one outer writer transaction, then append
+   * the whole ordered carrier atomically. `append()` uses nested savepoints
+   * under Bun's transaction wrapper, so any later quota, nonce, ancestry, or
+   * transition failure rolls the complete batch back.
+   */
+  appendBatch(
+    entries: readonly AppendV2RecordInput[],
+  ): readonly AppendV2RecordResult[] {
+    if (!Array.isArray(entries)) {
+      configurationError("entries must be an array.");
+    }
+    const prepared = entries.map((entry) => {
+      if (
+        entry === null
+        || typeof entry !== "object"
+        || !(entry.canonicalBytes instanceof Uint8Array)
+      ) {
+        return configurationError(
+          "Every batch entry must contain canonical Uint8Array bytes.",
+        );
+      }
+      assertSource(entry.source);
+      const exactBytes = Uint8Array.from(entry.canonicalBytes);
+      verifyV2Record(exactBytes);
+      return Object.freeze({
+        canonicalBytes: exactBytes,
+        source: entry.source,
+      });
+    });
+
+    const write = this.#db.transaction(() =>
+      prepared.map((entry) =>
+        this.append(entry.canonicalBytes, entry.source)));
+    return Object.freeze(write.immediate());
+  }
+
   /** Retrieve any locally-held record by a caller-supplied content ID. */
   getLocal(recordId: Sha256Id | string): VerifiedV2Record | null {
     assertSha256Id(recordId, "recordId");
@@ -376,6 +419,55 @@ export class CashLoomV2RecordStore {
       .query("SELECT canonical_json, source FROM cashloom_v2_records WHERE record_id = ?")
       .get(recordId) as StoredRecordRow | null;
     return row === null ? null : storedRecord(row.canonical_json);
+  }
+
+  /**
+   * Retry-safe lookup for the one local intent this issuer may create for a
+   * known request. This is deliberately not an enumeration surface.
+   */
+  localPaymentIntentFor(
+    requestRecordId: Sha256Id | string,
+    issuerKeyId: Sha256Id | string,
+  ): VerifiedV2Record<PaymentIntentCore> | null {
+    assertSha256Id(requestRecordId, "requestRecordId");
+    assertSha256Id(issuerKeyId, "issuerKeyId");
+    const rows = this.#db
+      .query(
+        `SELECT child.canonical_json, child.source
+           FROM cashloom_v2_record_parents AS edge
+           JOIN cashloom_v2_records AS child
+             ON child.record_id = edge.child_record_id
+          WHERE edge.parent_record_id = ?
+            AND child.schema = ?
+            AND child.issuer_key_id = ?
+            AND child.source = 'local'
+          ORDER BY child.received_at, child.record_id
+          LIMIT 2`,
+      )
+      .all(
+        requestRecordId,
+        V2_SCHEMAS.payment_intent,
+        issuerKeyId,
+      ) as StoredRecordRow[];
+    if (rows.length === 0) return null;
+    if (rows.length !== 1) {
+      throw new V2RecordStoreError(
+        "STORAGE_INTEGRITY_FAILURE",
+        "More than one local payment intent exists for the same request and issuer.",
+      );
+    }
+    const record = storedRecord(rows[0]!.canonical_json);
+    if (
+      record.schema !== V2_SCHEMAS.payment_intent
+      || record.parent_record_id !== requestRecordId
+      || record.authority.key_id !== issuerKeyId
+    ) {
+      throw new V2RecordStoreError(
+        "STORAGE_INTEGRITY_FAILURE",
+        "The targeted local payment-intent index disagrees with its signed record.",
+      );
+    }
+    return record as VerifiedV2Record<PaymentIntentCore>;
   }
 
   /** Retrieve only records explicitly signed for public disclosure. */
@@ -415,7 +507,7 @@ export class CashLoomV2RecordStore {
             AND issuer_key_id = ?
             AND disclosure = 'public'
             AND source = 'local'
-          ORDER BY created_at DESC, received_at DESC, record_id DESC
+          ORDER BY created_at DESC, received_at DESC, rowid DESC
           LIMIT 1`,
       )
       .get(this.#localNodeKeyId) as StoredRecordRow | null;

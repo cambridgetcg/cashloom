@@ -2,6 +2,9 @@ import type {
   Account,
   ConfirmResult,
   Meta,
+  PayLinkAcceptanceProjection,
+  PayLinkProjection,
+  PayLinkRequestProjection,
   Quote,
   SummaryRow,
   SyncResult,
@@ -152,6 +155,41 @@ export const api = {
     request<Quote>("/api/pay/quote", body),
   payConfirm: (paymentId: string) =>
     request<ConfirmResult>("/api/pay/confirm", { paymentId }),
+
+  createPayLink: (body: {
+    destination: string;
+    amount_sats: string;
+    note?: string;
+    ttl_seconds?: number;
+  }) =>
+    request<{
+      bundle: string;
+      filename: string;
+      projection: PayLinkRequestProjection;
+    }>("/api/v2/pay-links", body),
+  inspectPayLink: (bundle: string, expectedMerchantKeyId?: string) =>
+    request<{ projection: PayLinkProjection }>("/api/v2/pay-links/inspect", {
+      bundle,
+      ...(expectedMerchantKeyId
+        ? { expected_merchant_key_id: expectedMerchantKeyId }
+        : {}),
+    }),
+  acceptPayLink: (body: {
+    bundle: string;
+    source_account: string;
+    max_fee_sats: string;
+  }) =>
+    request<{
+      bundle: string;
+      filename: string;
+      projection: PayLinkAcceptanceProjection;
+      reused: boolean;
+    }>("/api/v2/pay-links/accept", body),
+  importPayLinkAcceptance: (bundle: string) =>
+    request<{
+      projection: PayLinkAcceptanceProjection;
+      inserted_count: number;
+    }>("/api/v2/pay-links/acceptances/import", { bundle }),
 
   // zerone front — public, read-only (works with or without a vault session).
   zeroneGuide: () => request<ZeroneGuide>("/api/zerone/guide"),

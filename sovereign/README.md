@@ -4,9 +4,11 @@
 > Your keys, your data, your machine.
 
 A sovereign money manager that runs entirely on **one machine** with **zero
-CashLoom-operated infrastructure** — no database server, no CashLoom account,
-and no telemetry. Optional rail APIs and public blockchain nodes are contacted
-only for the connectors and payments you choose. It is the reference implementation of the
+CashLoom-operated infrastructure** — no database server, no hosted CashLoom
+account, and no telemetry. Local account rows are labels in your own SQLite
+file, not a CashLoom identity. Optional rail APIs and public blockchain nodes
+are contacted only for the connectors and payments you choose. It is the
+reference implementation of the
 [CashLoom Protocol](../PROTOCOL.md): read every rail (crypto + fiat), pay over
 open rails, hold nothing, collect nothing.
 
@@ -76,6 +78,14 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   provenance; and key+origin-pinned one-hop delivery. A real two-node loopback
   test passes while `cashloom.io` is unavailable. No generic signing endpoint
   exists.
+- **Portable Bitcoin Pay Links** — create a public canonical
+  `.cashloom-pay`, hand it to another sovereign node by file or paste, inspect
+  the exact address/amount/key/expiry offline, and return a private
+  `.cashloom-accept`. Acceptance is signed evidence only: it imports no
+  execution commitment, broadcasts nothing, and moves no money. First-contact
+  keys are pseudonymous rather than verified people or companies; public notes
+  and Bitcoin addresses are linkable, while acceptance files are sensitive
+  plaintext intended only for the merchant.
 - **Stripe Checkout sandbox contract** — a separate inbound connected-seller
   collection lifecycle with exact request compilation, durable provider
   idempotency, injected transport, test-mode-only response binding, and
@@ -102,6 +112,10 @@ The sovereign listener still defaults to loopback. Its protocol doors are:
 | `POST /api/v2/assets/evaluate` | vault session | Apply an explicit local authority pin and policy. |
 | `POST /api/v2/payment-requests` | vault session | Create terms after local asset-policy acceptance. |
 | `POST /api/v2/payment-intents` | vault session | Accept exact stored terms with separate payment/fee asset gates. |
+| `POST /api/v2/pay-links` | vault session | Create a self-contained public Bitcoin-mainnet `.cashloom-pay`. |
+| `POST /api/v2/pay-links/inspect` | vault session | Verify and explain a pasted request or locally addressed acceptance; no external fetch or import. |
+| `POST /api/v2/pay-links/accept` | vault session | Sign a private `.cashloom-accept`; no transaction or reservation. |
+| `POST /api/v2/pay-links/acceptances/import` | vault session | Verify and append merchant-addressed acceptance evidence; no execution. |
 
 The hosted `info-server.ts` intentionally has none of these doors and imports
 no vault or ledger. Publishing a sovereign node requires a separately reviewed
@@ -115,6 +129,11 @@ narrow ingress; do not expose the whole listener. See
   exact quote binding, sign-time validity checks, and atomic one-to-one
   authorization/payment reservation. Existing `authorized-not-bound` records
   are never upgraded in place.
+- **Exact Bitcoin execution binding** — compile a verified Pay Link acceptance
+  into an exact quote only after an explicit second confirmation, bind the
+  resulting transaction bytes one-to-one, and retain the existing
+  submit-once/uncertain-state discipline. Portable acceptance itself remains
+  non-executable.
 - **v2 execution evidence** — bind an exact rail payload and enforce the
   payer's total fee-asset ceiling before exposing closed
   `ExecutionCommitment`, `SubmissionReceipt`, and `SettlementReceipt`

@@ -96,6 +96,53 @@ export interface SyncResult {
   skipped: number;
 }
 
+export type PayLinkIdentityAssurance = "first-contact-key" | "matched-key";
+
+export interface PayLinkRequestProjection {
+  kind: "request";
+  bundle_id: string;
+  request_record_id: string;
+  merchant_key_id: string;
+  identity_assurance: PayLinkIdentityAssurance;
+  rail: string;
+  asset_id: string;
+  amount_atomic: string;
+  destination: string;
+  note: string | null;
+  issued_at: string;
+  expires_at: string;
+  usable_until: string;
+  signature_valid: true;
+  asset_policy_accepted: true;
+  no_money_moved: true;
+}
+
+export interface PayLinkAcceptanceProjection {
+  kind: "acceptance";
+  acceptance_id: string;
+  pay_link_id: string;
+  request_record_id: string;
+  merchant_key_id: string;
+  payer_key_id: string;
+  rail: string;
+  asset_id: string;
+  amount_atomic: string;
+  destination: string;
+  source_account: string;
+  fee_asset_id: string;
+  max_fee_atomic: string;
+  note: string | null;
+  issued_at: string;
+  expires_at: string;
+  intent_active_at_verification: boolean;
+  no_money_moved: true;
+  confidentiality: "sensitive-plaintext";
+}
+
+export type PayLinkProjection =
+  | PayLinkRequestProjection
+  | PayLinkAcceptanceProjection;
+
 // zerone — the truth chain front (public, read-only).
 export interface ZeroneNetworkStatus {
   id: string;
