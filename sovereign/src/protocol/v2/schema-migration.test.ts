@@ -76,6 +76,7 @@ describe("CashLoom v2 database migration", () => {
     );
     expect(tables).toEqual(
       new Set([
+        "cashloom_v2_btc_payment_bindings",
         "cashloom_v2_ingest_usage",
         "cashloom_v2_record_parents",
         "cashloom_v2_records",
@@ -92,6 +93,8 @@ describe("CashLoom v2 database migration", () => {
     );
     expect(triggerNames).toEqual(
       new Set([
+        "cashloom_v2_btc_bindings_no_delete",
+        "cashloom_v2_btc_bindings_no_update",
         "cashloom_v2_parents_no_delete",
         "cashloom_v2_parents_no_update",
         "cashloom_v2_records_no_delete",

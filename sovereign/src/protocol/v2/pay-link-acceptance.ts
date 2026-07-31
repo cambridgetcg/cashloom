@@ -104,6 +104,7 @@ export interface V2PayLinkAcceptanceProjection {
   readonly acceptance_id: Sha256Id;
   readonly pay_link_id: Sha256Id;
   readonly request_record_id: Sha256Id;
+  readonly intent_record_id: Sha256Id;
   readonly merchant_key_id: Sha256Id;
   readonly payer_key_id: Sha256Id;
   readonly note: string | null;
@@ -610,6 +611,7 @@ export function v2PayLinkAcceptanceProjection(
     acceptance_id: value.acceptance_id,
     pay_link_id: value.pay_link.bundle_id,
     request_record_id: request.record_id,
+    intent_record_id: intent.record_id,
     merchant_key_id: request.authority.key_id,
     payer_key_id: intent.authority.key_id,
     note: value.pay_link.bundle.purpose.note,

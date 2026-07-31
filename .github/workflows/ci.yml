@@ -20,7 +20,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
-      - run: bun install --frozen-lockfile && bun run build
+      - run: bun install --frozen-lockfile && bun run test && bun run build
         working-directory: sovereign/ui
 
   atlas:

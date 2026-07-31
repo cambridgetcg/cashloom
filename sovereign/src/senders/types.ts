@@ -29,6 +29,11 @@ export interface SenderContext {
    *  exclude ITSELF while checking that no other signed payment already
    *  committed the same coins. */
   paymentId?: string;
+  /** Optional exact quote-time payload binding. Bound execution adapters pass
+   *  BOTH fields; a sender must refuse before key access if the payload it
+   *  recompiles at confirm differs by even one byte or hashes differently. */
+  expectedUnsignedPayload?: Uint8Array;
+  expectedUnsignedPayloadHash?: `sha256:${string}`;
 }
 
 /** The fee disclosure, produced BEFORE any signature exists. */
@@ -46,6 +51,11 @@ export interface PaymentQuote {
   summary: string;
   /** See PaymentInstruction.detail — returned here, stored by pay.ts. */
   detail?: string;
+  /** Internal exact unsigned rail payload. This is deliberately omitted from
+   *  the public QuoteResult; a closed binding adapter may persist it beside
+   *  the payment in the same transaction. */
+  unsignedPayload?: Uint8Array;
+  unsignedPayloadHash?: `sha256:${string}`;
 }
 
 export type SendStatus = "broadcast" | "failed";

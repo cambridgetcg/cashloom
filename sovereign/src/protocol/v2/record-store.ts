@@ -18,6 +18,7 @@ import {
   V2_SCHEMAS,
   verifyV2Record,
   verifyV2RecordLink,
+  type ExecutionCommitmentCore,
   type NodeDescriptorCore,
   type PaymentIntentCore,
   type V2Schema,
@@ -88,6 +89,21 @@ interface StoredRecordRow {
   source: V2RecordSource;
 }
 
+interface IndexedStoredRecordRow extends StoredRecordRow {
+  record_id: string;
+  schema: string;
+  issuer_key_id: string;
+}
+
+interface LocalCommitmentRow extends IndexedStoredRecordRow {
+  parent_record_id: string;
+  parent_index_record_id: string;
+  parent_schema: string;
+  parent_issuer_key_id: string;
+  parent_canonical_json: string;
+  parent_source: V2RecordSource;
+}
+
 interface NonceRow {
   record_id: string;
 }
@@ -147,6 +163,25 @@ function storedRecord(canonicalJson: string): VerifiedV2Record {
     error.cause = cause;
     throw error;
   }
+}
+
+function indexedStoredRecord(
+  row: IndexedStoredRecordRow,
+  label: string,
+): VerifiedV2Record {
+  const record = storedRecord(row.canonical_json);
+  if (
+    (row.source !== "local" && row.source !== "remote")
+    || record.record_id !== row.record_id
+    || record.schema !== row.schema
+    || record.authority.key_id !== row.issuer_key_id
+  ) {
+    throw new V2RecordStoreError(
+      "STORAGE_INTEGRITY_FAILURE",
+      `The ${label} index disagrees with its signed record.`,
+    );
+  }
+  return record;
 }
 
 /**
@@ -468,6 +503,123 @@ export class CashLoomV2RecordStore {
       );
     }
     return record as VerifiedV2Record<PaymentIntentCore>;
+  }
+
+  /**
+   * Resolve one caller-known intent ID only when this node authored it with
+   * the exact expected authority. Missing, remote, wrong-schema, and
+   * wrong-authority records are intentionally indistinguishable.
+   */
+  localPaymentIntentById(
+    recordId: Sha256Id | string,
+    issuerKeyId: Sha256Id | string,
+  ): VerifiedV2Record<PaymentIntentCore> | null {
+    assertSha256Id(recordId, "recordId");
+    assertSha256Id(issuerKeyId, "issuerKeyId");
+    const row = this.#db
+      .query(
+        `SELECT record_id, schema, issuer_key_id, canonical_json, source
+           FROM cashloom_v2_records
+          WHERE record_id = ?`,
+      )
+      .get(recordId) as IndexedStoredRecordRow | null;
+    if (row === null) return null;
+
+    const record = indexedStoredRecord(row, "targeted payment-intent");
+    if (
+      row.source !== "local"
+      || record.schema !== V2_SCHEMAS.payment_intent
+      || record.authority.key_id !== issuerKeyId
+    ) {
+      return null;
+    }
+    return record as VerifiedV2Record<PaymentIntentCore>;
+  }
+
+  /**
+   * Retry-safe lookup for the sole locally-authored execution commitment
+   * under one known intent. This verifies the indexed edge and exact signed
+   * parent/child link before returning it.
+   */
+  localExecutionCommitmentFor(
+    intentRecordId: Sha256Id | string,
+    issuerKeyId: Sha256Id | string,
+  ): VerifiedV2Record<ExecutionCommitmentCore> | null {
+    assertSha256Id(intentRecordId, "intentRecordId");
+    assertSha256Id(issuerKeyId, "issuerKeyId");
+    const rows = this.#db
+      .query(
+        `SELECT child.record_id,
+                child.schema,
+                child.issuer_key_id,
+                child.canonical_json,
+                child.source,
+                edge.parent_record_id,
+                parent.record_id AS parent_index_record_id,
+                parent.schema AS parent_schema,
+                parent.issuer_key_id AS parent_issuer_key_id,
+                parent.canonical_json AS parent_canonical_json,
+                parent.source AS parent_source
+           FROM cashloom_v2_record_parents AS edge
+           JOIN cashloom_v2_records AS child
+             ON child.record_id = edge.child_record_id
+          JOIN cashloom_v2_records AS parent
+             ON parent.record_id = edge.parent_record_id
+          WHERE edge.parent_record_id = ?
+          ORDER BY child.received_at, child.record_id
+          LIMIT 2`,
+      )
+      .all(intentRecordId) as LocalCommitmentRow[];
+    if (rows.length === 0) return null;
+    if (rows.length !== 1) {
+      throw new V2RecordStoreError(
+        "STORAGE_INTEGRITY_FAILURE",
+        "More than one execution successor exists for the same payment intent.",
+      );
+    }
+
+    const row = rows[0]!;
+    const commitment = indexedStoredRecord(
+      row,
+      "targeted execution-commitment",
+    );
+    const intent = indexedStoredRecord({
+      record_id: row.parent_index_record_id,
+      schema: row.parent_schema,
+      issuer_key_id: row.parent_issuer_key_id,
+      canonical_json: row.parent_canonical_json,
+      source: row.parent_source,
+    }, "targeted execution-commitment parent");
+    if (
+      row.parent_record_id !== intentRecordId
+      || intent.record_id !== intentRecordId
+      || intent.schema !== V2_SCHEMAS.payment_intent
+      || commitment.schema !== V2_SCHEMAS.execution_commitment
+      || commitment.parent_record_id !== intentRecordId
+    ) {
+      throw new V2RecordStoreError(
+        "STORAGE_INTEGRITY_FAILURE",
+        "The targeted local execution-commitment index disagrees with its signed ancestry.",
+      );
+    }
+    try {
+      verifyV2RecordLink(commitment, intent);
+    } catch (cause) {
+      const error = new V2RecordStoreError(
+        "STORAGE_INTEGRITY_FAILURE",
+        "The targeted local execution commitment no longer verifies against its signed intent.",
+      );
+      error.cause = cause;
+      throw error;
+    }
+    if (
+      row.source !== "local"
+      || intent.authority.key_id !== issuerKeyId
+      || commitment.authority.key_id !== issuerKeyId
+    ) {
+      return null;
+    }
+    return commitment as VerifiedV2Record<ExecutionCommitmentCore>;
   }
 
   /** Retrieve only records explicitly signed for public disclosure. */

@@ -404,6 +404,7 @@ describe("portable Pay Link acceptance regression boundaries", () => {
     const verified = verifyFixture(fixture, EXPIRED_CHECK);
     expect(verified.intent_active_at_verification).toBe(false);
     expect(v2PayLinkAcceptanceProjection(verified)).toMatchObject({
+      intent_record_id: fixture.intent.record_id,
       intent_active_at_verification: false,
       intent_expires_at: INTENT_EXPIRES_AT,
       no_money_moved: true,

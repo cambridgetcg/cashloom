@@ -64,6 +64,16 @@ describe("real sovereign v2 integration", () => {
       expect(
         (await fetch(`${base}/.well-known/cashloom/v2`)).status,
       ).toBe(404);
+      const lockedPrepare = await fetch(
+        `${base}/api/v2/pay-links/executions/prepare`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        },
+      );
+      expect(lockedPrepare.status).toBe(401);
+      expect(lockedPrepare.headers.get("cache-control")).toBe("no-store");
 
       const initialized = await fetch(`${base}/api/vault/init`, {
         method: "POST",
@@ -72,6 +82,20 @@ describe("real sovereign v2 integration", () => {
       });
       expect(initialized.status).toBe(200);
       const { token } = await initialized.json() as { token: string };
+
+      const invalidExecution = await fetch(
+        `${base}/api/v2/pay-links/executions/prepare`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        },
+      );
+      expect(invalidExecution.status).toBe(400);
+      expect(invalidExecution.headers.get("cache-control")).toBe("no-store");
 
       const activated = await fetch(`${base}/api/v2/node/activate`, {
         method: "POST",
@@ -110,6 +134,21 @@ describe("real sovereign v2 integration", () => {
           })
         ).status,
       ).toBe(401);
+      for (const path of [
+        "/api/v2/pay-links/executions/confirm",
+        "/api/v2/pay-links/executions/status",
+      ]) {
+        const lockedExecution = await fetch(`${base}${path}`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        });
+        expect(lockedExecution.status).toBe(401);
+        expect(lockedExecution.headers.get("cache-control")).toBe("no-store");
+      }
       expect(existsSync(join(dataDir, "sovereign.db"))).toBe(true);
     } finally {
       processHandle.kill();

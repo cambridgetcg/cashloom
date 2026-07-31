@@ -512,8 +512,100 @@ describe("CashLoom v2 append-only record store", () => {
       ),
     ).toBeNull();
     expect(
+      store.localPaymentIntentById(
+        localIntent.record_id,
+        payer.authority.key_id,
+      )?.record_id,
+    ).toBe(localIntent.record_id);
+    expect(
+      store.localPaymentIntentById(
+        localIntent.record_id,
+        stranger.authority.key_id,
+      ),
+    ).toBeNull();
+
+    expect(
+      store.localExecutionCommitmentFor(
+        localIntent.record_id,
+        payer.authority.key_id,
+      ),
+    ).toBeNull();
+    const localCommitment = await commitment(localIntent, payer, 193);
+    store.append(v2RecordBytes(localCommitment), "local");
+    expect(
+      store.localExecutionCommitmentFor(
+        localIntent.record_id,
+        payer.authority.key_id,
+      )?.record_id,
+    ).toBe(localCommitment.record_id);
+    expect(
+      store.localExecutionCommitmentFor(
+        localIntent.record_id,
+        stranger.authority.key_id,
+      ),
+    ).toBeNull();
+    expect(
       (store as unknown as Record<string, unknown>).paymentIntents,
     ).toBeUndefined();
+
+    const remoteDb = freshDatabase();
+    const remoteStore = storeFor(remoteDb, merchant.authority.key_id);
+    remoteStore.append(v2RecordBytes(root), "local");
+    remoteStore.append(v2RecordBytes(publicRequest), "local");
+    remoteStore.append(v2RecordBytes(localIntent), "remote");
+    expect(
+      remoteStore.localPaymentIntentById(
+        localIntent.record_id,
+        payer.authority.key_id,
+      ),
+    ).toBeNull();
+
+    remoteDb.close();
+    db.close();
+  });
+
+  test("fails targeted lookups closed when indexes disagree with signed records", async () => {
+    const db = freshDatabase();
+    const store = storeFor(db, payer.authority.key_id);
+    const root = await descriptor(merchant, 194);
+    const publicRequest = await request(root, merchant, 195, {
+      audience: "public",
+    });
+    const localIntent = await intent(publicRequest, payer, 196);
+    const localCommitment = await commitment(localIntent, payer, 197);
+
+    store.append(v2RecordBytes(root), "remote");
+    store.append(v2RecordBytes(publicRequest), "remote");
+    store.append(v2RecordBytes(localIntent), "local");
+    store.append(v2RecordBytes(localCommitment), "local");
+
+    db.exec("DROP TRIGGER cashloom_v2_records_no_update");
+    db.query(
+      "UPDATE cashloom_v2_records SET issuer_key_id = ? WHERE record_id = ?",
+    ).run(stranger.authority.key_id, localIntent.record_id);
+    expectStoreError(
+      () =>
+        store.localPaymentIntentById(
+          localIntent.record_id,
+          payer.authority.key_id,
+        ),
+      "STORAGE_INTEGRITY_FAILURE",
+    );
+
+    db.query(
+      "UPDATE cashloom_v2_records SET issuer_key_id = ? WHERE record_id = ?",
+    ).run(payer.authority.key_id, localIntent.record_id);
+    db.query(
+      "UPDATE cashloom_v2_records SET issuer_key_id = ? WHERE record_id = ?",
+    ).run(stranger.authority.key_id, localCommitment.record_id);
+    expectStoreError(
+      () =>
+        store.localExecutionCommitmentFor(
+          localIntent.record_id,
+          stranger.authority.key_id,
+        ),
+      "STORAGE_INTEGRITY_FAILURE",
+    );
     db.close();
   });
 

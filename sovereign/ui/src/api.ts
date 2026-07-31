@@ -3,6 +3,9 @@ import type {
   ConfirmResult,
   Meta,
   PayLinkAcceptanceProjection,
+  PayLinkExecutionResult,
+  PayLinkExecutionReview,
+  PayLinkExecutionSnapshot,
   PayLinkProjection,
   PayLinkRequestProjection,
   Quote,
@@ -190,6 +193,30 @@ export const api = {
       projection: PayLinkAcceptanceProjection;
       inserted_count: number;
     }>("/api/v2/pay-links/acceptances/import", { bundle }),
+  preparePayLinkExecution: (body: {
+    intent_record_id: string;
+    account_id: string;
+  }) =>
+    request<{
+      review: PayLinkExecutionReview;
+      reused: boolean;
+    }>("/api/v2/pay-links/executions/prepare", body),
+  confirmPayLinkExecution: (body: {
+    payment_id: string;
+    review_id: string;
+  }) =>
+    request<PayLinkExecutionResult>(
+      "/api/v2/pay-links/executions/confirm",
+      body,
+    ),
+  payLinkExecutionStatus: (body: {
+    payment_id: string;
+    review_id: string;
+  }) =>
+    request<PayLinkExecutionSnapshot>(
+      "/api/v2/pay-links/executions/status",
+      body,
+    ),
 
   // zerone front — public, read-only (works with or without a vault session).
   zeroneGuide: () => request<ZeroneGuide>("/api/zerone/guide"),

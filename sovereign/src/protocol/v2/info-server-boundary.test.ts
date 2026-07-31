@@ -56,6 +56,24 @@ describe("hosted info-server boundary", () => {
       );
       expect(response.status).toBe(404);
       expect(response.headers.get("content-type")).toContain("application/json");
+      const executionResponses = await Promise.all(
+        [
+          "/api/v2/pay-links/executions/prepare",
+          "/api/v2/pay-links/executions/confirm",
+          "/api/v2/pay-links/executions/status",
+        ].map((path) =>
+          fetch(`http://127.0.0.1:${port}${path}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          })
+        ),
+      );
+      expect(executionResponses.map(({ status }) => status)).toEqual([
+        404,
+        404,
+        404,
+      ]);
       expect(existsSync(join(dataDir, "sovereign.db"))).toBe(false);
     } finally {
       processHandle.kill();

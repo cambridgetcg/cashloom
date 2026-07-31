@@ -71,8 +71,11 @@ non-custodial wallet. That is the whole setup.
   and origin. The Pay Links UI packages the first Bitcoin-mainnet journey as a
   public `.cashloom-pay` and merchant-addressed private
   `.cashloom-accept` that work by file or paste, entirely offline. Acceptance
-  is evidence only and moves no money. The hosted site remains an information
-  door and does not run this protocol.
+  is evidence only and moves no money. On the payer's own node, a separate
+  prepare action can bind that locally authored intent one-to-one to an exact
+  Bitcoin PSBT and fee; a fresh final confirmation then creates the signed
+  execution commitment and makes one local-sign-and-broadcast attempt. The
+  hosted site remains an information door and does not run this protocol.
 
 ## Layout
 

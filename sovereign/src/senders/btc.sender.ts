@@ -12,13 +12,15 @@
  *  against a locally-derived script, so a wrong claimed value yields a
  *  consensus-invalid transaction, rejected at broadcast. The indexer's only
  *  levers are DoS-shaped (hidden UTXOs, refused broadcasts, silence) and
- *  every one of them fails LOUD here: a definitive rejection lands 'failed',
- *  an unanswered broadcast lands AmbiguousBroadcastError so nothing invites
- *  a second signing of the same money.
+ *  every one of them fails LOUD here. Only local pre-egress validation can
+ *  land 'failed'; after signed bytes cross the local boundary, a missing or
+ *  non-success response lands AmbiguousBroadcastError so nothing invites a
+ *  second signing of the same money.
  */
 
 import { Address, NETWORK, OutScript, Transaction, selectUTXO } from "@scure/btc-signer";
 import { hex } from "@scure/base";
+import { sha256BytesId } from "@agenttool/wallet";
 import { revealForSigning } from "../vault.ts";
 import {
   AmbiguousBroadcastError,
@@ -333,10 +335,17 @@ interface BtcDetail {
 
 const REQUOTE = " Ask for a fresh quote.";
 
+interface ParsedBtcDetail {
+  inputs: Array<{ txid: string; vout: number; sat: bigint }>;
+  changeSat: bigint;
+  feeSat: bigint;
+  lockTime: number;
+}
+
 const parseDetail = (
   raw: string | null | undefined,
   expected: { to: string; amount: bigint }
-): { inputs: Array<{ txid: string; vout: number; sat: bigint }>; changeSat: bigint; feeSat: bigint; lockTime: number } => {
+): ParsedBtcDetail => {
   if (!raw) {
     throw new Error(`This payment has no stored coin selection to sign.${REQUOTE}`);
   }
@@ -406,6 +415,146 @@ const parseDetail = (
   return { inputs, changeSat, feeSat, lockTime: d.lockTime };
 };
 
+/**
+ * Compile the exact quote-time Bitcoin payload from persisted public detail.
+ *
+ * The binding payload is canonical PSBT v0, not the raw unsigned transaction:
+ * the latter omits each prevout's script and amount, while BIP-143 signatures
+ * commit to both. `toPSBT(0)` retains those witness UTXOs alongside the exact
+ * outpoints, outputs, sequences, and locktime in deterministic key order.
+ */
+const compileBtcPayment = (
+  self: string,
+  instruction: { to: string; amount: bigint; detail: string | null | undefined },
+): {
+  tx: Transaction;
+  detail: ParsedBtcDetail;
+  unsignedPayload: Uint8Array;
+  unsignedPayloadHash: `sha256:${string}`;
+} => {
+  const detail = parseDetail(instruction.detail, {
+    to: instruction.to,
+    amount: instruction.amount,
+  });
+  const selfScript = scriptFor(self);
+  const tx = new Transaction({ lockTime: detail.lockTime });
+  for (const input of detail.inputs) {
+    tx.addInput({
+      txid: hex.decode(input.txid),
+      index: input.vout,
+      witnessUtxo: { script: selfScript, amount: input.sat },
+      sequence: RBF_SEQUENCE,
+    });
+  }
+  tx.addOutputAddress(instruction.to, instruction.amount, NETWORK);
+  if (detail.changeSat > 0n) {
+    tx.addOutputAddress(self, detail.changeSat, NETWORK);
+  }
+  const unsignedPayload = Uint8Array.from(tx.toPSBT(0));
+  return {
+    tx,
+    detail,
+    unsignedPayload,
+    unsignedPayloadHash: sha256BytesId(unsignedPayload),
+  };
+};
+
+const sameBytes = (left: Uint8Array, right: Uint8Array): boolean => {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+};
+
+const assertExpectedUnsignedPayload = (
+  ctx: SenderContext,
+  actualPayload: Uint8Array,
+  actualHash: `sha256:${string}`,
+): void => {
+  const expectedPayload = ctx.expectedUnsignedPayload;
+  const expectedHash = ctx.expectedUnsignedPayloadHash;
+  if (expectedPayload === undefined && expectedHash === undefined) return;
+  if (!(expectedPayload instanceof Uint8Array) || expectedHash === undefined) {
+    throw new Error(
+      `A bound Bitcoin payment must supply both expected payload bytes and hash.${REQUOTE}`,
+    );
+  }
+  if (
+    sha256BytesId(expectedPayload) !== expectedHash
+    || actualHash !== expectedHash
+    || !sameBytes(actualPayload, expectedPayload)
+  ) {
+    throw new Error(
+      `The Bitcoin payload no longer matches the exact bound quote.${REQUOTE}`,
+    );
+  }
+};
+
+const compileBitcoinInstruction = async (
+  ctx: SenderContext,
+  instruction: PaymentInstruction,
+) => {
+  const { to, amount, destScript } = parseInstruction(instruction);
+  const self = await senderAddress(ctx);
+  if (sameScript(destScript, scriptFor(self))) {
+    throw new Error(
+      "That is this account's own address — a self-pay would only burn the fee.",
+    );
+  }
+  return {
+    to,
+    amount,
+    compiled: compileBtcPayment(self, {
+      to,
+      amount,
+      detail: instruction.detail,
+    }),
+  };
+};
+
+/**
+ * Keyless reconstruction of the exact canonical PSBT v0 committed at quote.
+ *
+ * This reads only the vault key's public address and persisted public payment
+ * detail. It performs no network request and never asks the vault to reveal a
+ * private key, so execution adapters can commit this evidence before confirm.
+ */
+export const bitcoinUnsignedPayloadFor = async (
+  ctx: SenderContext,
+  instruction: PaymentInstruction,
+): Promise<{ payload: Uint8Array; hash: `sha256:${string}` }> => {
+  const { compiled } = await compileBitcoinInstruction(ctx, instruction);
+  return {
+    payload: Uint8Array.from(compiled.unsignedPayload),
+    hash: compiled.unsignedPayloadHash,
+  };
+};
+
+/**
+ * Derive the legacy txid committed by one canonical unsigned PSBT v0.
+ *
+ * CashLoom's BTC vault creates native P2WPKH spends, whose signatures live
+ * only in witness data. The txid therefore commits exactly to the unsigned
+ * transaction embedded in this PSBT. Requiring a byte-for-byte canonical
+ * round-trip prevents recovery from interpreting a different PSBT encoding.
+ */
+export const bitcoinTxidForUnsignedPayload = (
+  payload: Uint8Array,
+): string => {
+  if (!(payload instanceof Uint8Array) || payload.byteLength === 0) {
+    throw new Error("The Bitcoin binding has no unsigned PSBT payload.");
+  }
+  const parsed = Transaction.fromPSBT(payload);
+  if (!sameBytes(parsed.toPSBT(0), payload)) {
+    throw new Error("The Bitcoin binding is not a canonical PSBT v0 payload.");
+  }
+  // Derive from the embedded unsigned transaction explicitly. This keeps
+  // unexpected finalScriptSig fields out of the calculation even if a future
+  // parser version accepts them in an otherwise round-trippable PSBT.
+  return Transaction.fromRaw(parsed.unsignedTx).id;
+};
+
 /* -------------------------------- broadcast ------------------------------- */
 
 const broadcast = async (rawTxHex: string, txid: string): Promise<void> => {
@@ -426,17 +575,12 @@ const broadcast = async (rawTxHex: string, txid: string): Promise<void> => {
     );
   }
   if (response.ok) return;
-  const body = (await response.text().catch(() => "")).slice(0, 200);
-  if (response.status >= 400 && response.status < 500) {
-    // The indexer's node validated and definitively refused — a true failure.
-    // The sendrawtransaction reject reason is the one payload worth surfacing.
-    const hint = /missing.{0,3}or.{0,3}spent|bad-txns-inputs/i.test(body)
-      ? " An earlier payment may have spent these coins — quote again."
-      : "";
-    throw new Error(
-      `The network refused this transaction: ${body || `HTTP ${response.status}`}.${hint}`
-    );
-  }
+  // Signed bytes have crossed the local boundary. Even a 4xx cannot prove the
+  // transaction was not relayed by this endpoint, another endpoint, or a
+  // concurrent submitter before the response arrived. Treat every non-success
+  // as sticky ambiguity; only local pre-egress validation may be a clean
+  // failure. The endpoint's untrusted response body stays out of durable
+  // payment state and API responses; its HTTP status is sufficient diagnosis.
   throw new AmbiguousBroadcastError(
     `Broadcast outcome unknown (HTTP ${response.status}). Check txid ${txid} on-chain before quoting again — this payment may have gone through.`,
     txid
@@ -564,6 +708,12 @@ export const btcSender: PaymentSender = {
       lockTime: tip,
     };
 
+    const persistedDetail = JSON.stringify(detail);
+    const compiled = compileBtcPayment(self, {
+      to,
+      amount,
+      detail: persistedDetail,
+    });
     const inputWord = picked.length === 1 ? "input" : "inputs";
     return {
       feeMinor: feeSat.toString(),
@@ -574,7 +724,9 @@ export const btcSender: PaymentSender = {
         `${changeSat === 0n ? ", sub-dust change folded into the fee" : ""}). ` +
         `The fee is locked: a busier network can slow confirmation, never raise it. ` +
         `No CashLoom fee, ever.`,
-      detail: JSON.stringify(detail),
+      detail: persistedDetail,
+      unsignedPayload: compiled.unsignedPayload,
+      unsignedPayloadHash: compiled.unsignedPayloadHash,
     };
   },
 
@@ -583,13 +735,16 @@ export const btcSender: PaymentSender = {
     instruction: PaymentInstruction,
     hooks?: SendHooks
   ): Promise<PaymentReceipt> {
-    const { to, amount } = parseInstruction(instruction);
-    const self = await senderAddress(ctx);
-    const selfScript = scriptFor(self);
-    const { inputs, changeSat, feeSat, lockTime } = parseDetail(instruction.detail, {
-      to,
-      amount,
-    });
+    const { amount, compiled } = await compileBitcoinInstruction(ctx, instruction);
+    const { inputs, feeSat } = compiled.detail;
+
+    // A bound adapter supplies the quote-time PSBT and its digest. Prove both
+    // against a fresh compilation before the vault can reveal key material.
+    assertExpectedUnsignedPayload(
+      ctx,
+      compiled.unsignedPayload,
+      compiled.unsignedPayloadHash,
+    );
 
     // Two quotes taken in the same instant can select the same coins (the
     // reservation at quote time can't see a selection that hasn't been
@@ -605,20 +760,9 @@ export const btcSender: PaymentSender = {
       }
     }
 
-    // Rebuild EXACTLY what was quoted — the quoted intent, and only it,
-    // is signed. Re-selection at confirm is never a fallback: it would sign
-    // coins and change the human never saw.
-    const tx = new Transaction({ lockTime });
-    for (const input of inputs) {
-      tx.addInput({
-        txid: hex.decode(input.txid),
-        index: input.vout,
-        witnessUtxo: { script: selfScript, amount: input.sat },
-        sequence: RBF_SEQUENCE,
-      });
-    }
-    tx.addOutputAddress(to, amount, NETWORK);
-    if (changeSat > 0n) tx.addOutputAddress(self, changeSat, NETWORK);
+    // Sign the exact transaction compiled above. Re-selection at confirm is
+    // never a fallback: it would sign coins and change the human never saw.
+    const tx = compiled.tx;
 
     // Reveal lives for exactly this scope; the byte copy is zeroized the
     // moment the signatures exist.

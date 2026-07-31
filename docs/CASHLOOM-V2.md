@@ -1,6 +1,7 @@
 # CashLoom v2: the operatorless payment playground
 
-Status: implementation contract for the first v2 foundation slice, 2026-07-31.
+Status: implementation contract for the v2 foundation and first BTC execution
+slice, 2026-07-31.
 
 CashLoom v2 is a signed-record payment protocol with a sovereign reference
 node. It is not a hosted payment service. A payer and payee must be able to
@@ -160,6 +161,72 @@ processor, relay, or CashLoom network fetch; the browser still talks to its own
 loopback sovereign node. Exact redelivery is idempotent; a payer cannot silently
 replace already-signed acceptance terms for the same request.
 
+### Payer-local Bitcoin execution
+
+Execution is a separate local action, not a property of either portable file.
+Only the payer node that locally authored the active `PaymentIntent` may name
+that record to the adapter. A carrier bundle ID, merchant-imported copy, public
+alias, hosted CashLoom account, or company identity is never execution
+authority.
+
+The first adapter uses three deliberately distinct moments:
+
+```text
+accept locally       -> signed consent evidence; no UTXO reservation
+prepare review       -> exact PSBT + fee + local reservation; no signature
+Send ... BTC now     -> ExecutionCommitment + one sign/broadcast attempt
+```
+
+Prepare requires an active local BTC account whose vault key derives the exact
+`source_account` in the intent. It queries the node's configured Esplora
+service, so that service can observe the public source-address lookup. It then
+stores one append-only binding from the intent to the payment, account,
+reservation, canonical unsigned PSBT v0 bytes, byte hash, exact network fee,
+and short expiry in the same transaction as the quote. The review is derived
+from that stored state and discloses amount, fee ceiling, exact fee, total,
+source, destination, network, and the earlier of quote/intent expiry. It never
+returns the PSBT or coin-selection detail through HTTP.
+
+Final confirmation names only the payment and content-addressed review. The
+node rechecks the active local intent, account/source match, local asset policy,
+expiry, fee ceiling, stored PSBT bytes and hash, and a freshly keyless
+recompilation. It creates or exactly reuses one private signed
+`ExecutionCommitment`, then atomically advances the payment from `quoted` to
+`confirmed`. The BTC sender recompiles and compares the same PSBT again before
+the vault may reveal the private key. A generic `/api/pay/confirm` call cannot
+claim a bound payment; concurrent or repeated confirmations cannot sign it a
+second time. An unanswered or non-success response from the untrusted
+broadcast endpoint stays sticky and must be reconciled by its locally persisted
+transaction ID rather than retried.
+
+The session-gated status door accepts only that exact payment/review pair and
+reads durable local state without compiling, contacting the indexer, accessing
+a private key, signing, or broadcasting. It reports an unclaimed active review,
+a currently not-confirmable state, or the conservative stored outcome, together
+with the locally bound intent ID. The Pay Links UI keeps only the pair of opaque
+payment/review IDs in the current tab's session storage so a refresh can recover
+the last exact payment; it keeps no key, address, amount, intent, or portable
+bundle there. An unchecked, not-confirmable, or ambiguous marker blocks a
+different preparation in that tab until it is reconciled or explicitly
+forgotten. An active unclaimed marker can resume only the same intent, through
+the same one-time compare-and-swap confirmation gate. Forgetting the tab marker
+does not erase durable node state and is not proof of non-submission.
+
+For every claimed row, recovery also requires the exact locally signed
+`ExecutionCommitment`; every persisted txid must equal the legacy transaction
+ID derived keylessly from the binding's canonical unsigned PSBT. This detects
+inconsistent local state, but it remains an operational report from this node,
+not independent proof that a peer accepted the broadcast or that Bitcoin
+confirmed it. Submission receipts and rail-authenticated settlement evidence
+remain future protocol work.
+
+This is distributed authority, not anonymity. Each participant can run an
+independent node and exchange verifiable bytes without `cashloom.io`; Bitcoin
+settlement and the selected Esplora endpoint are still observable external
+dependencies. Users can replace that endpoint and a later node adapter can
+self-host it, but this release does not bundle a Bitcoin full node or claim
+independent chain verification.
+
 The underlying execution-capable `PaymentIntent` keeps its deliberately short
 five-minute default validity (ten-minute protocol maximum). After that window,
 the `.cashloom-accept` remains verifiable and importable as historical signed
@@ -289,9 +356,9 @@ The path forward is therefore:
 5. never make the availability of one processor, RPC, relay, or CashLoom
    domain a prerequisite for verifying the consent chain.
 
-## Shipped foundation and portable handoff
+## Shipped foundation, portable handoff, and first execution adapter
 
-This slice is deliberately below payment execution. It ships:
+This slice ships:
 
 1. strict signed-record primitives and mutation tests;
 2. asset trust manifests and fail-closed local policy evaluation;
@@ -303,8 +370,12 @@ This slice is deliberately below payment execution. It ships:
 7. direct two-node delivery;
 8. canonical Bitcoin-mainnet `.cashloom-pay` and private
    `.cashloom-accept` handoff;
-9. a session-gated Pay Links UI and closed local workflow routes; and
-10. offline two-node tests in which `cashloom.io` is unavailable.
+9. a session-gated Pay Links UI and closed local workflow routes;
+10. offline two-node tests in which `cashloom.io` is unavailable; and
+11. a payer-local BTC adapter that binds one active local intent to one exact
+    PSBT review, creates its execution commitment only on a fresh final
+    confirmation, inherits submit-once/ambiguous-outcome discipline, and exposes
+    a read-only local recovery check for that exact payment/review pair.
 
 This slice has one exclusive `settled` issuer assertion. Reversal and dispute
 need a future signed adjustment/supersession schema; they are not represented
@@ -316,6 +387,10 @@ It does not claim:
 - decentralized Base sequencing or USDC issuance;
 - live fiat collection;
 - Agent Wallet execution binding;
+- a bundled sovereign Bitcoin full node or independent chain-finality proof;
+- v2 submission or settlement receipts for the BTC broadcast;
+- same-byte BTC rebroadcast recovery after a crash before the first endpoint
+  receives the already-signed transaction;
 - private relay metadata protection;
 - generic authentication of settlement evidence or chain finality; or
 - a production internet-facing sovereign node.

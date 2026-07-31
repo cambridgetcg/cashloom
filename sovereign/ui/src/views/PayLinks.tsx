@@ -1,12 +1,13 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
-import { api, errorMessage } from "../api";
+import { ApiError, api, errorMessage } from "../api";
 import {
   Badge,
   CopyButton,
@@ -15,10 +16,19 @@ import {
   LoadingThreads,
   SectionTitle,
 } from "../components";
+import {
+  exactExecutionRecoveryKey,
+  executionRecoveryKeyForReview,
+  sameExecutionRecoveryKey,
+  type ExecutionRecoveryKey,
+} from "../execution-recovery";
 import { formatMinorCompact, parseToMinor } from "../format";
 import type {
   Account,
   PayLinkAcceptanceProjection,
+  PayLinkExecutionResult,
+  PayLinkExecutionReview,
+  PayLinkExecutionSnapshot,
   PayLinkProjection,
   PayLinkRequestProjection,
   VaultKey,
@@ -27,6 +37,21 @@ import type {
 const MAX_BUNDLE_BYTES = 64 * 1024;
 const MAX_NOTE_BYTES = 160;
 const BTC_DECIMALS = 8;
+const EXECUTION_RECOVERY_STORAGE_KEY = "cashloom.pay-link-execution-recovery";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const SHA256_ID = /^sha256:[0-9a-f]{64}$/u;
+const DEFINITIVE_PRE_SIGN_ERRORS = new Set([
+  "account_source_mismatch",
+  "asset_policy_rejected",
+  "execution_conflict",
+  "fee_limit_exceeded",
+  "intent_inactive",
+  "intent_not_locally_authored",
+  "node_not_activated",
+  "payment_not_ready",
+  "review_expired",
+  "wrong_bitcoin_profile",
+]);
 
 type CreatedPayLink = {
   bundle: string;
@@ -49,6 +74,51 @@ interface BitcoinSource {
   label: string;
 }
 
+interface PreparedPayment {
+  review: PayLinkExecutionReview;
+  reused: boolean;
+}
+
+function readExecutionRecovery(): ExecutionRecoveryKey | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const value = JSON.parse(
+      window.sessionStorage.getItem(EXECUTION_RECOVERY_STORAGE_KEY) ?? "null",
+    ) as Partial<ExecutionRecoveryKey> | null;
+    if (
+      value === null
+      || typeof value.payment_id !== "string"
+      || !UUID.test(value.payment_id)
+      || typeof value.review_id !== "string"
+      || !SHA256_ID.test(value.review_id)
+    ) {
+      return null;
+    }
+    return {
+      payment_id: value.payment_id,
+      review_id: value.review_id,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeExecutionRecovery(value: ExecutionRecoveryKey | null): void {
+  try {
+    if (typeof window === "undefined") return;
+    if (value === null) {
+      window.sessionStorage.removeItem(EXECUTION_RECOVERY_STORAGE_KEY);
+    } else {
+      window.sessionStorage.setItem(
+        EXECUTION_RECOVERY_STORAGE_KEY,
+        JSON.stringify(value),
+      );
+    }
+  } catch {
+    // The exact IDs remain in component state if session storage is unavailable.
+  }
+}
+
 function utf8Length(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
@@ -57,6 +127,18 @@ function readableTime(value: string): string {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return value;
   return new Date(timestamp).toLocaleString();
+}
+
+function remainingTime(milliseconds: number): string {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1_000));
+  if (seconds === 0) return "expired";
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
+}
+
+function btcAndSats(sats: string): string {
+  return `${formatMinorCompact(sats, BTC_DECIMALS)} BTC · ${sats} sats`;
 }
 
 function safeDownloadName(value: string, fallback: string): string {
@@ -107,6 +189,68 @@ function Fact({
     <div className="pay-link-fact">
       <dt>{label}</dt>
       <dd className={code ? "pay-link-code" : undefined}>{children}</dd>
+    </div>
+  );
+}
+
+function ExecutionRecoveryState({
+  snapshot,
+}: {
+  snapshot: PayLinkExecutionSnapshot;
+}) {
+  const ambiguousCopy = snapshot.tx_hash === null
+    ? {
+        title: "One-time send claim outcome is unknown",
+        detail:
+          "The claim began, but the local record cannot prove whether signing or submission occurred. Do not retry or start a replacement payment until you reconcile this state.",
+      }
+    : {
+        title: "Broadcast outcome is unknown",
+        detail:
+          "A txid was persisted, but submission was not conclusively acknowledged. Do not resend; check the txid with a Bitcoin node or explorer you choose.",
+      };
+  const copy = {
+    awaiting_confirmation: {
+      title: "Exact review was unclaimed at this check",
+      detail:
+        "No signed outcome was recorded in this local snapshot. Reopen the same Pay Link to review it; any confirmation still passes through the one-time claim gate.",
+    },
+    not_sent: {
+      title: "No signed outcome is recorded",
+      detail:
+        "This exact review is not currently eligible for confirmation. Read the reason below and reconcile it before preparing a different payment.",
+    },
+    broadcast: {
+      title: "Broadcast submitted",
+      detail:
+        "The local record says this exact payment was signed once and submitted to Bitcoin mainnet.",
+    },
+    broadcast_unknown: ambiguousCopy,
+    failed: {
+      title: "Attempt failed before broadcast",
+      detail:
+        "The local record contains a definitive pre-egress failure. CashLoom did not retry it.",
+    },
+  }[snapshot.status];
+
+  return (
+    <div
+      className="pay-link-recovery-state"
+      data-state={snapshot.status}
+      role="status"
+    >
+      <p>
+        <strong>{copy.title}.</strong> {copy.detail}
+      </p>
+      {snapshot.error && (
+        <p className="pay-link-execution-result-error">{snapshot.error}</p>
+      )}
+      {snapshot.tx_hash && (
+        <div className="pay-link-execution-tx">
+          <code>{snapshot.tx_hash}</code>
+          <CopyButton text={snapshot.tx_hash} label="Copy txid" />
+        </div>
+      )}
     </div>
   );
 }
@@ -206,7 +350,7 @@ function AcceptanceProjection({
 
       <dl className="pay-link-details">
         <Fact label="Destination" code>{projection.destination}</Fact>
-        <Fact label="Source account" code>{projection.source_account}</Fact>
+        <Fact label="Source address" code>{projection.source_account}</Fact>
         <Fact label="Maximum fee">
           {projection.max_fee_atomic} sats
         </Fact>
@@ -226,6 +370,7 @@ function AcceptanceProjection({
         </Fact>
         <Fact label="Merchant key" code>{projection.merchant_key_id}</Fact>
         <Fact label="Payer key" code>{projection.payer_key_id}</Fact>
+        <Fact label="Intent record" code>{projection.intent_record_id}</Fact>
         <Fact label="Request record" code>{projection.request_record_id}</Fact>
         <Fact label="Pay Link id" code>{projection.pay_link_id}</Fact>
         <Fact label="Acceptance id" code>{projection.acceptance_id}</Fact>
@@ -273,6 +418,31 @@ export function PayLinks() {
   const [acceptInvalid, setAcceptInvalid] = useState<AcceptField | null>(null);
   const [accepted, setAccepted] = useState<AcceptedPayLink | null>(null);
 
+  const [executionAccountId, setExecutionAccountId] = useState("");
+  const [prepareBusy, setPrepareBusy] = useState(false);
+  const [prepareErr, setPrepareErr] = useState<string | null>(null);
+  const [prepared, setPrepared] = useState<PreparedPayment | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmErr, setConfirmErr] = useState<string | null>(null);
+  const [confirmOutcomeUnknown, setConfirmOutcomeUnknown] = useState(false);
+  const [executionResult, setExecutionResult] =
+    useState<PayLinkExecutionResult | null>(null);
+  const [recoveryKey, setRecoveryKey] =
+    useState<ExecutionRecoveryKey | null>(() => readExecutionRecovery());
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryErr, setRecoveryErr] = useState<string | null>(null);
+  const [recoverySnapshot, setRecoverySnapshot] =
+    useState<PayLinkExecutionSnapshot | null>(null);
+  const [executionNow, setExecutionNow] = useState(() => Date.now());
+  const prepareInFlight = useRef(false);
+  const confirmInFlight = useRef(false);
+  const recoveryKeyRef = useRef<ExecutionRecoveryKey | null>(recoveryKey);
+  const recoveryRequestSerial = useRef(0);
+  const activeRecoveryRequest = useRef<number | null>(null);
+  const executionGeneration = useRef(0);
+  const reviewHeading = useRef<HTMLHeadingElement>(null);
+  const resultHeading = useRef<HTMLHeadingElement>(null);
+
   const [importBusy, setImportBusy] = useState(false);
   const [importErr, setImportErr] = useState<string | null>(null);
   const [importedCount, setImportedCount] = useState<number | null>(null);
@@ -307,6 +477,11 @@ export function PayLinks() {
     [keys],
   );
 
+  const btcKeyById = useMemo(
+    () => new Map(btcKeys.map((key) => [key.id, key])),
+    [btcKeys],
+  );
+
   const bitcoinSources = useMemo<BitcoinSource[]>(() => {
     const sourceByAddress = new Map<string, BitcoinSource>();
     for (const key of btcKeys) {
@@ -317,14 +492,15 @@ export function PayLinks() {
     }
     for (const account of accounts) {
       if (
-        account.status === "archived"
+        account.status !== "ACTIVE"
         || account.rail !== "CRYPTO"
         || account.currency !== "BTC"
+        || account.decimals !== BTC_DECIMALS
         || !account.vault_key_id
       ) {
         continue;
       }
-      const key = btcKeys.find((candidate) => candidate.id === account.vault_key_id);
+      const key = btcKeyById.get(account.vault_key_id);
       if (!key) continue;
       sourceByAddress.set(key.address, {
         address: key.address,
@@ -332,10 +508,199 @@ export function PayLinks() {
       });
     }
     return [...sourceByAddress.values()];
-  }, [accounts, btcKeys]);
+  }, [accounts, btcKeyById, btcKeys]);
+
+  const eligibleExecutionAccounts = useMemo(() => {
+    if (!accepted) return [];
+    return accounts.filter((account) => {
+      if (
+        account.status !== "ACTIVE"
+        || account.rail !== "CRYPTO"
+        || account.currency !== "BTC"
+        || account.decimals !== BTC_DECIMALS
+        || !account.vault_key_id
+      ) {
+        return false;
+      }
+      const key = btcKeyById.get(account.vault_key_id);
+      return key?.kind === "btc"
+        && key.address === accepted.projection.source_account;
+    });
+  }, [accepted, accounts, btcKeyById]);
+
+  useEffect(() => {
+    if (!accepted) {
+      setExecutionAccountId("");
+      return;
+    }
+    setExecutionAccountId((current) =>
+      eligibleExecutionAccounts.some((account) => account.id === current)
+        ? current
+        : (eligibleExecutionAccounts[0]?.id ?? ""),
+    );
+  }, [accepted, eligibleExecutionAccounts]);
+
+  useEffect(() => {
+    if (!accepted || executionResult) return;
+    setExecutionNow(Date.now());
+    const interval = window.setInterval(
+      () => setExecutionNow(Date.now()),
+      1_000,
+    );
+    return () => window.clearInterval(interval);
+  }, [accepted, executionResult]);
+
+  useEffect(() => {
+    if (prepared) reviewHeading.current?.focus();
+  }, [prepared]);
+
+  useEffect(() => {
+    if (executionResult) resultHeading.current?.focus();
+  }, [executionResult]);
 
   const amountSats = parseToMinor(amountBtc, BTC_DECIMALS);
   const noteBytes = utf8Length(note.trim());
+  const acceptanceExpiry = accepted
+    ? Date.parse(accepted.projection.expires_at)
+    : Number.NaN;
+  const acceptanceExpired = accepted !== null
+    && (Number.isNaN(acceptanceExpiry) || executionNow >= acceptanceExpiry);
+  const reviewExpiry = prepared
+    ? Date.parse(prepared.review.confirm_before)
+    : Number.NaN;
+  const reviewExpired = prepared !== null
+    && (Number.isNaN(reviewExpiry) || executionNow >= reviewExpiry);
+  const reviewRemaining = prepared && !Number.isNaN(reviewExpiry)
+    ? Math.max(0, reviewExpiry - executionNow)
+    : 0;
+  const preparedRecoveryKey = prepared
+    ? exactExecutionRecoveryKey(prepared.review, recoveryKey)
+    : null;
+  const recoveryBlocksPrepare = recoveryKey !== null
+    && (
+      recoverySnapshot === null
+      || recoverySnapshot.status === "broadcast_unknown"
+      || recoverySnapshot.status === "not_sent"
+      || (
+        recoverySnapshot.status === "awaiting_confirmation"
+        && recoverySnapshot.intent_record_id
+          !== accepted?.projection.intent_record_id
+      )
+    );
+
+  function cancelRecoveryRequest() {
+    activeRecoveryRequest.current = null;
+    setRecoveryBusy(false);
+  }
+
+  function rememberExecutionRecovery(key: ExecutionRecoveryKey | null) {
+    cancelRecoveryRequest();
+    recoveryKeyRef.current = key;
+    setRecoveryKey(key);
+    writeExecutionRecovery(key);
+  }
+
+  function resetExecution() {
+    executionGeneration.current += 1;
+    cancelRecoveryRequest();
+    setExecutionAccountId("");
+    setPrepareErr(null);
+    setPrepared(null);
+    setConfirmErr(null);
+    setConfirmOutcomeUnknown(false);
+    setExecutionResult(null);
+    setExecutionNow(Date.now());
+  }
+
+  function forgetExecutionRecovery() {
+    if (
+      activeRecoveryRequest.current !== null
+      || prepareInFlight.current
+      || confirmInFlight.current
+    ) {
+      return;
+    }
+    const abandonsPrepared = prepared !== null;
+    rememberExecutionRecovery(null);
+    setRecoveryErr(null);
+    setRecoverySnapshot(null);
+    if (abandonsPrepared) {
+      executionGeneration.current += 1;
+      setPrepared(null);
+      setConfirmErr(null);
+      setConfirmOutcomeUnknown(false);
+      setExecutionResult(null);
+      setExecutionNow(Date.now());
+    }
+  }
+
+  async function recoverExecutionStatus() {
+    if (activeRecoveryRequest.current !== null) return;
+    const key = recoveryKeyRef.current;
+    if (!key) return;
+    const appliesToPrepared = prepared !== null
+      && exactExecutionRecoveryKey(prepared.review, key) !== null;
+
+    const requestId = ++recoveryRequestSerial.current;
+    activeRecoveryRequest.current = requestId;
+    setRecoveryBusy(true);
+    setRecoveryErr(null);
+    try {
+      const snapshot = await api.payLinkExecutionStatus(key);
+      if (
+        activeRecoveryRequest.current !== requestId
+        || !sameExecutionRecoveryKey(recoveryKeyRef.current, key)
+      ) {
+        return;
+      }
+      if (
+        snapshot.payment_id !== key.payment_id
+        || snapshot.review_id !== key.review_id
+      ) {
+        throw new Error(
+          "The local node returned a different payment binding.",
+        );
+      }
+      setRecoverySnapshot(snapshot);
+
+      if (appliesToPrepared) {
+        setConfirmOutcomeUnknown(
+          snapshot.status === "broadcast_unknown",
+        );
+        if (
+          snapshot.status === "broadcast"
+          || snapshot.status === "broadcast_unknown"
+          || snapshot.status === "failed"
+        ) {
+          setConfirmErr(null);
+          setExecutionResult({
+            payment_id: snapshot.payment_id,
+            review_id: snapshot.review_id,
+            status: snapshot.status,
+            tx_hash: snapshot.tx_hash,
+            error: snapshot.error,
+          });
+        } else {
+          setConfirmErr(null);
+        }
+      }
+    } catch (error) {
+      if (
+        activeRecoveryRequest.current !== requestId
+        || !sameExecutionRecoveryKey(recoveryKeyRef.current, key)
+      ) {
+        return;
+      }
+      setRecoveryErr(
+        `Could not read the node's local payment state. Do not retry an uncertain confirmation. ${errorMessage(error)}`,
+      );
+    } finally {
+      if (activeRecoveryRequest.current === requestId) {
+        activeRecoveryRequest.current = null;
+        setRecoveryBusy(false);
+      }
+    }
+  }
 
   async function createPayLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -381,6 +746,7 @@ export function PayLinks() {
     setInspectErr(null);
     setInspected(null);
     setAccepted(null);
+    resetExecution();
     setAcceptErr(null);
     setImportedCount(null);
     setImportErr(null);
@@ -414,6 +780,7 @@ export function PayLinks() {
     setInspectErr(null);
     setInspected(null);
     setAccepted(null);
+    resetExecution();
     setImportedCount(null);
     if (bundle.trim() === "") {
       setInspectErr("Paste a signed bundle or choose a file first.");
@@ -442,6 +809,7 @@ export function PayLinks() {
     setAcceptErr(null);
     setAcceptInvalid(null);
     setAccepted(null);
+    resetExecution();
     if (!sourceAccount) {
       setAcceptInvalid("source");
       setAcceptErr("Choose a local Bitcoin source address.");
@@ -461,10 +829,152 @@ export function PayLinks() {
         max_fee_sats: maxFeeSats,
       });
       setAccepted(result);
+      setExecutionNow(Date.now());
     } catch (error) {
       setAcceptErr(errorMessage(error));
     } finally {
       setAcceptBusy(false);
+    }
+  }
+
+  async function preparePaymentReview() {
+    if (prepareInFlight.current) return;
+    if (confirmInFlight.current) {
+      setPrepareErr(
+        "The previous one-time send request is still resolving. Wait for its local result before preparing anything else.",
+      );
+      return;
+    }
+    if (activeRecoveryRequest.current !== null) return;
+    if (confirmOutcomeUnknown) {
+      setPrepareErr(
+        "A confirmation result is unresolved. Check the payment locally and on-chain before doing anything else.",
+      );
+      return;
+    }
+    if (recoveryBlocksPrepare) {
+      setPrepareErr(
+        "Resolve the last exact payment first. Check its local status above; only forget the tab marker after you have reconciled it or deliberately abandoned an unsigned review.",
+      );
+      return;
+    }
+    setPrepareErr(null);
+    setConfirmErr(null);
+    setExecutionResult(null);
+    if (!accepted) {
+      setPrepareErr("Create a local acceptance before preparing payment.");
+      return;
+    }
+    if (acceptanceExpired) {
+      setPrepareErr(
+        "This acceptance window has expired. It remains evidence, but it cannot authorize payment.",
+      );
+      return;
+    }
+    const account = eligibleExecutionAccounts.find(
+      (candidate) => candidate.id === executionAccountId,
+    );
+    if (!account) {
+      setPrepareErr(
+        "Choose an active 8-decimal BTC account bound to this acceptance's exact source key.",
+      );
+      return;
+    }
+
+    prepareInFlight.current = true;
+    const generation = executionGeneration.current;
+    setPrepareBusy(true);
+    try {
+      const result = await api.preparePayLinkExecution({
+        intent_record_id: accepted.projection.intent_record_id,
+        account_id: account.id,
+      });
+      const key = executionRecoveryKeyForReview(result.review);
+      rememberExecutionRecovery(key);
+      setRecoveryErr(null);
+      setRecoverySnapshot(null);
+      if (executionGeneration.current !== generation) return;
+      setPrepared(result);
+      setExecutionNow(Date.now());
+    } catch (error) {
+      if (executionGeneration.current !== generation) return;
+      setPrepared(null);
+      setPrepareErr(errorMessage(error));
+    } finally {
+      prepareInFlight.current = false;
+      setPrepareBusy(false);
+    }
+  }
+
+  async function confirmPaymentReview() {
+    if (confirmInFlight.current) return;
+    if (prepareInFlight.current) return;
+    if (activeRecoveryRequest.current !== null) return;
+    if (!prepared) {
+      setConfirmErr("Prepare a payment review first.");
+      return;
+    }
+    if (reviewExpired) {
+      setConfirmErr(
+        "This exact one-time review has expired. Nothing was signed. Ask the merchant for a fresh Pay Link and accept it again.",
+      );
+      return;
+    }
+    const key = exactExecutionRecoveryKey(
+      prepared.review,
+      recoveryKeyRef.current,
+    );
+    if (!key) {
+      setConfirmErr(
+        "This review cannot be sent because its exact recovery marker is missing. Prepare the review again before sending.",
+      );
+      return;
+    }
+
+    // Re-persist the exact one-time binding synchronously before any request
+    // can reach the node. If the response is lost, these IDs remain the only
+    // safe route back to the durable local result.
+    rememberExecutionRecovery(key);
+    setConfirmErr(null);
+    setRecoveryErr(null);
+    setRecoverySnapshot(null);
+
+    confirmInFlight.current = true;
+    const generation = executionGeneration.current;
+    setConfirmBusy(true);
+    try {
+      const result = await api.confirmPayLinkExecution({
+        payment_id: key.payment_id,
+        review_id: key.review_id,
+      });
+      setConfirmOutcomeUnknown(result.status === "broadcast_unknown");
+      setRecoverySnapshot({
+        ...result,
+        intent_record_id: prepared.review.intent_record_id,
+        can_confirm: false,
+      });
+      if (executionGeneration.current !== generation) return;
+      setExecutionResult(result);
+    } catch (error) {
+      if (executionGeneration.current !== generation) return;
+      const definitivePreSignRefusal = error instanceof ApiError
+        && error.code !== undefined
+        && DEFINITIVE_PRE_SIGN_ERRORS.has(error.code);
+      if (
+        error instanceof ApiError
+        && (error.code === "review_expired" || error.code === "intent_inactive")
+      ) {
+        setExecutionNow(Number.isNaN(reviewExpiry)
+          ? Date.now()
+          : Math.max(Date.now(), reviewExpiry));
+      }
+      setConfirmOutcomeUnknown(!definitivePreSignRefusal);
+      setConfirmErr(definitivePreSignRefusal
+        ? errorMessage(error)
+        : `The node did not return a definitive payment result. Do not retry or prepare another payment until you check this payment on your node and on-chain. ${errorMessage(error)}`);
+    } finally {
+      confirmInFlight.current = false;
+      setConfirmBusy(false);
     }
   }
 
@@ -495,9 +1005,68 @@ export function PayLinks() {
       <p className="pay-links-intro">
         Create or accept portable Bitcoin terms. The files can travel by chat,
         USB, or any handoff you choose; signing still happens in your unlocked
-        local vault. <strong>This screen only creates and checks signed terms.
-        No money moves.</strong>
+        local vault. <strong>Creating, checking, accepting, downloading, and
+        importing these files never moves money.</strong> Only a separately
+        labelled payment review can expose a final send button.
       </p>
+
+      {recoveryKey && (
+        <section
+          className="card pay-link-recovery"
+          aria-labelledby="pay-link-recovery-title"
+        >
+          <p className="pay-link-step">Read-only recovery</p>
+          <h3 id="pay-link-recovery-title">Last exact payment marker</h3>
+          <p>
+            This tab kept only two opaque local IDs—not keys, addresses, or
+            payment terms. Checking reads this node's records only; it never
+            contacts an indexer, signs, or broadcasts.
+          </p>
+          {recoveryBlocksPrepare && (
+            <div className="pay-link-warning is-sensitive" role="status">
+              <strong>Resolve this marker before preparing a different payment.</strong>{" "}
+              Check the local state first. Forget it only after external
+              reconciliation, or after deliberately abandoning an unsigned
+              review; forgetting does not delete the node's durable record.
+            </div>
+          )}
+          <dl className="pay-link-details">
+            <Fact label="Payment id" code>{recoveryKey.payment_id}</Fact>
+            <Fact label="Review id" code>{recoveryKey.review_id}</Fact>
+            {recoverySnapshot && (
+              <Fact label="Intent record" code>
+                {recoverySnapshot.intent_record_id}
+              </Fact>
+            )}
+          </dl>
+          <div className="pay-link-actions">
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={recoveryBusy || prepareBusy || confirmBusy}
+              onClick={() => void recoverExecutionStatus()}
+            >
+              {recoveryBusy ? "Reading local state…" : "Check local payment status"}
+            </button>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={recoveryBusy || prepareBusy || confirmBusy}
+              onClick={forgetExecutionRecovery}
+            >
+              {prepared
+                ? "Forget marker and abandon this review"
+                : "Forget marker after reconciliation"}
+            </button>
+          </div>
+          {recoveryErr && (
+            <p className="form-error" role="alert">{recoveryErr}</p>
+          )}
+          {recoverySnapshot && (
+            <ExecutionRecoveryState snapshot={recoverySnapshot} />
+          )}
+        </section>
+      )}
 
       <div className="pay-links-workspace">
         <section className="pay-link-panel" aria-labelledby="create-pay-link-title">
@@ -790,6 +1359,360 @@ export function PayLinks() {
                   label="Download sensitive .cashloom-accept"
                 />
               </div>
+
+              <section
+                className="card pay-link-execution"
+                aria-labelledby="pay-link-execution-title"
+              >
+                <header className="pay-link-execution-head">
+                  <div>
+                    <p className="pay-link-step">Separate payment action</p>
+                    <h3 id="pay-link-execution-title">
+                      Payment · can move Bitcoin
+                    </h3>
+                  </div>
+                  <Badge tone="ember">fresh confirmation required</Badge>
+                </header>
+
+                {!prepared && !executionResult && (
+                  <>
+                    <div className="pay-link-execution-disclosure">
+                      <strong>Your signed acceptance did not pay.</strong>{" "}
+                      Preparing a review contacts your configured Bitcoin
+                      indexer with the source address and reserves the exact
+                      selected coins for this short-lived quote. It signs and
+                      broadcasts nothing.
+                    </div>
+
+                    {eligibleExecutionAccounts.length === 0 ? (
+                      <div className="pay-link-execution-setup" role="status">
+                        <strong>No execution-ready account matches this source.</strong>
+                        <p>
+                          Create an active <code>CRYPTO</code> account for{" "}
+                          <code>BTC</code> with 8 decimals, then bind it to the
+                          local Bitcoin key whose address is:
+                        </p>
+                        <code className="pay-link-block-code">
+                          {accepted.projection.source_account}
+                        </code>
+                        <p>
+                          The acceptance remains valid evidence. CashLoom will
+                          never substitute a different source account.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {eligibleExecutionAccounts.length > 1 ? (
+                          <Field
+                            label="Pay from local account"
+                            hint="Every option is active, BTC/8-decimal, and bound to the acceptance's exact source address."
+                          >
+                            <select
+                              value={executionAccountId}
+                              onChange={(event) => {
+                                setExecutionAccountId(event.target.value);
+                                setPrepareErr(null);
+                              }}
+                              aria-describedby="pay-link-prepare-disclosure"
+                            >
+                              {eligibleExecutionAccounts.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                  {account.display_name} · BTC
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                        ) : (
+                          <dl className="pay-link-details pay-link-execution-source">
+                            <Fact label="Pay from">
+                              {eligibleExecutionAccounts[0]!.display_name}
+                            </Fact>
+                            <Fact label="Source address" code>
+                              {accepted.projection.source_account}
+                            </Fact>
+                          </dl>
+                        )}
+
+                        <p
+                          className="pay-link-execution-privacy"
+                          id="pay-link-prepare-disclosure"
+                        >
+                          The indexer can observe a lookup for this public
+                          source address. No CashLoom host, merchant, or
+                          corporate account is required.
+                        </p>
+
+                        {prepareErr && (
+                          <p className="form-error" role="alert">
+                            {prepareErr}
+                          </p>
+                        )}
+                        {recoveryBlocksPrepare && (
+                          <p className="form-error" role="status">
+                            The last exact payment marker above must be checked
+                            or explicitly reconciled before another review can
+                            be prepared.
+                          </p>
+                        )}
+
+                        <div className="pay-link-actions">
+                          <button
+                            className="btn btn-ghost pay-link-prepare-button"
+                            type="button"
+                            disabled={
+                              prepareBusy
+                              || recoveryBusy
+                              || acceptanceExpired
+                              || recoveryBlocksPrepare
+                            }
+                            aria-describedby="pay-link-prepare-disclosure"
+                            onClick={() => void preparePaymentReview()}
+                          >
+                            {prepareBusy
+                              ? "Contacting indexer and preparing…"
+                              : "Prepare payment review"}
+                          </button>
+                          <span>Still no signature or broadcast.</span>
+                        </div>
+                      </>
+                    )}
+
+                    {acceptanceExpired && (
+                      <p
+                        className="pay-link-execution-expired"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        Acceptance window expired. The signed file remains
+                        historical evidence, but cannot authorize a payment.
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {prepared && !executionResult && (
+                  <div className="pay-link-execution-review">
+                    <p className="pay-link-step">Final action · review before signing</p>
+                    <h3 ref={reviewHeading} tabIndex={-1}>
+                      Payment review · nothing signed yet
+                    </h3>
+
+                    <div className="pay-link-execution-safe" role="status">
+                      <strong>No money moved.</strong> Your node derived these
+                      facts from the signed intent and its persisted exact
+                      Bitcoin quote. Changing any term requires a fresh Pay
+                      Link, acceptance, and review.
+                    </div>
+
+                    <p className="pay-link-review-amount">
+                      {formatMinorCompact(prepared.review.amount_sats, BTC_DECIMALS)} BTC
+                      <span>{prepared.review.amount_sats} sats</span>
+                    </p>
+
+                    <dl className="pay-link-details pay-link-review-details">
+                      <Fact label="Network">{prepared.review.network}</Fact>
+                      <Fact label="Source account">
+                        {prepared.review.account_label}
+                      </Fact>
+                      <Fact label="Source address" code>
+                        {prepared.review.source_address}
+                      </Fact>
+                      <Fact label="Destination" code>
+                        {prepared.review.destination}
+                      </Fact>
+                      <Fact label="Amount">
+                        {btcAndSats(prepared.review.amount_sats)}
+                      </Fact>
+                      <Fact label="Exact network fee">
+                        {btcAndSats(prepared.review.fee_sats)}
+                      </Fact>
+                      <Fact label="Signed fee ceiling">
+                        {btcAndSats(prepared.review.max_fee_sats)}
+                      </Fact>
+                      <Fact label="Total from source">
+                        {btcAndSats(prepared.review.total_sats)}
+                      </Fact>
+                      <Fact label="CashLoom fee">
+                        {prepared.review.cashloom_fee_sats} sats
+                      </Fact>
+                      <Fact label="Quote expires">
+                        <time
+                          dateTime={prepared.review.quote_expires_at}
+                          title={prepared.review.quote_expires_at}
+                        >
+                          {readableTime(prepared.review.quote_expires_at)}
+                        </time>
+                      </Fact>
+                      <Fact label="Acceptance expires">
+                        <time
+                          dateTime={prepared.review.intent_expires_at}
+                          title={prepared.review.intent_expires_at}
+                        >
+                          {readableTime(prepared.review.intent_expires_at)}
+                        </time>
+                      </Fact>
+                      <Fact label="Send before">
+                        <time
+                          dateTime={prepared.review.confirm_before}
+                          title={prepared.review.confirm_before}
+                        >
+                          {readableTime(prepared.review.confirm_before)}
+                        </time>
+                      </Fact>
+                      <Fact label="Merchant key" code>
+                        {prepared.review.merchant_key_id}
+                      </Fact>
+                      <Fact label="Payment id" code>
+                        {prepared.review.payment_id}
+                      </Fact>
+                      <Fact label="Review id" code>
+                        {prepared.review.review_id}
+                      </Fact>
+                    </dl>
+
+                    <div
+                      className={`pay-link-execution-clock${reviewExpired ? " is-expired" : ""}`}
+                    >
+                      <span aria-hidden="true">
+                        {reviewExpired
+                          ? "Review expired · nothing was signed"
+                          : `Fresh confirmation available for ${remainingTime(reviewRemaining)}`}
+                      </span>
+                      <span className="sr-only" aria-live="polite">
+                        {reviewExpired
+                          ? "Payment review expired. Nothing was signed."
+                          : "Payment review ready for a separate confirmation."}
+                      </span>
+                    </div>
+
+                    {prepared.reused && (
+                      <p className="pay-link-execution-reused" role="status">
+                        Your node returned the same still-active review; it did
+                        not reserve or create a second payment.
+                      </p>
+                    )}
+
+                    {confirmErr && (
+                      <p className="form-error" role="alert">
+                        {confirmErr}
+                      </p>
+                    )}
+
+                    {(confirmOutcomeUnknown
+                      || recoveryErr !== null
+                      || recoverySnapshot !== null) && (
+                      <div className="pay-link-recovery-inline">
+                        <div className="pay-link-actions">
+                          <button
+                            className="btn btn-ghost"
+                            type="button"
+                            disabled={recoveryBusy}
+                            onClick={() => void recoverExecutionStatus()}
+                          >
+                            {recoveryBusy
+                              ? "Reading local state…"
+                              : "Check local payment status"}
+                          </button>
+                          <span>This check cannot sign or broadcast.</span>
+                        </div>
+                        {recoveryErr && (
+                          <p className="form-error" role="alert">
+                            {recoveryErr}
+                          </p>
+                        )}
+                        {recoverySnapshot && (
+                          <ExecutionRecoveryState snapshot={recoverySnapshot} />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="pay-link-confirm-area">
+                      {reviewExpired ? (
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          disabled
+                        >
+                          Fresh Pay Link required
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary pay-link-send-button"
+                          type="button"
+                          disabled={
+                            confirmBusy
+                            || recoveryBusy
+                            || confirmOutcomeUnknown
+                            || reviewExpired
+                            || preparedRecoveryKey === null
+                            || recoverySnapshot?.status === "not_sent"
+                          }
+                          aria-describedby="pay-link-send-warning"
+                          onClick={() => void confirmPaymentReview()}
+                        >
+                          {confirmBusy
+                            ? "Signing and broadcasting once…"
+                            : `Send ${formatMinorCompact(prepared.review.amount_sats, BTC_DECIMALS)} BTC now`}
+                        </button>
+                      )}
+                      <p id="pay-link-send-warning">
+                        {reviewExpired
+                          ? "This intent remains historical evidence and cannot be rebound to another quote."
+                          : "This is the only button here that signs and broadcasts. It makes one Bitcoin mainnet broadcast attempt; CashLoom never retries automatically."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {executionResult && prepared && (
+                  <div
+                    className="pay-link-execution-result"
+                    data-state={executionResult.status}
+                    role="status"
+                  >
+                    <h3 ref={resultHeading} tabIndex={-1}>
+                      {executionResult.status === "broadcast"
+                        ? "Broadcast submitted"
+                        : executionResult.status === "broadcast_unknown"
+                          ? executionResult.tx_hash
+                            ? "Broadcast outcome unknown"
+                            : "One-time send claim outcome unknown"
+                          : "Payment attempt failed"}
+                    </h3>
+                    <p>
+                      {executionResult.status === "broadcast"
+                        ? `${btcAndSats(prepared.review.amount_sats)} was signed once and submitted to Bitcoin mainnet.`
+                        : executionResult.status === "broadcast_unknown"
+                          ? executionResult.tx_hash
+                            ? "A txid was persisted, but the network did not give a definitive answer. The transaction may be live. Do not prepare or send another payment until you check it on-chain."
+                            : "The one-time claim began, but the local record cannot prove whether signing or submission occurred. Do not retry or prepare a replacement payment until you reconcile this state."
+                          : "CashLoom did not retry. Read the node's error before deciding what to do next."}
+                    </p>
+                    {executionResult.error && (
+                      <p className="pay-link-execution-result-error">
+                        {executionResult.error}
+                      </p>
+                    )}
+                    {executionResult.tx_hash && (
+                      <div className="pay-link-execution-tx">
+                        <code>{executionResult.tx_hash}</code>
+                        <CopyButton
+                          text={executionResult.tx_hash}
+                          label="Copy txid"
+                        />
+                      </div>
+                    )}
+                    {executionResult.status === "broadcast_unknown" && (
+                      <div className="pay-link-warning is-sensitive">
+                        <strong>Do not retry.</strong>{" "}
+                        {executionResult.tx_hash
+                          ? "A missing or non-success response is not proof of failure; the same payment could otherwise be sent twice. Check the copied txid with a Bitcoin node or explorer you choose."
+                          : "No durable txid is available, and that does not prove the signing path stopped before egress. Inspect the node's local records and reconcile before any replacement payment."}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
             </div>
           )}
 

@@ -66,7 +66,7 @@ export interface V2LocalRouteDependencies {
   readonly now?: () => string;
 }
 
-class V2RouteError extends Error {
+export class V2RouteError extends Error {
   readonly status: number;
   readonly code: string;
 
@@ -263,7 +263,7 @@ export async function readBoundedRequestBody(
   return body;
 }
 
-async function localJson(
+export async function localJson(
   request: Request,
   maximum = LOCAL_COMMAND_MAX_BYTES,
 ): Promise<unknown> {

@@ -251,6 +251,58 @@ CREATE INDEX IF NOT EXISTS idx_stripe_webhook_operation
 
 installCashLoomV2Schema(db);
 
+// Cross-domain execution bindings deliberately live outside the reusable v2
+// protocol schema. A portable PaymentIntent is evidence; only this sovereign
+// node's payment adapter may bind one locally-authored intent to one exact BTC
+// quote. The canonical unsigned PSBT contains public transaction data only
+// (outpoints, scripts, amounts, outputs, and locktime), never key material.
+db.exec(`
+CREATE TABLE IF NOT EXISTS cashloom_v2_btc_payment_bindings (
+  intent_record_id      TEXT PRIMARY KEY
+                        REFERENCES cashloom_v2_records(record_id)
+                        CHECK (
+                          length(intent_record_id) = 71
+                          AND substr(intent_record_id, 1, 7) = 'sha256:'
+                        ),
+  payment_id            TEXT NOT NULL UNIQUE REFERENCES payments(id),
+  account_id            TEXT NOT NULL REFERENCES accounts(id),
+  review_id             TEXT NOT NULL UNIQUE
+                        CHECK (
+                          length(review_id) = 71
+                          AND substr(review_id, 1, 7) = 'sha256:'
+                        ),
+  reservation_id        TEXT NOT NULL UNIQUE
+                        CHECK (
+                          length(reservation_id) = 71
+                          AND substr(reservation_id, 1, 7) = 'sha256:'
+                        ),
+  unsigned_payload      BLOB NOT NULL
+                        CHECK (
+                          length(unsigned_payload) > 0
+                          AND length(unsigned_payload) <= 1048576
+                        ),
+  unsigned_payload_hash TEXT NOT NULL
+                        CHECK (
+                          length(unsigned_payload_hash) = 71
+                          AND substr(unsigned_payload_hash, 1, 7) = 'sha256:'
+                        ),
+  quote_expires_at      TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+
+CREATE TRIGGER IF NOT EXISTS cashloom_v2_btc_bindings_no_update
+BEFORE UPDATE ON cashloom_v2_btc_payment_bindings
+BEGIN
+  SELECT RAISE(ABORT, 'CashLoom v2 BTC payment bindings are append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS cashloom_v2_btc_bindings_no_delete
+BEFORE DELETE ON cashloom_v2_btc_payment_bindings
+BEGIN
+  SELECT RAISE(ABORT, 'CashLoom v2 BTC payment bindings are append-only');
+END;
+`);
+
 // Forward-only additive payment fields: CREATE TABLE IF NOT EXISTS cannot grow
 // an existing file, so probe and patch — idempotent.
 const growPayments = db.transaction(() => {

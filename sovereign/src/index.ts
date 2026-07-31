@@ -36,6 +36,12 @@ import {
   mountV2LocalRoutes,
   mountV2PublicRoutes,
 } from "./protocol/v2/router.ts";
+import {
+  createBitcoinPayLinkExecutionService,
+} from "./pay/bitcoin-pay-link.ts";
+import {
+  mountBitcoinPayLinkExecutionRoutes,
+} from "./pay/bitcoin-pay-link-router.ts";
 
 const app = new Hono();
 
@@ -189,6 +195,7 @@ app.use("/api/*", async (c, next) => {
   // Everything below this middleware requires an unlocked vault session.
   const token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
   if (!vault.isValidSession(token)) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "locked", message: "Unlock the vault first." }, 401);
   }
   await next();
@@ -206,6 +213,14 @@ app.get("/api/vault/keys", (c) => c.json({ keys: vault.listKeys() }));
 mountV2LocalRoutes(app, {
   store: v2Store,
   service: v2LocalService,
+});
+mountBitcoinPayLinkExecutionRoutes(app, {
+  service: () =>
+    createBitcoinPayLinkExecutionService({
+      database: db,
+      store: v2Store,
+      localService: v2LocalService,
+    }),
 });
 
 const keySchema = z
