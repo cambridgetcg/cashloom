@@ -356,6 +356,14 @@ describe("CashLoom v2 append-only record store", () => {
     });
     expect(() => store.append(uppercaseId, "local")).toThrow(/sha256|record_id/i);
     expect(transactionOpened).toBe(false);
+
+    expect(() =>
+      store.appendBatch([
+        { canonicalBytes: v2RecordBytes(record), source: "local" },
+        { canonicalBytes: nonCanonical, source: "local" },
+      ]),
+    ).toThrow(/canonical/i);
+    expect(transactionOpened).toBe(false);
   });
 
   test("appends exact bytes idempotently and exposes no enumeration surface", async () => {
@@ -478,6 +486,37 @@ describe("CashLoom v2 append-only record store", () => {
     db.close();
   });
 
+  test("finds one known local payer intent without exposing an enumeration surface", async () => {
+    const db = freshDatabase();
+    const store = storeFor(db, payer.authority.key_id);
+    const root = await descriptor(merchant, 190);
+    const publicRequest = await request(root, merchant, 191, {
+      audience: "public",
+    });
+    const localIntent = await intent(publicRequest, payer, 192);
+
+    store.append(v2RecordBytes(root), "remote");
+    store.append(v2RecordBytes(publicRequest), "remote");
+    store.append(v2RecordBytes(localIntent), "local");
+
+    expect(
+      store.localPaymentIntentFor(
+        publicRequest.record_id,
+        payer.authority.key_id,
+      )?.record_id,
+    ).toBe(localIntent.record_id);
+    expect(
+      store.localPaymentIntentFor(
+        publicRequest.record_id,
+        stranger.authority.key_id,
+      ),
+    ).toBeNull();
+    expect(
+      (store as unknown as Record<string, unknown>).paymentIntents,
+    ).toBeUndefined();
+    db.close();
+  });
+
   test("refuses a public child whose stored parent is private", async () => {
     const db = freshDatabase();
     const store = storeFor(db);
@@ -580,6 +619,26 @@ describe("CashLoom v2 append-only record store", () => {
     expect(recordCount(countDb)).toBe(1);
     countDb.close();
 
+    const batchDb = freshDatabase();
+    const batchStore = storeFor(batchDb, merchant.authority.key_id, {
+      maxRecordCount: 1,
+      maxCanonicalBytes: 1_000_000,
+    });
+    expectStoreError(
+      () =>
+        batchStore.appendBatch([
+          { canonicalBytes: firstBytes, source: "remote" },
+          { canonicalBytes: secondBytes, source: "remote" },
+        ]),
+      "REMOTE_LIMIT_EXCEEDED",
+    );
+    expect(batchStore.remoteUsage()).toEqual({
+      remoteRecordCount: 0,
+      remoteCanonicalBytes: 0,
+    });
+    expect(recordCount(batchDb)).toBe(0);
+    batchDb.close();
+
     const byteDb = freshDatabase();
     const byteStore = storeFor(byteDb, merchant.authority.key_id, {
       maxRecordCount: 10,
@@ -638,13 +697,19 @@ describe("CashLoom v2 append-only record store", () => {
       120,
       "2030-01-03T00:00:00.000Z",
     );
+    const sameTimestampLatest = await descriptor(
+      merchant,
+      220,
+      "2030-01-02T00:00:00.000Z",
+    );
 
     store.append(v2RecordBytes(oldLocal), "local");
     store.append(v2RecordBytes(newerRemote), "remote");
     store.append(v2RecordBytes(newLocal), "local");
+    store.append(v2RecordBytes(sameTimestampLatest), "local");
 
     expect(store.latestPublicNodeDescriptor()?.record_id).toBe(
-      newLocal.record_id,
+      sameTimestampLatest.record_id,
     );
     db.close();
   });

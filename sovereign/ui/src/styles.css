@@ -536,7 +536,8 @@ code {
 .field-row .field { min-width: 180px; }
 
 input,
-select {
+select,
+textarea {
   font: inherit;
   font-size: 14.5px;
   color: var(--parch);
@@ -547,9 +548,11 @@ select {
   width: 100%;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
-input::placeholder { color: var(--faint); }
+input::placeholder,
+textarea::placeholder { color: var(--faint); }
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: rgba(217, 164, 65, 0.55);
   box-shadow: var(--focus-ring);
@@ -562,6 +565,7 @@ select {
   padding-right: 32px;
 }
 input[type="date"] { color-scheme: dark; }
+textarea { resize: vertical; }
 
 .mono-input {
   font-family: var(--mono);
@@ -832,6 +836,187 @@ input[type="date"] { color-scheme: dark; }
   font-family: var(--serif);
 }
 
+/* ── portable Pay Links ───────────────────────────────────────────── */
+.pay-links-intro {
+  max-width: 72ch;
+  margin: -4px 0 26px;
+  color: var(--parch-dim);
+}
+.pay-links-intro strong { color: var(--parch); }
+
+.pay-links-workspace {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 22px;
+}
+.pay-link-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pay-link-panel > h3 {
+  font-size: 20px;
+}
+.pay-link-panel > p,
+.pay-link-accept-form > p,
+.pay-link-import > p {
+  color: var(--parch-dim);
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: -8px 0 0;
+}
+.pay-link-form,
+.pay-link-result,
+.pay-link-import {
+  width: 100%;
+}
+.pay-link-form select,
+.pay-link-form input,
+.pay-link-form textarea {
+  min-height: 44px;
+}
+.pay-link-bundle-input {
+  min-height: 154px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.pay-link-file {
+  min-height: 48px;
+  padding: 8px;
+  color: var(--parch-dim);
+}
+.pay-link-file::file-selector-button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--parch);
+  background: var(--ink-3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 11px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+.pay-link-created {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pay-link-badges {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.pay-link-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0 14px;
+  font-family: var(--mono);
+  font-size: 27px;
+  color: var(--gold-hi);
+}
+.pay-link-amount span {
+  font-size: 12px;
+  color: var(--parch-dim);
+}
+.pay-link-safety {
+  border: 1px solid rgba(162, 181, 109, 0.35);
+  border-radius: 7px;
+  background: rgba(162, 181, 109, 0.06);
+  color: var(--parch-dim);
+  padding: 11px 13px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.pay-link-safety strong { color: var(--in); }
+.pay-link-details {
+  display: grid;
+  gap: 0;
+  margin: 0 0 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.pay-link-fact {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.34fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pay-link-fact dt {
+  color: var(--parch-dim);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.pay-link-fact dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--parch-dim);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.pay-link-code {
+  font-family: var(--mono);
+  color: var(--gold-hi) !important;
+  white-space: normal;
+  word-break: break-word;
+}
+.pay-link-warning {
+  border: 1px solid rgba(217, 164, 65, 0.32);
+  border-radius: 7px;
+  padding: 12px 14px;
+  color: var(--parch-dim);
+  background: rgba(217, 164, 65, 0.05);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.pay-link-warning strong { color: var(--gold-hi); }
+.pay-link-warning.is-sensitive {
+  border-color: rgba(224, 105, 74, 0.42);
+  background: rgba(224, 105, 74, 0.06);
+}
+.pay-link-warning.is-sensitive strong { color: var(--out); }
+.pay-link-chain-note {
+  color: var(--parch-dim);
+  font-size: 12.5px;
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+.pay-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.pay-link-actions .btn {
+  min-height: 44px;
+}
+.pay-link-actions > span {
+  color: var(--parch-dim);
+  font-size: 12px;
+}
+.pay-link-form .field-hint {
+  color: var(--parch-dim);
+}
+.pay-link-accept-form {
+  margin-top: 2px;
+}
+.pay-link-accept-form > h3,
+.pay-link-import > h3 {
+  font-size: 17px;
+  margin-bottom: 12px;
+}
+.pay-link-import-status {
+  color: var(--in);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
 /* ── ledger ───────────────────────────────────────────────────────── */
 .ledger-toolbar {
   display: flex;
@@ -1059,4 +1244,9 @@ input[type="date"] { color-scheme: dark; }
   .main { padding: 24px 16px 48px; }
   .section-aside { display: none; }
   .amt-xl { font-size: 26px; }
+  .pay-links-workspace { grid-template-columns: 1fr; gap: 34px; }
+  .pay-link-fact { grid-template-columns: 1fr; gap: 3px; }
+  .pay-link-actions { align-items: stretch; flex-direction: column; }
+  .pay-link-actions .btn,
+  .pay-link-actions > span { width: 100%; }
 }

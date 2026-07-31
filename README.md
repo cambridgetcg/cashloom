@@ -14,8 +14,9 @@ software you run yourself.
 ## Start here
 
 - **[`sovereign/`](sovereign/)** — the node. One Bun process, one SQLite file,
-  runs on your machine with no database server, no cloud, no accounts. This is
-  the live implementation: vault, `pay()`, read every rail. → [`sovereign/README.md`](sovereign/README.md)
+  runs on your machine with no database server, no cloud, and no hosted
+  CashLoom account. This is the live implementation: vault, `pay()`, read every
+  rail. → [`sovereign/README.md`](sovereign/README.md)
 - **[`atlas/`](atlas/)** — the interactive way to understand the codebase.
   Follow the *ideas* and the real code comes with you — the anti-GitHub. Build
   it with `cd atlas && bun install && bun run build`, or visit the hosted copy.
@@ -64,11 +65,14 @@ non-custodial wallet. That is the whole setup.
   handling. It does not contain a key, call Stripe, or claim production readiness.
 - **Operatorless v2 foundation** — two nodes can exchange signed payment terms
   and a private intent directly, with Agent Wallet canonical records,
-  rail-bound CAIP-19 asset policy, replay protection, and no CashLoom account,
-  company identity, domain, relay, processor, or hosted database in the
-  authority path. Direct HTTP transport separately pins the chosen node key
-  and origin. The hosted site remains an information door and does not run
-  this protocol.
+  rail-bound CAIP-19 asset policy, replay protection, and no hosted CashLoom
+  account, company identity, domain, relay, processor, or hosted database in
+  the authority path. Direct HTTP transport separately pins the chosen node key
+  and origin. The Pay Links UI packages the first Bitcoin-mainnet journey as a
+  public `.cashloom-pay` and merchant-addressed private
+  `.cashloom-accept` that work by file or paste, entirely offline. Acceptance
+  is evidence only and moves no money. The hosted site remains an information
+  door and does not run this protocol.
 
 ## Layout
 

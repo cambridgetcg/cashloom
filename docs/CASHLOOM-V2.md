@@ -4,7 +4,7 @@ Status: implementation contract for the first v2 foundation slice, 2026-07-31.
 
 CashLoom v2 is a signed-record payment protocol with a sovereign reference
 node. It is not a hosted payment service. A payer and payee must be able to
-exchange and verify the protocol records without a CashLoom account, a
+exchange and verify the protocol records without a hosted CashLoom account, a
 CashLoom-operated database, or access to `cashloom.io`.
 
 ## Non-negotiable boundary
@@ -120,6 +120,79 @@ views are projections, not the source of signed consent.
   files to `0600`; startup fails rather than accepting permissive local
   storage.
 
+## Portable Pay Links
+
+The first human handoff is a self-contained, canonical JSON file rather than a
+CashLoom URL:
+
+```text
+merchant node
+  -> public .cashloom-pay
+  -> payer verifies and signs
+  -> private .cashloom-accept
+  -> merchant verifies and imports evidence
+```
+
+A `.cashloom-pay` bundle carries exactly one public node descriptor, public
+Bitcoin-mainnet asset-trust manifest, public payment request, and a small
+signed-purpose preimage with an optional public note. The recipient can inspect
+the destination, satoshi amount, expiry, merchant key fingerprint, signatures,
+record links, and asset policy entirely offline. The carrier is capped at
+64 KiB, must be exact canonical UTF-8 JSON, and permits neither remote fetches
+nor hidden executable instructions.
+
+Accepting creates a separate `.cashloom-accept` bundle. It embeds the complete
+verified offer plus a fresh payer-signed private asset-trust manifest addressed
+to the merchant key and a private payment intent referencing the exact request.
+Merchant-side acceptance inspection and import always pin that audience to the
+merchant node's local key. Public request inspection is first-contact unless
+the payer supplies a merchant-key fingerprint obtained through another path.
+The file is sensitive plaintext because it links the payer protocol key and
+source Bitcoin address; share it only with the intended merchant and do not
+publish it, upload it to a cloud preview, or treat a clipboard as private
+storage.
+
+Both artifacts are consent evidence, not a transaction, rail/provider
+authorization, balance reservation, settlement proof, invoice-paid signal, or
+instruction to an execution adapter. Creating, inspecting, accepting, and
+importing them moves no money and performs no external, counterparty,
+processor, relay, or CashLoom network fetch; the browser still talks to its own
+loopback sovereign node. Exact redelivery is idempotent; a payer cannot silently
+replace already-signed acceptance terms for the same request.
+
+The underlying execution-capable `PaymentIntent` keeps its deliberately short
+five-minute default validity (ten-minute protocol maximum). After that window,
+the `.cashloom-accept` remains verifiable and importable as historical signed
+evidence, and the projection marks the intent inactive. An expired intent
+cannot authorize a later execution commitment. Fresh executable consent needs
+a new merchant request; the historical intent is never rewritten or silently
+renewed.
+
+The first friendly profile is deliberately Bitcoin mainnet only. It validates
+mainnet destinations and canonical satoshi amounts and applies the local
+fail-closed L1 asset policy. This does not make Bitcoin activity anonymous:
+addresses and later public-chain settlement remain linkable.
+
+A valid first-contact signature proves that one self-certifying key made a
+coherent offer; it does not prove a legal name, company, account, or the
+counterparty the user intended. A previously exchanged merchant-key
+fingerprint can raise this to a matched-key check without introducing a
+registry.
+
+The payer's `source_account` is a signed declaration with Bitcoin-mainnet
+syntax. It does not prove control of that Bitcoin private key, available
+balance, reservation, or ability to pay. A stable protocol key and reused
+Bitcoin addresses can correlate separate artifacts and may become identifying
+when shared through an identified channel. Avoiding a central account is not
+anonymity; fresh receive/source addresses and carefully chosen handoff channels
+reduce some correlation, while public-chain settlement remains observable.
+
+The UI supports paste and explicit `.cashloom-pay` / `.cashloom-accept` file
+handoff. A general single-QR profile is not claimed yet: realistic
+self-contained bundles exceed robust high-error-correction QR capacity.
+Compression or multipart QR needs a separately bounded, canonical profile that
+rejects decompression bombs and trailing compressed bytes.
+
 ## Discovery and delivery
 
 A node may publish a signed descriptor at:
@@ -135,9 +208,9 @@ POST /v2/records
 GET  /v2/records/{sha256}
 ```
 
-The same signed descriptor or record may instead arrive through a QR code,
-local file, direct handoff, encrypted relay, content-addressed mirror, or
-another registry. Consumers verify the record, not the carrier.
+The same signed descriptor or record may instead arrive through a local file,
+direct handoff, encrypted relay, content-addressed mirror, or a future bounded
+QR profile. Consumers verify the record, not the carrier.
 
 A self-signature proves continuity with a key; it does not tell a first-time
 caller whose key or network location they intended to reach. Direct transport
@@ -216,7 +289,7 @@ The path forward is therefore:
 5. never make the availability of one processor, RPC, relay, or CashLoom
    domain a prerequisite for verifying the consent chain.
 
-## First foundation slice
+## Shipped foundation and portable handoff
 
 This slice is deliberately below payment execution. It ships:
 
@@ -227,8 +300,11 @@ This slice is deliberately below payment execution. It ships:
 4. bounded public ingest and public-only retrieval;
 5. session-gated local creation with vault-held protocol keys;
 6. signed discovery;
-7. direct two-node delivery; and
-8. a test in which `cashloom.io` is unavailable.
+7. direct two-node delivery;
+8. canonical Bitcoin-mainnet `.cashloom-pay` and private
+   `.cashloom-accept` handoff;
+9. a session-gated Pay Links UI and closed local workflow routes; and
+10. offline two-node tests in which `cashloom.io` is unavailable.
 
 This slice has one exclusive `settled` issuer assertion. Reversal and dispute
 need a future signed adjustment/supersession schema; they are not represented

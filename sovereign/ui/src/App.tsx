@@ -9,12 +9,14 @@ import { Gate } from "./views/Gate";
 import { Keys } from "./views/Keys";
 import { Ledger } from "./views/Ledger";
 import { Pay } from "./views/Pay";
+import { PayLinks } from "./views/PayLinks";
 import { Receive } from "./views/Receive";
 import { Zerone } from "./views/Zerone";
 
 const VIEWS = [
   { id: "dashboard", label: "Overview" },
   { id: "pay", label: "Pay" },
+  { id: "pay-links", label: "Pay Links" },
   { id: "receive", label: "Receive" },
   { id: "ledger", label: "Ledger" },
   { id: "accounts", label: "Accounts" },
@@ -129,6 +131,7 @@ export default function App() {
                 key={v.id}
                 className={`nav-tab${view === v.id ? " is-active" : ""}`}
                 onClick={() => setView(v.id)}
+                aria-current={view === v.id ? "page" : undefined}
               >
                 {v.label}
               </button>
@@ -148,6 +151,7 @@ export default function App() {
       <main className="main" key={view}>
         {view === "dashboard" && <Dashboard onGoto={goto} />}
         {view === "pay" && <Pay />}
+        {view === "pay-links" && <PayLinks />}
         {view === "receive" && <Receive />}
         {view === "ledger" && <Ledger />}
         {view === "accounts" && <Accounts />}
