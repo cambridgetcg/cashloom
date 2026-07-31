@@ -2,7 +2,10 @@
 
 > An **open, non-custodial, local-first payment protocol.** Everyone pays everyone, over every rail, holding nothing, collecting nothing.
 
-*Status: design spec, updated 2026-07-30. Shipped slice: BTC + ETH/USDC on Base; fiat sending remains provider-backed design work. This document is the protocol definition; the codebase is a reference implementation.*
+*Status: design spec, updated 2026-07-31. Shipped slices: BTC + ETH/USDC on
+Base, plus the operatorless CashLoom v2 signed-record foundation; fiat sending
+remains provider-backed design work. This document is the protocol definition;
+the codebase is a reference implementation.*
 
 ---
 
@@ -137,6 +140,12 @@ quote/sign/submit primitive end-to-end; the fiat rail lands next.
 
 - CashLoom is an **open payment protocol**. This document is the spec; the codebase is a **reference implementation**. Anyone may implement or run it.
 - **No central dependency** — everyone self-runs a non-custodial node; interoperability is via open rails (crypto networks) + shared fiat rails, never via a CashLoom-operated server.
+- **Self-certifying protocol identity** — v2 authority is an Ed25519 key
+  fingerprint carried in canonical signed records, not a CashLoom account,
+  company, email, DNS name, or hosted registry. Direct HTTP delivery separately
+  pins the caller-selected key and exact transport origin; TLS location is not
+  promoted into protocol identity. Local append-only verification is specified in
+  [`docs/CASHLOOM-V2.md`](docs/CASHLOOM-V2.md).
 - **Financial inclusion** — self-custodied rails can reduce dependence on a
   single provider, but they do not erase jurisdictional law, sanctions,
   network access, counterparty screening, or the practical barriers people

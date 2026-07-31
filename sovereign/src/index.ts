@@ -25,12 +25,98 @@ import { mountInfoDoors } from "./info/doors.ts";
 import { mountPriceDoors } from "./info/price-door.ts";
 import { mountZeroneTruth } from "./info/zerone-truth.ts";
 import { readFileSync } from "node:fs";
+import { keyIdForPublicKey } from "@agenttool/wallet";
+import {
+  CASHLOOM_V2_NODE_AUTHORITY_LABEL,
+  createV2NodeAuthorityProvider,
+} from "./protocol/v2/node-authority.ts";
+import { createV2RecordStore } from "./protocol/v2/record-store.ts";
+import { createV2LocalService } from "./protocol/v2/local-service.ts";
+import {
+  mountV2LocalRoutes,
+  mountV2PublicRoutes,
+} from "./protocol/v2/router.ts";
 
 const app = new Hono();
 
 const PORT = Number(process.env.CASHLOOM_PORT ?? 4747);
 // Local-first: never exposed unless the owner explicitly rebinds.
 const HOSTNAME = process.env.CASHLOOM_BIND ?? "127.0.0.1";
+
+const boundedV2EnvironmentInteger = (
+  name: string,
+  fallback: number,
+  maximum: number,
+): number => {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (!/^(0|[1-9][0-9]*)$/u.test(raw)) {
+    throw new Error(`${name} must be a canonical non-negative integer.`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value > maximum) {
+    throw new Error(`${name} exceeds its safe local bound.`);
+  }
+  return value;
+};
+
+const v2RemoteLimits = Object.freeze({
+  maxRecordCount: boundedV2EnvironmentInteger(
+    "CASHLOOM_V2_REMOTE_MAX_RECORDS",
+    10_000,
+    1_000_000,
+  ),
+  maxCanonicalBytes: boundedV2EnvironmentInteger(
+    "CASHLOOM_V2_REMOTE_MAX_BYTES",
+    64 * 1024 * 1024,
+    1024 * 1024 * 1024,
+  ),
+});
+const v2Stores = new Map<string, ReturnType<typeof createV2RecordStore>>();
+
+const currentV2NodeKeyId = (): string | null => {
+  const row = db
+    .query(
+      `SELECT address
+         FROM vault_keys
+        WHERE label = ? AND kind = 'secret'
+        LIMIT 1`,
+    )
+    .get(CASHLOOM_V2_NODE_AUTHORITY_LABEL) as
+    | { address: string | null }
+    | null;
+  if (row === null) return null;
+  if (typeof row.address !== "string" || row.address.length === 0) {
+    throw new Error("CashLoom v2 node authority has no usable public key.");
+  }
+  return keyIdForPublicKey(row.address);
+};
+
+const v2Store = (keyId = currentV2NodeKeyId()) => {
+  const cacheKey = keyId ?? "unactivated";
+  const cached = v2Stores.get(cacheKey);
+  if (cached) return cached;
+  const created = createV2RecordStore({
+    db,
+    localNodeKeyId: keyId,
+    remoteLimits: v2RemoteLimits,
+  });
+  v2Stores.set(cacheKey, created);
+  return created;
+};
+
+const v2AuthorityProvider = createV2NodeAuthorityProvider({
+  db,
+  vault,
+});
+
+const v2LocalService = async () => {
+  const node = await v2AuthorityProvider.ensure();
+  return createV2LocalService({
+    store: v2Store(node.authority.key_id),
+    authorityProvider: v2AuthorityProvider,
+  });
+};
 
 /* --------------------------------- public -------------------------------- */
 
@@ -73,6 +159,10 @@ mountInfoDoors(app); // fees · assets · convert · guide — same covenant, sa
 mountPriceDoors(app); // spot price · prices board · value — on-chain oracle, crypto→fiat, refuses when stale
 mountZeroneTruth(app); // zerone truth chain — verified facts · doctrine · commitments · calibration (read-only, cited)
 
+// Signed-record transport only. These routes do not unlock a vault, create a
+// key, enumerate records, or expose private evidence.
+mountV2PublicRoutes(app, { store: v2Store });
+
 // The rights the doors stand on, served AT the door — a guest should never
 // need the git repo to read what this node has promised. Bytes cached at boot.
 const rightsMd = readFileSync(new URL("../../RIGHTS.md", import.meta.url), "utf-8");
@@ -110,6 +200,13 @@ app.post("/api/vault/lock", (c) => {
 });
 
 app.get("/api/vault/keys", (c) => c.json({ keys: vault.listKeys() }));
+
+// Closed local creation and private-by-id reads. Registered after the session
+// middleware; there is no arbitrary "sign these bytes" route.
+mountV2LocalRoutes(app, {
+  store: v2Store,
+  service: v2LocalService,
+});
 
 const keySchema = z
   .object({

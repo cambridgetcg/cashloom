@@ -14,8 +14,9 @@ open rails, hold nothing, collect nothing.
 
 - **One Bun process.** API + UI served from the same origin, bound to
   `127.0.0.1`. This is your node, not a server.
-- **One file for all data.** `bun:sqlite` (ships inside Bun) → `~/.cashloom/sovereign.db`.
-  Nothing to install, start, or host.
+- **One file for all data.** `bun:sqlite` (ships inside Bun) →
+  `~/.cashloom/sovereign.db`. Startup tightens the data directory to `0700`
+  and database sidecars to `0600`. Nothing to install, start, or host.
 - **Local encrypted key custody.** Argon2id(passphrase) → AES-256-GCM. Private
   keys are sealed at rest, decrypted only in memory, only to sign, and
   **never leave the machine** — CashLoom signs locally and broadcasts the
@@ -42,6 +43,8 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 | `CASHLOOM_PORT` | HTTP port (default `4747`). |
 | `CASHLOOM_BIND` | Bind address (default `127.0.0.1` — change only if you know why). |
 | `CASHLOOM_DATA_DIR` | Where the SQLite file + keys live (default `~/.cashloom`). |
+| `CASHLOOM_V2_REMOTE_MAX_RECORDS` | Global cap for distinct remotely admitted v2 records (default `10000`; `0` closes remote ingest). |
+| `CASHLOOM_V2_REMOTE_MAX_BYTES` | Global cap for exact remotely admitted v2 bytes (default `67108864`; `0` closes remote ingest). |
 | `CASHLOOM_BASE_RPC_URL` | Base L2 RPC for sending (default public `mainnet.base.org`). A URL, not a credential. |
 | `CASHLOOM_AGENT_TRUSTED_SIMULATION_KEY_IDS` | Comma-separated Agent Wallet simulation-adapter key IDs trusted by this local node. Empty means agent authorization fails closed. |
 | `STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*` | Read-only connector keys, **only** if you connect those rails. Each is an env-var **pointer** named on an account; the value is never stored in the DB. |
@@ -66,6 +69,13 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   to a CashLoom quote. Base-mainnet EOA execution remains deliberately blocked:
   Agent Wallet `max_fee` cannot currently hard-cap Base's non-EIP-1559 L1
   data/operator fee components.
+- **CashLoom v2 signed-record foundation** — a dedicated vault-held,
+  self-certifying Ed25519 node key; seven closed Agent Wallet-backed record
+  schemas; append-only SQLite storage; nonce, ancestry, disclosure, and
+  remote-disk bounds; rail-bound CAIP-19 trust with signed manifest/policy
+  provenance; and key+origin-pinned one-hop delivery. A real two-node loopback
+  test passes while `cashloom.io` is unavailable. No generic signing endpoint
+  exists.
 - **Stripe Checkout sandbox contract** — a separate inbound connected-seller
   collection lifecycle with exact request compilation, durable provider
   idempotency, injected transport, test-mode-only response binding, and
@@ -77,6 +87,27 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 - **Ledger + analytics** — every movement in one place, BigInt-exact
   minor units, per-account in/out and net position.
 
+### CashLoom v2 doors
+
+The sovereign listener still defaults to loopback. Its protocol doors are:
+
+| Door | Access | Meaning |
+|---|---|---|
+| `GET /.well-known/cashloom/v2` | public | Exact active signed descriptor for this node. |
+| `POST /v2/records` | public | Admit one canonical signed record; no listing or signing. |
+| `GET /v2/records/:recordId` | public | Retrieve one known content ID only when signed `disclosure` is public. |
+| `GET /api/v2/records/:recordId` | vault session | Retrieve one known locally held public or private record. |
+| `POST /api/v2/node/activate` | vault session | Create/reuse the node descriptor through a closed workflow. |
+| `POST /api/v2/asset-trust-manifests` | vault session | Sign one strict local asset assessment. |
+| `POST /api/v2/assets/evaluate` | vault session | Apply an explicit local authority pin and policy. |
+| `POST /api/v2/payment-requests` | vault session | Create terms after local asset-policy acceptance. |
+| `POST /api/v2/payment-intents` | vault session | Accept exact stored terms with separate payment/fee asset gates. |
+
+The hosted `info-server.ts` intentionally has none of these doors and imports
+no vault or ledger. Publishing a sovereign node requires a separately reviewed
+narrow ingress; do not expose the whole listener. See
+[`docs/CASHLOOM-V2.md`](../docs/CASHLOOM-V2.md).
+
 ## What's next (honest roadmap)
 
 - **Agent intent execution binding** — first resolve total-fee semantics (or
@@ -84,6 +115,13 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   exact quote binding, sign-time validity checks, and atomic one-to-one
   authorization/payment reservation. Existing `authorized-not-bound` records
   are never upgraded in place.
+- **v2 execution evidence** — bind an exact rail payload and enforce the
+  payer's total fee-asset ceiling before exposing closed
+  `ExecutionCommitment`, `SubmissionReceipt`, and `SettlementReceipt`
+  workflows. A settlement receipt is explicitly an issuer assertion until a
+  rail-specific verifier authenticates its referenced evidence. The record
+  primitives exist; the HTTP layer does not fabricate evidence before an
+  adapter can prove it.
 - **Stripe sandbox transport + endpoint** — add a separately scoped test key
   and webhook secret only when an operator deliberately configures a Stripe
   sandbox; keep Checkout collection separate from outbound `PaymentSender`.
