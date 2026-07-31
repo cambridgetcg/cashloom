@@ -125,6 +125,8 @@ const KIND_BY_SCHEMA: Readonly<Record<V2Schema, V2RecordKind>> = Object.freeze({
   [V2_SCHEMAS.submission_receipt]: "submission_receipt",
   [V2_SCHEMAS.settlement_receipt]: "settlement_receipt",
   [V2_SCHEMAS.asset_trust_manifest]: "asset_trust_manifest",
+  [V2_SCHEMAS.service_profile]: "service_profile",
+  [V2_SCHEMAS.service_attestation]: "service_attestation",
 });
 
 const EXCLUSIVE_CHILD_SCHEMAS = new Set<V2Schema>([

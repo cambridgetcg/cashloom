@@ -37,6 +37,12 @@ import {
   type AssetTrustManifest,
   type AssetTrustPolicy,
 } from "./asset-trust.ts";
+import {
+  parseServiceAttestation,
+  parseServiceProfile,
+  type ServiceAttestation,
+  type ServiceProfile,
+} from "./service-trust.ts";
 
 export const V2_SCHEMAS = Object.freeze({
   node_descriptor: "cashloom/node-descriptor/v2",
@@ -46,6 +52,8 @@ export const V2_SCHEMAS = Object.freeze({
   submission_receipt: "cashloom/submission-receipt/v2",
   settlement_receipt: "cashloom/settlement-receipt/v2",
   asset_trust_manifest: "cashloom/asset-trust-manifest/v2",
+  service_profile: "cashloom/service-profile/v2",
+  service_attestation: "cashloom/service-attestation/v2",
 } as const);
 
 export type V2Schema = (typeof V2_SCHEMAS)[keyof typeof V2_SCHEMAS];
@@ -58,6 +66,8 @@ const SIGNING_DOMAINS: Readonly<Record<V2Schema, string>> = Object.freeze({
   [V2_SCHEMAS.submission_receipt]: "cashloom-v2/submission-receipt",
   [V2_SCHEMAS.settlement_receipt]: "cashloom-v2/settlement-receipt",
   [V2_SCHEMAS.asset_trust_manifest]: "cashloom-v2/asset-trust-manifest",
+  [V2_SCHEMAS.service_profile]: "cashloom-v2/service-profile",
+  [V2_SCHEMAS.service_attestation]: "cashloom-v2/service-attestation",
 });
 
 export const V2_MAX_RECORD_BYTES = 32 * 1024;
@@ -88,6 +98,8 @@ const MAX_LIFETIME_MS: Readonly<Record<V2Schema, number>> = Object.freeze({
   [V2_SCHEMAS.submission_receipt]: 7 * 24 * 60 * 60 * 1_000,
   [V2_SCHEMAS.settlement_receipt]: 365 * 24 * 60 * 60 * 1_000,
   [V2_SCHEMAS.asset_trust_manifest]: 30 * 24 * 60 * 60 * 1_000,
+  [V2_SCHEMAS.service_profile]: 30 * 24 * 60 * 60 * 1_000,
+  [V2_SCHEMAS.service_attestation]: 365 * 24 * 60 * 60 * 1_000,
 });
 
 export type NodeRole = (typeof NODE_ROLES)[number];
@@ -208,6 +220,16 @@ export interface AssetTrustManifestRecordCore
   manifest: AssetTrustManifest;
 }
 
+export interface ServiceProfileRecordCore
+  extends CommonCore<typeof V2_SCHEMAS.service_profile> {
+  profile: ServiceProfile;
+}
+
+export interface ServiceAttestationRecordCore
+  extends CommonCore<typeof V2_SCHEMAS.service_attestation> {
+  attestation: ServiceAttestation;
+}
+
 export type V2RecordCore =
   | NodeDescriptorCore
   | PaymentRequestCore
@@ -215,7 +237,9 @@ export type V2RecordCore =
   | ExecutionCommitmentCore
   | SubmissionReceiptCore
   | SettlementReceiptCore
-  | AssetTrustManifestRecordCore;
+  | AssetTrustManifestRecordCore
+  | ServiceProfileRecordCore
+  | ServiceAttestationRecordCore;
 
 export type SignedV2Record<T extends V2RecordCore = V2RecordCore> = T & {
   signature: V2Signature;
@@ -763,6 +787,83 @@ function validateAssetTrustManifestRecord(
   };
 }
 
+function validateServiceProfileRecord(
+  value: unknown,
+): ServiceProfileRecordCore {
+  const object = asObject(value, "record");
+  exactKeys(object, [
+    "schema", "authority", "audience", "disclosure", "nonce", "issued_at",
+    "expires_at", "parent_record_id", "profile",
+  ], "record");
+  const base = common(object, V2_SCHEMAS.service_profile);
+  if (base.parent_record_id !== null) {
+    return invalid(
+      "A service profile is an independent self-assertion and must not name an authority parent.",
+      "record.parent_record_id",
+    );
+  }
+  const parsedProfile = parseServiceProfile(object.profile);
+  if (parsedProfile.service_key_id !== base.authority.key_id) {
+    return protocolError(
+      "AUTHORITY_MISMATCH",
+      "The service profile key must match its self-certifying record authority.",
+      "record.profile.service_key_id",
+    );
+  }
+  if (Date.parse(parsedProfile.provenance.asserted_at) > Date.parse(base.issued_at)) {
+    return invalid(
+      "The self-assertion cannot postdate its signed record.",
+      "record.profile.provenance.asserted_at",
+    );
+  }
+  return {
+    ...base,
+    profile: snapshotJsonData(parsedProfile) as unknown as ServiceProfile,
+  };
+}
+
+function validateServiceAttestationRecord(
+  value: unknown,
+): ServiceAttestationRecordCore {
+  const object = asObject(value, "record");
+  exactKeys(object, [
+    "schema", "authority", "audience", "disclosure", "nonce", "issued_at",
+    "expires_at", "parent_record_id", "attestation",
+  ], "record");
+  const base = common(object, V2_SCHEMAS.service_attestation);
+  if (base.parent_record_id === null) {
+    return invalid(
+      "A service attestation must name the exact service profile it discusses.",
+      "record.parent_record_id",
+    );
+  }
+  const parsedAttestation = parseServiceAttestation(object.attestation);
+  if (parsedAttestation.issuer_key_id !== base.authority.key_id) {
+    return protocolError(
+      "AUTHORITY_MISMATCH",
+      "The attestation issuer key must match its self-certifying record authority.",
+      "record.attestation.issuer_key_id",
+    );
+  }
+  if (parsedAttestation.profile_record_id !== base.parent_record_id) {
+    return protocolError(
+      "INTEGRITY_FAILURE",
+      "The attestation and record envelope must name the same profile record.",
+      "record.attestation.profile_record_id",
+    );
+  }
+  if (Date.parse(parsedAttestation.observed_at) > Date.parse(base.issued_at)) {
+    return invalid(
+      "The attestation observation cannot postdate its signed record.",
+      "record.attestation.observed_at",
+    );
+  }
+  return {
+    ...base,
+    attestation: snapshotJsonData(parsedAttestation) as unknown as ServiceAttestation,
+  };
+}
+
 function schemaOf(value: unknown): V2Schema {
   const object = asObject(value, "record");
   const schema = boundedString(object.schema, "record.schema", 64);
@@ -788,6 +889,10 @@ function validateCore(value: unknown): V2RecordCore {
       return validateSettlementReceipt(value);
     case V2_SCHEMAS.asset_trust_manifest:
       return validateAssetTrustManifestRecord(value);
+    case V2_SCHEMAS.service_profile:
+      return validateServiceProfileRecord(value);
+    case V2_SCHEMAS.service_attestation:
+      return validateServiceAttestationRecord(value);
   }
 }
 
@@ -878,6 +983,24 @@ export function createAssetTrustManifestRecord(
 ): Readonly<AssetTrustManifestRecordCore> {
   return deepFreeze(validateAssetTrustManifestRecord({
     schema: V2_SCHEMAS.asset_trust_manifest,
+    ...input,
+  }));
+}
+
+export function createServiceProfileRecord(
+  input: Omit<ServiceProfileRecordCore, "schema">,
+): Readonly<ServiceProfileRecordCore> {
+  return deepFreeze(validateServiceProfileRecord({
+    schema: V2_SCHEMAS.service_profile,
+    ...input,
+  }));
+}
+
+export function createServiceAttestationRecord(
+  input: Omit<ServiceAttestationRecordCore, "schema">,
+): Readonly<ServiceAttestationRecordCore> {
+  return deepFreeze(validateServiceAttestationRecord({
+    schema: V2_SCHEMAS.service_attestation,
     ...input,
   }));
 }
@@ -1244,8 +1367,34 @@ function assertImmediateLink(
       }
       return;
     }
+    case V2_SCHEMAS.service_attestation: {
+      if (parent.schema !== V2_SCHEMAS.service_profile) {
+        return invalid(
+          "A service attestation parent must be a service profile.",
+          "record.parent_record_id",
+        );
+      }
+      const attestation = child as VerifiedV2Record<ServiceAttestationRecordCore>;
+      const profile = parent as VerifiedV2Record<ServiceProfileRecordCore>;
+      // A trader may publish historical interaction evidence after the profile
+      // expires. The exact profile bytes remain the immutable context.
+      parentOf(attestation, profile, false);
+      if (
+        attestation.attestation.profile_record_id !== profile.record_id
+        || attestation.attestation.subject_key_id !== profile.authority.key_id
+        || profile.profile.service_key_id !== profile.authority.key_id
+      ) {
+        return protocolError(
+          "AUTHORITY_MISMATCH",
+          "The attestation subject must be the authority of its exact profile parent.",
+          "record.attestation.subject_key_id",
+        );
+      }
+      return;
+    }
     case V2_SCHEMAS.node_descriptor:
     case V2_SCHEMAS.asset_trust_manifest:
+    case V2_SCHEMAS.service_profile:
       return invalid(`${child.schema} is an independent root and cannot be linked as a child.`, "record.schema");
   }
 }

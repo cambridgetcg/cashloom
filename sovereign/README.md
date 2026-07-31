@@ -75,12 +75,13 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   Agent Wallet `max_fee` cannot currently hard-cap Base's non-EIP-1559 L1
   data/operator fee components.
 - **CashLoom v2 signed-record foundation** — a dedicated vault-held,
-  self-certifying Ed25519 node key; seven closed Agent Wallet-backed record
+  self-certifying Ed25519 node key; nine closed Agent Wallet-backed record
   schemas; append-only SQLite storage; nonce, ancestry, disclosure, and
   remote-disk bounds; rail-bound CAIP-19 trust with signed manifest/policy
-  provenance; and key+origin-pinned one-hop delivery. A real two-node loopback
-  test passes while `cashloom.io` is unavailable. No generic signing endpoint
-  exists.
+  provenance; permissionless service profiles and participant attestations;
+  bundle-scoped trader policy; and key+origin-pinned one-hop delivery. A real
+  two-node loopback test passes while `cashloom.io` is unavailable. No generic
+  signing endpoint or platform trust score exists.
 - **Portable Bitcoin Pay Links** — create a public canonical
   `.cashloom-pay`, hand it to another sovereign node by file or paste, inspect
   the exact address/amount/key/expiry offline, and return a private
