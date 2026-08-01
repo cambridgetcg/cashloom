@@ -21,7 +21,9 @@ import {
   V2_SCHEMAS,
   createAssetTrustManifestRecord,
   createExecutionCommitment,
+  createKarmaObservationChallengeRecord,
   createKarmaObservationRecord,
+  createKarmaObservationWithdrawalRecord,
   createNodeDescriptor,
   createPaymentIntent,
   createPaymentRequest,
@@ -56,7 +58,9 @@ import {
   SERVICE_PROFILE_SCHEMA,
 } from "./service-trust.ts";
 import {
+  KARMA_OBSERVATION_CHALLENGE_SCHEMA,
   KARMA_OBSERVATION_SCHEMA,
+  KARMA_OBSERVATION_WITHDRAWAL_SCHEMA,
   KARMA_SUBJECT_COMMITMENT_SCHEMA,
   createKarmaSubjectCommitment,
 } from "./karma.ts";
@@ -541,12 +545,56 @@ describe("CashLoom v2 signed records", () => {
       }),
       payer.signer,
     );
+    const karmaWithdrawal = await signV2Record(
+      createKarmaObservationWithdrawalRecord({
+        authority: payer.authority,
+        audience: "public",
+        disclosure: "public",
+        nonce: nonce(16),
+        issued_at: "2030-01-01T00:02:00.000Z",
+        expires_at: "2030-02-01T00:00:00.000Z",
+        parent_record_id: karmaObservation.record_id,
+        withdrawal: {
+          schema: KARMA_OBSERVATION_WITHDRAWAL_SCHEMA,
+          issuer_key_id: payer.authority.key_id,
+          assertion_scope: "issuer-withdrawal-only",
+          subject: karmaSubject,
+          target_observation_record_id: karmaObservation.record_id,
+          withdrawn_at: "2030-01-01T00:02:00.000Z",
+          evidence: [],
+        },
+      }),
+      payer.signer,
+    );
+    const karmaChallenge = await signV2Record(
+      createKarmaObservationChallengeRecord({
+        authority: merchant.authority,
+        audience: "public",
+        disclosure: "public",
+        nonce: nonce(17),
+        issued_at: "2030-01-01T00:02:00.000Z",
+        expires_at: "2030-02-01T00:00:00.000Z",
+        parent_record_id: karmaObservation.record_id,
+        challenge: {
+          schema: KARMA_OBSERVATION_CHALLENGE_SCHEMA,
+          challenger_key_id: merchant.authority.key_id,
+          assertion_scope: "challenger-report-only",
+          subject: karmaSubject,
+          target_observation_record_id: karmaObservation.record_id,
+          challenged_at: "2030-01-01T00:02:00.000Z",
+          evidence: [],
+        },
+      }),
+      merchant.signer,
+    );
     const digests = [
       ...values,
       assetManifest,
       serviceProfile,
       serviceAttestation,
       karmaObservation,
+      karmaWithdrawal,
+      karmaChallenge,
     ].map((record) =>
       Buffer.from(v2RecordDigest(unsigned(record))).toString("hex"));
     expect(new Set(digests).size).toBe(Object.keys(V2_SCHEMAS).length);

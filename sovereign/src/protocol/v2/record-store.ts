@@ -128,12 +128,16 @@ const KIND_BY_SCHEMA: Readonly<Record<V2Schema, V2RecordKind>> = Object.freeze({
   [V2_SCHEMAS.service_profile]: "service_profile",
   [V2_SCHEMAS.service_attestation]: "service_attestation",
   [V2_SCHEMAS.karma_observation]: "karma_observation",
+  [V2_SCHEMAS.karma_observation_withdrawal]:
+    "karma_observation_withdrawal",
+  [V2_SCHEMAS.karma_observation_challenge]: "karma_observation_challenge",
 });
 
 const EXCLUSIVE_CHILD_SCHEMAS = new Set<V2Schema>([
   V2_SCHEMAS.execution_commitment,
   V2_SCHEMAS.submission_receipt,
   V2_SCHEMAS.settlement_receipt,
+  V2_SCHEMAS.karma_observation_withdrawal,
 ]);
 
 const textEncoder = new TextEncoder();

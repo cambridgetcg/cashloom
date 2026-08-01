@@ -45,7 +45,12 @@ import {
 } from "./service-trust.ts";
 import {
   parseKarmaObservation,
+  parseKarmaObservationChallenge,
+  parseKarmaObservationWithdrawal,
   type KarmaObservation,
+  type KarmaObservationChallenge,
+  type KarmaObservationWithdrawal,
+  type KarmaSubjectCommitment,
 } from "./karma.ts";
 
 export const V2_SCHEMAS = Object.freeze({
@@ -59,6 +64,8 @@ export const V2_SCHEMAS = Object.freeze({
   service_profile: "cashloom/service-profile/v2",
   service_attestation: "cashloom/service-attestation/v2",
   karma_observation: "cashloom/karma-observation/v2",
+  karma_observation_withdrawal: "cashloom/karma-observation-withdrawal/v2",
+  karma_observation_challenge: "cashloom/karma-observation-challenge/v2",
 } as const);
 
 export type V2Schema = (typeof V2_SCHEMAS)[keyof typeof V2_SCHEMAS];
@@ -74,6 +81,10 @@ const SIGNING_DOMAINS: Readonly<Record<V2Schema, string>> = Object.freeze({
   [V2_SCHEMAS.service_profile]: "cashloom-v2/service-profile",
   [V2_SCHEMAS.service_attestation]: "cashloom-v2/service-attestation",
   [V2_SCHEMAS.karma_observation]: "cashloom-v2/karma-observation",
+  [V2_SCHEMAS.karma_observation_withdrawal]:
+    "cashloom-v2/karma-observation-withdrawal",
+  [V2_SCHEMAS.karma_observation_challenge]:
+    "cashloom-v2/karma-observation-challenge",
 });
 
 export const V2_MAX_RECORD_BYTES = 32 * 1024;
@@ -107,6 +118,8 @@ const MAX_LIFETIME_MS: Readonly<Record<V2Schema, number>> = Object.freeze({
   [V2_SCHEMAS.service_profile]: 30 * 24 * 60 * 60 * 1_000,
   [V2_SCHEMAS.service_attestation]: 365 * 24 * 60 * 60 * 1_000,
   [V2_SCHEMAS.karma_observation]: 365 * 24 * 60 * 60 * 1_000,
+  [V2_SCHEMAS.karma_observation_withdrawal]: 365 * 24 * 60 * 60 * 1_000,
+  [V2_SCHEMAS.karma_observation_challenge]: 365 * 24 * 60 * 60 * 1_000,
 });
 
 export type NodeRole = (typeof NODE_ROLES)[number];
@@ -242,6 +255,16 @@ export interface KarmaObservationRecordCore
   observation: KarmaObservation;
 }
 
+export interface KarmaObservationWithdrawalRecordCore
+  extends CommonCore<typeof V2_SCHEMAS.karma_observation_withdrawal> {
+  withdrawal: KarmaObservationWithdrawal;
+}
+
+export interface KarmaObservationChallengeRecordCore
+  extends CommonCore<typeof V2_SCHEMAS.karma_observation_challenge> {
+  challenge: KarmaObservationChallenge;
+}
+
 export type V2RecordCore =
   | NodeDescriptorCore
   | PaymentRequestCore
@@ -252,7 +275,9 @@ export type V2RecordCore =
   | AssetTrustManifestRecordCore
   | ServiceProfileRecordCore
   | ServiceAttestationRecordCore
-  | KarmaObservationRecordCore;
+  | KarmaObservationRecordCore
+  | KarmaObservationWithdrawalRecordCore
+  | KarmaObservationChallengeRecordCore;
 
 export type SignedV2Record<T extends V2RecordCore = V2RecordCore> = T & {
   signature: V2Signature;
@@ -912,6 +937,90 @@ function validateKarmaObservationRecord(
   };
 }
 
+function validateKarmaObservationWithdrawalRecord(
+  value: unknown,
+): KarmaObservationWithdrawalRecordCore {
+  const object = asObject(value, "record");
+  exactKeys(object, [
+    "schema", "authority", "audience", "disclosure", "nonce", "issued_at",
+    "expires_at", "parent_record_id", "withdrawal",
+  ], "record");
+  const base = common(object, V2_SCHEMAS.karma_observation_withdrawal);
+  if (base.parent_record_id === null) {
+    return invalid(
+      "A KARMA observation withdrawal must name its exact observation parent.",
+      "record.parent_record_id",
+    );
+  }
+  const parsedWithdrawal = parseKarmaObservationWithdrawal(object.withdrawal);
+  if (parsedWithdrawal.issuer_key_id !== base.authority.key_id) {
+    return protocolError(
+      "AUTHORITY_MISMATCH",
+      "The KARMA withdrawal issuer must match its self-certifying record authority.",
+      "record.withdrawal.issuer_key_id",
+    );
+  }
+  if (parsedWithdrawal.target_observation_record_id !== base.parent_record_id) {
+    return protocolError(
+      "INTEGRITY_FAILURE",
+      "The KARMA withdrawal payload and envelope must name the same observation.",
+      "record.withdrawal.target_observation_record_id",
+    );
+  }
+  if (Date.parse(parsedWithdrawal.withdrawn_at) > Date.parse(base.issued_at)) {
+    return invalid(
+      "The KARMA withdrawal cannot postdate its signed record.",
+      "record.withdrawal.withdrawn_at",
+    );
+  }
+  return {
+    ...base,
+    withdrawal: snapshotJsonData(parsedWithdrawal) as unknown as KarmaObservationWithdrawal,
+  };
+}
+
+function validateKarmaObservationChallengeRecord(
+  value: unknown,
+): KarmaObservationChallengeRecordCore {
+  const object = asObject(value, "record");
+  exactKeys(object, [
+    "schema", "authority", "audience", "disclosure", "nonce", "issued_at",
+    "expires_at", "parent_record_id", "challenge",
+  ], "record");
+  const base = common(object, V2_SCHEMAS.karma_observation_challenge);
+  if (base.parent_record_id === null) {
+    return invalid(
+      "A KARMA observation challenge must name its exact observation parent.",
+      "record.parent_record_id",
+    );
+  }
+  const parsedChallenge = parseKarmaObservationChallenge(object.challenge);
+  if (parsedChallenge.challenger_key_id !== base.authority.key_id) {
+    return protocolError(
+      "AUTHORITY_MISMATCH",
+      "The KARMA challenge signer must match its self-certifying record authority.",
+      "record.challenge.challenger_key_id",
+    );
+  }
+  if (parsedChallenge.target_observation_record_id !== base.parent_record_id) {
+    return protocolError(
+      "INTEGRITY_FAILURE",
+      "The KARMA challenge payload and envelope must name the same observation.",
+      "record.challenge.target_observation_record_id",
+    );
+  }
+  if (Date.parse(parsedChallenge.challenged_at) > Date.parse(base.issued_at)) {
+    return invalid(
+      "The KARMA challenge cannot postdate its signed record.",
+      "record.challenge.challenged_at",
+    );
+  }
+  return {
+    ...base,
+    challenge: snapshotJsonData(parsedChallenge) as unknown as KarmaObservationChallenge,
+  };
+}
+
 function schemaOf(value: unknown): V2Schema {
   const object = asObject(value, "record");
   const schema = boundedString(object.schema, "record.schema", 64);
@@ -943,6 +1052,10 @@ function validateCore(value: unknown): V2RecordCore {
       return validateServiceAttestationRecord(value);
     case V2_SCHEMAS.karma_observation:
       return validateKarmaObservationRecord(value);
+    case V2_SCHEMAS.karma_observation_withdrawal:
+      return validateKarmaObservationWithdrawalRecord(value);
+    case V2_SCHEMAS.karma_observation_challenge:
+      return validateKarmaObservationChallengeRecord(value);
   }
 }
 
@@ -1060,6 +1173,24 @@ export function createKarmaObservationRecord(
 ): Readonly<KarmaObservationRecordCore> {
   return deepFreeze(validateKarmaObservationRecord({
     schema: V2_SCHEMAS.karma_observation,
+    ...input,
+  }));
+}
+
+export function createKarmaObservationWithdrawalRecord(
+  input: Omit<KarmaObservationWithdrawalRecordCore, "schema">,
+): Readonly<KarmaObservationWithdrawalRecordCore> {
+  return deepFreeze(validateKarmaObservationWithdrawalRecord({
+    schema: V2_SCHEMAS.karma_observation_withdrawal,
+    ...input,
+  }));
+}
+
+export function createKarmaObservationChallengeRecord(
+  input: Omit<KarmaObservationChallengeRecordCore, "schema">,
+): Readonly<KarmaObservationChallengeRecordCore> {
+  return deepFreeze(validateKarmaObservationChallengeRecord({
+    schema: V2_SCHEMAS.karma_observation_challenge,
     ...input,
   }));
 }
@@ -1271,6 +1402,16 @@ function samePaymentField(
   }
 }
 
+function sameKarmaSubject(
+  left: KarmaSubjectCommitment,
+  right: KarmaSubjectCommitment,
+): boolean {
+  return left.scheme === right.scheme
+    && left.scope === right.scope
+    && left.scope_ref === right.scope_ref
+    && left.commitment === right.commitment;
+}
+
 function assertImmediateLink(
   child: VerifiedV2Record,
   parent: VerifiedV2Record,
@@ -1447,6 +1588,84 @@ function assertImmediateLink(
           "AUTHORITY_MISMATCH",
           "The attestation subject must be the authority of its exact profile parent.",
           "record.attestation.subject_key_id",
+        );
+      }
+      return;
+    }
+    case V2_SCHEMAS.karma_observation_withdrawal: {
+      if (parent.schema !== V2_SCHEMAS.karma_observation) {
+        return invalid(
+          "A KARMA observation withdrawal parent must be a KARMA observation.",
+          "record.parent_record_id",
+        );
+      }
+      const withdrawal = child as VerifiedV2Record<KarmaObservationWithdrawalRecordCore>;
+      const observation = parent as VerifiedV2Record<KarmaObservationRecordCore>;
+      // Review may follow expiry; the exact immutable parent remains context.
+      parentOf(withdrawal, observation, false);
+      if (
+        withdrawal.withdrawal.target_observation_record_id !== observation.record_id
+        || !sameKarmaSubject(
+          withdrawal.withdrawal.subject,
+          observation.observation.subject,
+        )
+      ) {
+        return protocolError(
+          "INTEGRITY_FAILURE",
+          "The KARMA withdrawal must retain its exact observation subject and target.",
+          "record.withdrawal",
+        );
+      }
+      if (
+        withdrawal.authority.key_id !== observation.authority.key_id
+        || withdrawal.withdrawal.issuer_key_id
+          !== observation.observation.issuer_key_id
+      ) {
+        return protocolError(
+          "AUTHORITY_MISMATCH",
+          "Only the exact observation issuer may sign its withdrawal.",
+          "record.withdrawal.issuer_key_id",
+        );
+      }
+      if (Date.parse(withdrawal.withdrawal.withdrawn_at) < Date.parse(observation.issued_at)) {
+        return protocolError(
+          "INVALID_STATE_TRANSITION",
+          "A KARMA withdrawal cannot predate its signed observation parent.",
+          "record.withdrawal.withdrawn_at",
+        );
+      }
+      return;
+    }
+    case V2_SCHEMAS.karma_observation_challenge: {
+      if (parent.schema !== V2_SCHEMAS.karma_observation) {
+        return invalid(
+          "A KARMA observation challenge parent must be a KARMA observation.",
+          "record.parent_record_id",
+        );
+      }
+      const challenge = child as VerifiedV2Record<KarmaObservationChallengeRecordCore>;
+      const observation = parent as VerifiedV2Record<KarmaObservationRecordCore>;
+      // Any key may report, including after expiry. This edge grants no
+      // withdrawal authority and carries no recommendation weight.
+      parentOf(challenge, observation, false);
+      if (
+        challenge.challenge.target_observation_record_id !== observation.record_id
+        || !sameKarmaSubject(
+          challenge.challenge.subject,
+          observation.observation.subject,
+        )
+      ) {
+        return protocolError(
+          "INTEGRITY_FAILURE",
+          "The KARMA challenge must retain its exact observation subject and target.",
+          "record.challenge",
+        );
+      }
+      if (Date.parse(challenge.challenge.challenged_at) < Date.parse(observation.issued_at)) {
+        return protocolError(
+          "INVALID_STATE_TRANSITION",
+          "A KARMA challenge cannot predate its signed observation parent.",
+          "record.challenge.challenged_at",
         );
       }
       return;

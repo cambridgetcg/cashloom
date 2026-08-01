@@ -23,6 +23,10 @@ import {
 
 export const KARMA_OBSERVATION_SCHEMA =
   "cashloom.karma-observation/v2" as const;
+export const KARMA_OBSERVATION_WITHDRAWAL_SCHEMA =
+  "cashloom.karma-observation-withdrawal/v2" as const;
+export const KARMA_OBSERVATION_CHALLENGE_SCHEMA =
+  "cashloom.karma-observation-challenge/v2" as const;
 export const KARMA_POLICY_SCHEMA = "cashloom.karma-policy/v2" as const;
 export const KARMA_SUBJECT_COMMITMENT_SCHEMA =
   "cashloom.karma-subject-commitment/v2" as const;
@@ -124,6 +128,30 @@ export interface KarmaObservation {
   readonly evidence: readonly KarmaEvidenceReference[];
 }
 
+/** Issuer-authorized removal of one exact observation from local evaluation. */
+export interface KarmaObservationWithdrawal {
+  readonly schema: typeof KARMA_OBSERVATION_WITHDRAWAL_SCHEMA;
+  /** Must match both the review envelope and target observation issuer. */
+  readonly issuer_key_id: Sha256Id;
+  readonly assertion_scope: "issuer-withdrawal-only";
+  readonly subject: KarmaSubjectCommitment;
+  readonly target_observation_record_id: Sha256Id;
+  readonly withdrawn_at: string;
+  readonly evidence: readonly KarmaEvidenceReference[];
+}
+
+/** A signed report that carries no withdrawal or recommendation authority. */
+export interface KarmaObservationChallenge {
+  readonly schema: typeof KARMA_OBSERVATION_CHALLENGE_SCHEMA;
+  /** Must match the review envelope; it need not match the target issuer. */
+  readonly challenger_key_id: Sha256Id;
+  readonly assertion_scope: "challenger-report-only";
+  readonly subject: KarmaSubjectCommitment;
+  readonly target_observation_record_id: Sha256Id;
+  readonly challenged_at: string;
+  readonly evidence: readonly KarmaEvidenceReference[];
+}
+
 export interface KarmaPolicyRule {
   readonly rule_id: string;
   readonly metric: KarmaMetric;
@@ -155,6 +183,7 @@ const MAX_VALUE = 1_000_000_000;
 const MAX_AGE_SECONDS = 10 * 365 * 24 * 60 * 60;
 const MAX_WINDOW_SECONDS = 365 * 24 * 60 * 60;
 const MAX_OBSERVATION_BYTES = 24 * 1024;
+const MAX_REVIEW_BYTES = 8 * 1024;
 const MAX_POLICY_BYTES = 32 * 1024;
 const TOKEN = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/u;
 const RESERVED_AUTHORITY_TOKEN = /^(?:cashloom|cambridgetcg|cambridge)[.:/_-]+(?:verified|approved|certified|legitimate|trusted)(?:[.:/_-]|$)/iu;
@@ -473,6 +502,93 @@ export function parseKarmaObservation(value: unknown): KarmaObservation {
 
 export function karmaObservationHash(value: unknown): Sha256Id {
   return sha256Id(parseKarmaObservation(value));
+}
+
+export function parseKarmaObservationWithdrawal(
+  value: unknown,
+): KarmaObservationWithdrawal {
+  const root = exactObject(
+    boundedSnapshot(value, "withdrawal", MAX_REVIEW_BYTES),
+    "withdrawal",
+    [
+      "schema",
+      "issuer_key_id",
+      "assertion_scope",
+      "subject",
+      "target_observation_record_id",
+      "withdrawn_at",
+      "evidence",
+    ],
+  );
+  return {
+    schema: literal(
+      root.schema,
+      KARMA_OBSERVATION_WITHDRAWAL_SCHEMA,
+      "withdrawal.schema",
+    ),
+    issuer_key_id: shaId(root.issuer_key_id, "withdrawal.issuer_key_id"),
+    assertion_scope: literal(
+      root.assertion_scope,
+      "issuer-withdrawal-only",
+      "withdrawal.assertion_scope",
+    ),
+    subject: subject(root.subject, "withdrawal.subject"),
+    target_observation_record_id: shaId(
+      root.target_observation_record_id,
+      "withdrawal.target_observation_record_id",
+    ),
+    withdrawn_at: timestamp(root.withdrawn_at, "withdrawal.withdrawn_at"),
+    evidence: evidenceList(root.evidence, "withdrawal.evidence"),
+  };
+}
+
+export function karmaObservationWithdrawalHash(value: unknown): Sha256Id {
+  return sha256Id(parseKarmaObservationWithdrawal(value));
+}
+
+export function parseKarmaObservationChallenge(
+  value: unknown,
+): KarmaObservationChallenge {
+  const root = exactObject(
+    boundedSnapshot(value, "challenge", MAX_REVIEW_BYTES),
+    "challenge",
+    [
+      "schema",
+      "challenger_key_id",
+      "assertion_scope",
+      "subject",
+      "target_observation_record_id",
+      "challenged_at",
+      "evidence",
+    ],
+  );
+  return {
+    schema: literal(
+      root.schema,
+      KARMA_OBSERVATION_CHALLENGE_SCHEMA,
+      "challenge.schema",
+    ),
+    challenger_key_id: shaId(
+      root.challenger_key_id,
+      "challenge.challenger_key_id",
+    ),
+    assertion_scope: literal(
+      root.assertion_scope,
+      "challenger-report-only",
+      "challenge.assertion_scope",
+    ),
+    subject: subject(root.subject, "challenge.subject"),
+    target_observation_record_id: shaId(
+      root.target_observation_record_id,
+      "challenge.target_observation_record_id",
+    ),
+    challenged_at: timestamp(root.challenged_at, "challenge.challenged_at"),
+    evidence: evidenceList(root.evidence, "challenge.evidence"),
+  };
+}
+
+export function karmaObservationChallengeHash(value: unknown): Sha256Id {
+  return sha256Id(parseKarmaObservationChallenge(value));
 }
 
 function policyRule(

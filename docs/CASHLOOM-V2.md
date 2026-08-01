@@ -346,13 +346,50 @@ are always false for payment execution, account mutation, and settlement,
 refund, or rerouting. No network client, evidence fetch, payment adapter,
 account store, global score, or enforcement hook exists in the module.
 
+### Signed correction and report-only challenge
+
+Two closed child records add review without mutable observations:
+
+- `cashloom/karma-observation-withdrawal/v2` can exclude one exact observation
+  only when its payload, envelope, signature, parent link, subject, and issuer
+  all resolve to the original observation issuer; and
+- `cashloom/karma-observation-challenge/v2` lets any self-certifying key attach
+  a digest-only report to one exact observation, but grants no withdrawal,
+  policy, truth, or recommendation authority.
+
+Both may follow an expired observation because the immutable parent remains
+the review context. A review timestamp cannot predate that parent or postdate
+its own signed envelope. The append-only store permits many different
+challengers but only one withdrawal child per observation. Signatures identify
+which key made a claim; they do not prove a legal person, independent
+challengers, a correct report, or an uncompromised issuer.
+
+`evaluateV2KarmaReview` uses a strict verify → authorize → filter order. It
+first verifies every original observation and every review signature. It then
+checks exact parent links, subject scope, time, replay slots, and issuer-only
+withdrawal authority. Only after every review passes may a valid withdrawal
+remove its exact target from the ordinary evaluator. This lets an issuer
+withdraw an original and publish a separately signed same-slot replacement;
+it does not mutate or overwrite either record. Challenges are surfaced with
+`report-only` scope and never enter matching or recommendation logic.
+
+The review hash binds the scoped subject, exact policy hash, explicit
+`evaluated_at`, every original observation ID, every withdrawal/challenge ID,
+and each review-to-target mapping. Changing input order does not change the
+hash; adding, removing, or retargeting a review does. A compromised issuer can
+still withdraw that issuer's own observations, and many attacker-controlled
+challenge keys can still create noise within the 256-record review budget.
+Key recovery, issuer continuity, challenger independence, discovery, and spam
+admission policy remain local concerns rather than protocol verdicts.
+
 Defensive bounds are explicit:
 
 - repeated record IDs and re-signed duplicates of one issuer/subject/metric/
   window slot fail closed;
 - separate windows from one issuer cannot amplify a unique-issuer quorum;
 - observation windows are capped at 365 days, policies and records have
-  canonical byte/array bounds, and an evaluation accepts at most 256 records;
+  canonical byte/array bounds, and an evaluation accepts at most 256
+  observations plus 256 total review records;
 - signatures prove who made a claim, not that the claim is true or that two
   accepted keys represent independent people; and
 - false positives and poisoned telemetry remain possible, so operators should
