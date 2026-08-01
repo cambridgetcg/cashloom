@@ -21,10 +21,15 @@ import {
   V2_SCHEMAS,
   createAssetTrustManifestRecord,
   createExecutionCommitment,
+  createKarmaObservationChallengeRecord,
+  createKarmaObservationRecord,
+  createKarmaObservationWithdrawalRecord,
   createNodeDescriptor,
   createPaymentIntent,
   createPaymentRequest,
   createSelfCertifyingAuthority,
+  createServiceAttestationRecord,
+  createServiceProfileRecord,
   createSettlementReceipt,
   createSubmissionReceipt,
   signV2Record,
@@ -42,11 +47,23 @@ import {
   type PaymentRequestCore,
   type SelfCertifyingAuthority,
   type SettlementReceiptCore,
+  type ServiceProfileRecordCore,
   type SignedV2Record,
   type SubmissionReceiptCore,
   type V2RecordCore,
   type VerifiedV2Record,
 } from "./records.ts";
+import {
+  SERVICE_ATTESTATION_SCHEMA,
+  SERVICE_PROFILE_SCHEMA,
+} from "./service-trust.ts";
+import {
+  KARMA_OBSERVATION_CHALLENGE_SCHEMA,
+  KARMA_OBSERVATION_SCHEMA,
+  KARMA_OBSERVATION_WITHDRAWAL_SCHEMA,
+  KARMA_SUBJECT_COMMITMENT_SCHEMA,
+  createKarmaSubjectCommitment,
+} from "./karma.ts";
 
 interface TestAuthority {
   authority: SelfCertifyingAuthority;
@@ -135,6 +152,36 @@ async function signedAssetManifest(): Promise<
       expires_at: "2030-01-15T00:00:00.000Z",
       parent_record_id: null,
       manifest: ASSET_MANIFEST,
+    }),
+    merchant.signer,
+  );
+}
+
+async function signedServiceProfile(): Promise<
+  VerifiedV2Record<ServiceProfileRecordCore>
+> {
+  return signV2Record(
+    createServiceProfileRecord({
+      authority: merchant.authority,
+      audience: "public",
+      disclosure: "public",
+      nonce: nonce(12),
+      issued_at: "2030-01-01T00:00:00.000Z",
+      expires_at: "2030-01-15T00:00:00.000Z",
+      parent_record_id: null,
+      profile: {
+        schema: SERVICE_PROFILE_SCHEMA,
+        service_key_id: merchant.authority.key_id,
+        provenance: {
+          kind: "self-assertion",
+          asserted_at: "2030-01-01T00:00:00.000Z",
+        },
+        capabilities: [],
+        claims: [],
+        claimed_settlement_provider_key_ids: [],
+        claimed_dispute_resolver_key_ids: [],
+        evidence: [],
+      },
     }),
     merchant.signer,
   );
@@ -439,7 +486,116 @@ describe("CashLoom v2 signed records", () => {
   test("uses a distinct signing domain for every closed record schema", async () => {
     const { values } = await buildChain();
     const assetManifest = await signedAssetManifest();
-    const digests = [...values, assetManifest].map((record) =>
+    const serviceProfile = await signedServiceProfile();
+    const serviceAttestation = await signV2Record(
+      createServiceAttestationRecord({
+        authority: payer.authority,
+        audience: "public",
+        disclosure: "public",
+        nonce: nonce(13),
+        issued_at: "2030-01-01T00:01:00.000Z",
+        expires_at: "2030-02-01T00:00:00.000Z",
+        parent_record_id: serviceProfile.record_id,
+        attestation: {
+          schema: SERVICE_ATTESTATION_SCHEMA,
+          issuer_key_id: payer.authority.key_id,
+          subject_key_id: merchant.authority.key_id,
+          profile_record_id: serviceProfile.record_id,
+          assertion_scope: "issuer-assertion-only",
+          claim_type: "service.observed",
+          stance: "neutral",
+          basis: "unlinked_assertion",
+          interaction_ref: null,
+          observed_at: "2030-01-01T00:01:00.000Z",
+          evidence: [],
+        },
+      }),
+      payer.signer,
+    );
+    const karmaSubject = createKarmaSubjectCommitment({
+      schema: KARMA_SUBJECT_COMMITMENT_SCHEMA,
+      scope: "market-trade",
+      scope_ref: sha256Id({ trade: "signing-domain-test" }),
+      local_subject_ref: "local-subject",
+      nonce: nonce(14),
+    });
+    const karmaObservation = await signV2Record(
+      createKarmaObservationRecord({
+        authority: payer.authority,
+        audience: "public",
+        disclosure: "public",
+        nonce: nonce(15),
+        issued_at: "2030-01-01T00:01:00.000Z",
+        expires_at: "2030-02-01T00:00:00.000Z",
+        parent_record_id: null,
+        observation: {
+          schema: KARMA_OBSERVATION_SCHEMA,
+          issuer_key_id: payer.authority.key_id,
+          assertion_scope: "issuer-observation-only",
+          subject: karmaSubject,
+          metric: "market.completed-trade.count",
+          value: 1,
+          window: {
+            started_at: "2030-01-01T00:00:00.000Z",
+            ended_at: "2030-01-01T00:00:00.000Z",
+          },
+          observed_at: "2030-01-01T00:00:00.000Z",
+          evidence: [],
+        },
+      }),
+      payer.signer,
+    );
+    const karmaWithdrawal = await signV2Record(
+      createKarmaObservationWithdrawalRecord({
+        authority: payer.authority,
+        audience: "public",
+        disclosure: "public",
+        nonce: nonce(16),
+        issued_at: "2030-01-01T00:02:00.000Z",
+        expires_at: "2030-02-01T00:00:00.000Z",
+        parent_record_id: karmaObservation.record_id,
+        withdrawal: {
+          schema: KARMA_OBSERVATION_WITHDRAWAL_SCHEMA,
+          issuer_key_id: payer.authority.key_id,
+          assertion_scope: "issuer-withdrawal-only",
+          subject: karmaSubject,
+          target_observation_record_id: karmaObservation.record_id,
+          withdrawn_at: "2030-01-01T00:02:00.000Z",
+          evidence: [],
+        },
+      }),
+      payer.signer,
+    );
+    const karmaChallenge = await signV2Record(
+      createKarmaObservationChallengeRecord({
+        authority: merchant.authority,
+        audience: "public",
+        disclosure: "public",
+        nonce: nonce(17),
+        issued_at: "2030-01-01T00:02:00.000Z",
+        expires_at: "2030-02-01T00:00:00.000Z",
+        parent_record_id: karmaObservation.record_id,
+        challenge: {
+          schema: KARMA_OBSERVATION_CHALLENGE_SCHEMA,
+          challenger_key_id: merchant.authority.key_id,
+          assertion_scope: "challenger-report-only",
+          subject: karmaSubject,
+          target_observation_record_id: karmaObservation.record_id,
+          challenged_at: "2030-01-01T00:02:00.000Z",
+          evidence: [],
+        },
+      }),
+      merchant.signer,
+    );
+    const digests = [
+      ...values,
+      assetManifest,
+      serviceProfile,
+      serviceAttestation,
+      karmaObservation,
+      karmaWithdrawal,
+      karmaChallenge,
+    ].map((record) =>
       Buffer.from(v2RecordDigest(unsigned(record))).toString("hex"));
     expect(new Set(digests).size).toBe(Object.keys(V2_SCHEMAS).length);
   });

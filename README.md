@@ -27,6 +27,9 @@ software you run yourself.
 - **[`docs/CASHLOOM-V2.md`](docs/CASHLOOM-V2.md)** — the operatorless signed
   record layer: self-certifying node keys, direct node-to-node delivery,
   append-only evidence, and explicit local asset-trust policy.
+- **[`docs/CUSTODY-MESH.md`](docs/CUSTODY-MESH.md)** — permissionless shop and
+  service profiles, participant-signed attestations, and trader-owned evidence
+  policy without a CashLoom-approved registry or corporate identity account.
 - **[`FIAT-ROUTE.md`](FIAT-ROUTE.md)** — the provider-backed fiat design:
   avoid pooled custody, connect to licensed rails, map each country and funds
   flow before launch, keep ZRN out of scope, and name the lines that need
