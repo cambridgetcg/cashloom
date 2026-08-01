@@ -304,6 +304,64 @@ outbound coordinator must persist before calling it and must resend only
 identical bytes. Once a provider operation exists, reconciliation stays with
 that provider.
 
+## KARMA is scoped evidence, not reputation authority
+
+The KARMA slice adds `cashloom/karma-observation/v2` as an independently
+signed root. Its payload says only that one self-certifying issuer observed a
+closed, count-valued event. It cannot name a legal identity, declare guilt or
+intent, assign account standing, request punishment, or join a platform
+blacklist. It is deliberately separate from service attestations and payment
+settlement receipts.
+
+The subject is a salted commitment bound to exactly one scope and local
+context reference:
+
+- `account.*` metrics require an `account-session` commitment;
+- `custody.*` metrics require a `custody-handoff` commitment;
+- `market.*` metrics require a `market-trade` commitment; and
+- `payment.*` metrics require a `payment-attempt` commitment.
+
+Publishers should create fresh commitment salt for each context. Reusing a
+commitment or scope reference can correlate activity; the protocol does not
+turn either value into a global identity. The local subject reference stays in
+the commitment reveal and is not published in an observation.
+
+`evaluateV2Karma` verifies every signed envelope, then replays one explicit
+participant-selected policy at one explicit `evaluated_at` timestamp. Each
+rule names its accepted issuer keys, metric, threshold, unique-issuer quorum,
+maximum observation-window duration, evidence age, and advisory
+recommendation. A five-event burst can therefore match a short-window rule
+while the same count accumulated over a day does not. Metric namespaces are
+bound to the policy scope, so evidence cannot be laundered between account,
+custody, market, and payment contexts. Two participants may intentionally
+select different issuer pins or thresholds and reach different
+recommendations from the same signed bundle. Evidence age requires both the
+window end and issuer observation time to be recent, so delaying or re-signing
+a claim does not refresh old behaviour.
+
+The evaluator returns the exact policy hash, bundle hash, supplied/in-scope/
+out-of-scope record IDs, every replayed rule and its matching issuer/record
+IDs, notices, and one `advisory-only` recommendation. Its capability fields
+are always false for payment execution, account mutation, and settlement,
+refund, or rerouting. No network client, evidence fetch, payment adapter,
+account store, global score, or enforcement hook exists in the module.
+
+Defensive bounds are explicit:
+
+- repeated record IDs and re-signed duplicates of one issuer/subject/metric/
+  window slot fail closed;
+- separate windows from one issuer cannot amplify a unique-issuer quorum;
+- observation windows are capped at 365 days, policies and records have
+  canonical byte/array bounds, and an evaluation accepts at most 256 records;
+- signatures prove who made a claim, not that the claim is true or that two
+  accepted keys represent independent people; and
+- false positives and poisoned telemetry remain possible, so operators should
+  corroborate consequential recommendations locally and must not promote them
+  automatically into account, financial, retaliation, or shared-blacklist
+  actions. Evidence references contain only a content digest; labels, URLs,
+  and other locators stay out of immutable records and travel out-of-band if
+  a participant chooses to disclose them.
+
 ## Assets are trust-shaped
 
 CAIP-19 identifies an asset; it does not prove that the asset is decentralized

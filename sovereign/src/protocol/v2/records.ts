@@ -43,6 +43,10 @@ import {
   type ServiceAttestation,
   type ServiceProfile,
 } from "./service-trust.ts";
+import {
+  parseKarmaObservation,
+  type KarmaObservation,
+} from "./karma.ts";
 
 export const V2_SCHEMAS = Object.freeze({
   node_descriptor: "cashloom/node-descriptor/v2",
@@ -54,6 +58,7 @@ export const V2_SCHEMAS = Object.freeze({
   asset_trust_manifest: "cashloom/asset-trust-manifest/v2",
   service_profile: "cashloom/service-profile/v2",
   service_attestation: "cashloom/service-attestation/v2",
+  karma_observation: "cashloom/karma-observation/v2",
 } as const);
 
 export type V2Schema = (typeof V2_SCHEMAS)[keyof typeof V2_SCHEMAS];
@@ -68,6 +73,7 @@ const SIGNING_DOMAINS: Readonly<Record<V2Schema, string>> = Object.freeze({
   [V2_SCHEMAS.asset_trust_manifest]: "cashloom-v2/asset-trust-manifest",
   [V2_SCHEMAS.service_profile]: "cashloom-v2/service-profile",
   [V2_SCHEMAS.service_attestation]: "cashloom-v2/service-attestation",
+  [V2_SCHEMAS.karma_observation]: "cashloom-v2/karma-observation",
 });
 
 export const V2_MAX_RECORD_BYTES = 32 * 1024;
@@ -100,6 +106,7 @@ const MAX_LIFETIME_MS: Readonly<Record<V2Schema, number>> = Object.freeze({
   [V2_SCHEMAS.asset_trust_manifest]: 30 * 24 * 60 * 60 * 1_000,
   [V2_SCHEMAS.service_profile]: 30 * 24 * 60 * 60 * 1_000,
   [V2_SCHEMAS.service_attestation]: 365 * 24 * 60 * 60 * 1_000,
+  [V2_SCHEMAS.karma_observation]: 365 * 24 * 60 * 60 * 1_000,
 });
 
 export type NodeRole = (typeof NODE_ROLES)[number];
@@ -230,6 +237,11 @@ export interface ServiceAttestationRecordCore
   attestation: ServiceAttestation;
 }
 
+export interface KarmaObservationRecordCore
+  extends CommonCore<typeof V2_SCHEMAS.karma_observation> {
+  observation: KarmaObservation;
+}
+
 export type V2RecordCore =
   | NodeDescriptorCore
   | PaymentRequestCore
@@ -239,7 +251,8 @@ export type V2RecordCore =
   | SettlementReceiptCore
   | AssetTrustManifestRecordCore
   | ServiceProfileRecordCore
-  | ServiceAttestationRecordCore;
+  | ServiceAttestationRecordCore
+  | KarmaObservationRecordCore;
 
 export type SignedV2Record<T extends V2RecordCore = V2RecordCore> = T & {
   signature: V2Signature;
@@ -864,6 +877,41 @@ function validateServiceAttestationRecord(
   };
 }
 
+function validateKarmaObservationRecord(
+  value: unknown,
+): KarmaObservationRecordCore {
+  const object = asObject(value, "record");
+  exactKeys(object, [
+    "schema", "authority", "audience", "disclosure", "nonce", "issued_at",
+    "expires_at", "parent_record_id", "observation",
+  ], "record");
+  const base = common(object, V2_SCHEMAS.karma_observation);
+  if (base.parent_record_id !== null) {
+    return invalid(
+      "A KARMA observation is an independent issuer claim and must not name an authority or payment parent.",
+      "record.parent_record_id",
+    );
+  }
+  const parsedObservation = parseKarmaObservation(object.observation);
+  if (parsedObservation.issuer_key_id !== base.authority.key_id) {
+    return protocolError(
+      "AUTHORITY_MISMATCH",
+      "The KARMA observation issuer must match its self-certifying record authority.",
+      "record.observation.issuer_key_id",
+    );
+  }
+  if (Date.parse(parsedObservation.observed_at) > Date.parse(base.issued_at)) {
+    return invalid(
+      "The KARMA observation cannot postdate its signed record.",
+      "record.observation.observed_at",
+    );
+  }
+  return {
+    ...base,
+    observation: snapshotJsonData(parsedObservation) as unknown as KarmaObservation,
+  };
+}
+
 function schemaOf(value: unknown): V2Schema {
   const object = asObject(value, "record");
   const schema = boundedString(object.schema, "record.schema", 64);
@@ -893,6 +941,8 @@ function validateCore(value: unknown): V2RecordCore {
       return validateServiceProfileRecord(value);
     case V2_SCHEMAS.service_attestation:
       return validateServiceAttestationRecord(value);
+    case V2_SCHEMAS.karma_observation:
+      return validateKarmaObservationRecord(value);
   }
 }
 
@@ -1001,6 +1051,15 @@ export function createServiceAttestationRecord(
 ): Readonly<ServiceAttestationRecordCore> {
   return deepFreeze(validateServiceAttestationRecord({
     schema: V2_SCHEMAS.service_attestation,
+    ...input,
+  }));
+}
+
+export function createKarmaObservationRecord(
+  input: Omit<KarmaObservationRecordCore, "schema">,
+): Readonly<KarmaObservationRecordCore> {
+  return deepFreeze(validateKarmaObservationRecord({
+    schema: V2_SCHEMAS.karma_observation,
     ...input,
   }));
 }
@@ -1395,6 +1454,7 @@ function assertImmediateLink(
     case V2_SCHEMAS.node_descriptor:
     case V2_SCHEMAS.asset_trust_manifest:
     case V2_SCHEMAS.service_profile:
+    case V2_SCHEMAS.karma_observation:
       return invalid(`${child.schema} is an independent root and cannot be linked as a child.`, "record.schema");
   }
 }
