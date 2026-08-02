@@ -38,7 +38,7 @@ export default function Decisions({ onOpen }: Props) {
   return (
     <section id="decisions" className="section decisions-section">
       <div className="section__head">
-        <p className="eyebrow">03 · The reasons</p>
+        <p className="eyebrow">05 · The decisions</p>
         <h2 className="display">Every fork, and the road taken</h2>
         <p className="lede">
           A codebase is a pile of answers. Here are the questions — and the

@@ -12,7 +12,7 @@ export default function Roadmap() {
   return (
     <section id="roadmap" className="section roadmap-section">
       <div className="section__head">
-        <p className="eyebrow">04 · Not yet woven</p>
+        <p className="eyebrow">06 · Not yet woven</p>
         <h2 className="display">Threads waiting on the shuttle</h2>
         <p className="lede">
           Forward thinking, not a checklist. Each of these is deliberately{" "}

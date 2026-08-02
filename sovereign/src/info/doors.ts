@@ -4,12 +4,16 @@
  * refusal teaches. Dependencies are injectable so tests never touch a network.
  */
 
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { makeFact } from "./money-fact.ts";
 import { getFxRate } from "./fx.ts";
 import { readFees, supportedFeeChains } from "./fees.ts";
 import { ASSETS, resolveAsset, searchAssets } from "./assets.ts";
 import { applyRate } from "../utils/minor-units.ts";
+import {
+  CASHLOOM_CAPABILITIES,
+  CASHLOOM_CAPABILITY_FINGERPRINT,
+} from "./capabilities.ts";
 
 // Mirrors router.ts's refusal shape (kept private there; six lines beat a hot-file export).
 const problem = (status: number, title: string, detail: string, next?: string[]) => ({
@@ -29,6 +33,21 @@ export interface InfoDoorDeps {
 
 export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {}) {
   const deps: InfoDoorDeps = { fxRate: getFxRate, fees: readFees, ...overrides };
+
+  // One static schema shared by the hosted info process, participant nodes,
+  // and Atlas builds. Deployments can briefly differ, so clients must inspect
+  // the reported implementation_version rather than assume release parity.
+  const serveCapabilities = (c: Context) => {
+    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=300");
+    return c.json({
+      ...CASHLOOM_CAPABILITIES,
+      content_fingerprint: CASHLOOM_CAPABILITY_FINGERPRINT,
+      fingerprint_scope:
+        "exact CASHLOOM_CAPABILITIES fields, excluding this fingerprint metadata; comparison only, not an authenticity signature",
+    });
+  };
+  app.get("/.well-known/cashloom.json", serveCapabilities);
+  app.get("/v1/capabilities", serveCapabilities);
 
   // ── fees: what does moving money cost right now ─────────────────────────
   app.get("/v1/fees", async (c) => {
@@ -198,6 +217,7 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         refusals_that_teach: "errors are RFC-9457 problems with next_actions; a dead end names the way forward",
       },
       doors: {
+        cashloom_capabilities: "/v1/capabilities",
         chains: "/v1/chains",
         chain_balance: "/v1/chain/{caip2}/{address}",
         fx_rate: "/v1/fx/{base}/{quote}",

@@ -33,6 +33,9 @@ app.get("/api/meta", (c) =>
     mode: "info", // the hosted MONEYWORLD door — no vault, no ledger, no senders in this process
     version: "0.1.0",
     self_run: "this is one reference copy of an open-source node — github.com/cambridgetcg/cashloom",
+    capabilities: "/v1/capabilities",
+    payment_authority: "none",
+    moves_money: false,
   })
 );
 
@@ -92,6 +95,7 @@ app.notFound((c) =>
       detail: `nothing lives at ${new URL(c.req.url).pathname}`,
       next_actions: [
         "GET /v1/guide — every door, the promises, the honest gaps",
+        "GET /v1/capabilities — what is local, hosted, implemented, and not released",
         "GET /.well-known/agent.json — machine discovery",
         "GET /RIGHTS.md — the rights these doors stand on",
       ],

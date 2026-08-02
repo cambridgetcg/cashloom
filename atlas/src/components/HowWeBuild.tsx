@@ -6,7 +6,7 @@ export default function HowWeBuild() {
   return (
     <section id="craft" className="section craft-section">
       <div className="section__head">
-        <p className="eyebrow">05 · The craft</p>
+        <p className="eyebrow">07 · The craft</p>
         <h2 className="display">{HOW_WE_BUILD.title}</h2>
         <p className="lede">
           The atlas ends where the work begins: the habits of hand that every

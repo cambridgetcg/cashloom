@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { api, errorMessage } from "../api";
 import {
   Badge,
@@ -22,14 +22,41 @@ const KIND_LABEL: Record<Kind, string> = {
 };
 
 function KindPicker({ value, onPick }: { value: Kind; onPick: (k: Kind) => void }) {
+  function move(
+    event: KeyboardEvent<HTMLButtonElement>,
+    current: number,
+  ) {
+    let next: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      next = (current + 1) % KINDS.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      next = (current - 1 + KINDS.length) % KINDS.length;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = KINDS.length - 1;
+    }
+    if (next === null) return;
+    event.preventDefault();
+    onPick(KINDS[next]!);
+    const radios = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+      '[role="radio"]',
+    );
+    radios?.[next]?.focus();
+  }
+
   return (
     <div className="segmented" role="radiogroup" aria-label="Key kind">
-      {KINDS.map((k) => (
+      {KINDS.map((k, index) => (
         <button
           key={k}
           type="button"
+          role="radio"
+          aria-checked={value === k}
+          tabIndex={value === k ? 0 : -1}
           className={value === k ? "is-active" : ""}
           onClick={() => onPick(k)}
+          onKeyDown={(event) => move(event, index)}
         >
           {KIND_LABEL[k]}
         </button>
@@ -185,8 +212,9 @@ export function Keys() {
         <form className="card key-form" onSubmit={(e) => void importKey(e)}>
           <h3>Bring your own</h3>
           <p className="key-form-sub">
-            Paste only here. It travels once, over localhost, into the vault —
-            then this field is wiped. It is never logged.
+            Paste only here. It travels once through this page into the vault,
+            then this field is wiped. The UI blocks this form on non-loopback
+            plain HTTP, and the key is never logged.
           </p>
           <Field label="Kind">
             <KindPicker value={impKind} onPick={(k) => { setImpKind(k); setImpErr(null); }} />

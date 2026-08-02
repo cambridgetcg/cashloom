@@ -1,22 +1,30 @@
 # CashLoom
 
-> **Money you can read. Everyone pays everyone.**
+> **Money you can read. Payment authority you keep.**
 > A non-custodial, local-first money manager. Your keys, your data, your machine.
 
 CashLoom is an open payment protocol and its reference implementation: a
 sovereign money manager anyone can run on their own machine to hold, read, and
-move money across every rail — fiat and crypto — holding nothing, collecting
-nothing, taking no fee. It replaces the traditional-finance middleman with
-software you run yourself.
+move supported assets without a hosted CashLoom account. CashLoom operates no
+hosted payment state, holds no participant funds or keys, and takes no fee.
+Hosting/network logs and selected public-data providers may observe requests.
+BTC and Base ETH/USDC sending work today;
+other rails are read-only, offline contracts, or roadmap items as named below.
 
-**Non-custodial. Local-first. Zero infrastructure. Open source (MIT).**
+**Non-custodial. Local-first. Zero CashLoom-operated payment infrastructure. Open source (MIT).**
 
 ## Start here
 
-- **[`sovereign/`](sovereign/)** — the node. One Bun process, one SQLite file,
-  runs on your machine with no database server, no cloud, and no hosted
-  CashLoom account. This is the live implementation: vault, `pay()`, read every
-  rail. → [`sovereign/README.md`](sovereign/README.md)
+- **[cashloom.io](https://cashloom.io)** — the replaceable public map. It
+  explains what works, what does not, and how to run locally; it has no wallet,
+  keys, participant identity, payment records, or payment mutation routes.
+- **[`/v1/capabilities`](https://cashloom-api.fly.dev/v1/capabilities)** — the
+  boundary as cacheable, machine-readable JSON. The hosted backend is
+  information-only and cannot move money.
+- **[`sovereign/`](sovereign/)** — the node. One Bun process with local SQLite,
+  runs on your machine with no database service and no hosted CashLoom account.
+  This is the technical preview: vault, supported payment movement, and
+  read-only connectors. → [`sovereign/README.md`](sovereign/README.md)
 - **[`atlas/`](atlas/)** — the interactive way to understand the codebase.
   Follow the *ideas* and the real code comes with you — the anti-GitHub. Build
   it with `cd atlas && bun install && bun run build`, or visit the hosted copy.
@@ -36,25 +44,28 @@ software you run yourself.
 
 ```bash
 cd sovereign
-bun install
+bun install --frozen-lockfile
 bun run build:ui
 bun start          # → http://127.0.0.1:4747
 ```
 
-No `.env` required to boot. Forge a passphrase, and you have a running
-non-custodial wallet. That is the whole setup.
+No `.env` is required to boot. Forge a passphrase, and you have a running
+non-custodial node at `http://127.0.0.1:4747`. The passphrase has no recovery;
+public RPC/indexer services can observe the public addresses you query.
 
 ## What it is
 
 - **Non-custodial by architecture** — private keys are sealed locally
-  (Argon2id → AES-256-GCM), decrypted only in memory, only to sign, and never
-  leave your machine. The passphrase is custody; there is no recovery.
-- **Everyone pays everyone** — `pay()` moves money over open rails (BTC plus
+  (Argon2id → AES-256-GCM). In the default loopback flow they are decrypted in
+  the local node only to sign, while only the signed transaction is broadcast.
+  The passphrase is custody; there is no recovery.
+- **The direction is everyone pays everyone** — `pay()` moves money over the
+  currently implemented open rails (BTC plus
   Base L2 ETH + USDC today; more coming), as a two-step rite: quote discloses
   the fee model and signs nothing, confirm signs and broadcasts once. Base
   quotes distinguish the current total estimate from the EIP-1559 L2 ceiling;
   its L1 data/operator components are not transaction-capped. Never auto-retried.
-- **Read every rail** — sync balances and transactions from Stripe, banks
+- **Read connected rails** — sync balances and transactions from Stripe, banks
   (GoCardless), Bitcoin, Ethereum, and the agenttool agent economy. Strictly
   read-only: a connector can never move money.
 - **Pass-through fees only** — the network's fee, nothing added. No CashLoom
@@ -76,6 +87,16 @@ non-custodial wallet. That is the whole setup.
   Bitcoin PSBT and fee; a fresh final confirmation then creates the signed
   execution commitment and makes one local-sign-and-broadcast attempt. The
   hosted site remains an information door and does not run this protocol.
+
+## Product shape
+
+- **Now:** public explanatory site, source-run sovereign node, local dashboard,
+  and portable `.cashloom-pay` / `.cashloom-accept` files.
+- **Next:** checksummed, signed standalone releases after asset embedding,
+  backup/restore, upgrade integrity, and crash recovery have a tested contract.
+- **Later:** a desktop wrapper may remove terminal friction, but it must keep
+  loopback authority local and must not require a vendor account or updater as
+  protocol authority. See [`docs/SITE.md`](docs/SITE.md).
 
 ## Layout
 
@@ -111,4 +132,5 @@ the spec and the open decisions still on the table.
 
 CashLoom adopts [`xenia.rights/0.1`](RIGHTS.md) — every guest at every door,
 human or agent, is met as a subject. Reading without registration is a right;
-refusals teach; nothing is collected. Pinned + byte-vendored in [RIGHTS.md](RIGHTS.md).
+refusals teach; no profile or payment state is collected by CashLoom. Ordinary
+network logs may still exist. Pinned + byte-vendored in [RIGHTS.md](RIGHTS.md).

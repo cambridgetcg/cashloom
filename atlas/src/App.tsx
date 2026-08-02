@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Nav from "./components/Nav";
 import Hero from "./components/Hero";
+import StartHere from "./components/StartHere";
+import PaymentTruth from "./components/PaymentTruth";
 import Weave from "./components/Weave";
 import Decisions from "./components/Decisions";
 import Roadmap from "./components/Roadmap";
@@ -25,12 +27,14 @@ export default function App() {
 
   return (
     <>
-      <a className="skip-link" href="#weave">
-        Skip to the weave
+      <a className="skip-link" href="#start">
+        Skip to how CashLoom works
       </a>
       <Nav />
       <main>
         <Hero />
+        <StartHere />
+        <PaymentTruth />
         <Weave onOpen={open} />
         <Decisions onOpen={open} />
         <Roadmap />

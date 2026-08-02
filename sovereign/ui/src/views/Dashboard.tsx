@@ -9,6 +9,7 @@ import {
 } from "../components";
 import { formatDateTime, formatMinor, sumMinor } from "../format";
 import type { Account, SummaryRow } from "../types";
+import { isLoopbackHostname } from "../transport";
 
 interface CurrencyNet {
   currency: string;
@@ -61,12 +62,35 @@ export function Dashboard({ onGoto }: { onGoto: (view: string) => void }) {
   const active = accounts.filter((a) => a.status !== "archived");
   const byId = new Map(summary.map((s) => [s.id, s]));
   const nets = netByCurrency(summary);
+  const origin = window.location.origin;
+  const hostname = window.location.hostname;
+  const loopback = isLoopbackHostname(hostname);
 
   return (
     <div className="stagger">
       <SectionTitle aside={`${active.length} account${active.length === 1 ? "" : "s"} on the loom`}>
         Overview
       </SectionTitle>
+
+      <aside className={`node-boundary ${loopback ? "is-loopback" : "is-exposed"}`}>
+        <div className="node-boundary-mark" aria-hidden="true" />
+        <div>
+          <p className="node-boundary-label">
+            {loopback ? "Local authority active" : "Non-loopback node address"}
+          </p>
+          <h2>
+            {loopback
+              ? "This dashboard came from your node."
+              : "This dashboard is reachable beyond the default loopback boundary."}
+          </h2>
+          <p>
+            {loopback
+              ? "cashloom.io is only a public map. Keys, signed records, payment reviews, and status recovery stay in this node."
+              : "This HTTPS origin is outside the default loopback boundary. CashLoom does not certify its ingress or device access policy; verify both before handling keys."}
+          </p>
+          <code>{origin}</code>
+        </div>
+      </aside>
 
       {active.length === 0 ? (
         <EmptyState>

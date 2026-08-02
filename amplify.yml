@@ -3,16 +3,17 @@ frontend:
   phases:
     preBuild:
       commands:
-        - cd client
-        - npm install --legacy-peer-deps
+        # Amplify's default image guarantees npm, not Bun. Pin the ephemeral
+        # build tool, then let the repository lockfile pin every site package.
+        - npm install --global bun@1.3.13
+        - cd atlas && bun install --frozen-lockfile
     build:
       commands:
-        - cd client
-        - npm run build
+        - cd atlas && bun run test && bun run typecheck && bun run build
   artifacts:
-    baseDirectory: client/dist
+    baseDirectory: atlas/dist
     files:
       - '**/*'
   cache:
     paths:
-      - client/node_modules/**/*
+      - atlas/node_modules/**/*

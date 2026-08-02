@@ -1,11 +1,11 @@
 import { useActiveSection } from "../lib/hooks";
 
 const LINKS: { id: string; label: string }[] = [
-  { id: "creed", label: "Creed" },
-  { id: "weave", label: "Weave" },
-  { id: "decisions", label: "Reasons" },
-  { id: "roadmap", label: "Not yet" },
-  { id: "craft", label: "Craft" },
+  { id: "start", label: "Run locally" },
+  { id: "truth", label: "Payment truth" },
+  { id: "weave", label: "Code map" },
+  { id: "decisions", label: "Decisions" },
+  { id: "roadmap", label: "Roadmap" },
 ];
 
 export default function Nav() {
@@ -15,7 +15,7 @@ export default function Nav() {
       <a className="selvage__brand" href="#creed">
         <span className="selvage__mark" aria-hidden="true" />
         <span className="selvage__word">CashLoom</span>
-        <span className="selvage__sub">The Atlas</span>
+        <span className="selvage__sub">Sovereign payments</span>
       </a>
       <ul className="selvage__links">
         {LINKS.map((l) => (

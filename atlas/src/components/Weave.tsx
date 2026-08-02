@@ -61,8 +61,8 @@ export default function Weave({ onOpen }: Props) {
   return (
     <section id="weave" className="section weave-section">
       <div className="section__head">
-        <p className="eyebrow">02 · The weave</p>
-        <h2 className="display">Seven ideas, held on one loom</h2>
+        <p className="eyebrow">04 · The code map</p>
+        <h2 className="display">{MODULES.length} ideas, held on one loom</h2>
         <p className="lede">
           Each knot is a module, placed where it sits in the machine. The
           threads are what leans on what. Follow one with your eye — or your
@@ -79,7 +79,7 @@ export default function Weave({ onOpen }: Props) {
           className="weave__svg"
           viewBox={`0 0 ${W} ${H}`}
           role="img"
-          aria-label="A woven map of CashLoom's seven modules and the threads between them."
+          aria-label={`A woven map of CashLoom's ${MODULES.length} modules and the threads between them.`}
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
@@ -212,8 +212,8 @@ export default function Weave({ onOpen }: Props) {
       </p>
 
       {/* Keyboard- and touch-friendly index; the same doors, in a list. */}
-      <div className="module-index" aria-label="The seven modules">
-        <h3 className="module-index__title">Or browse the seven</h3>
+      <div className="module-index" aria-label={`The ${MODULES.length} modules`}>
+        <h3 className="module-index__title">Or browse all {MODULES.length}</h3>
         <ul>
           {MODULES.map((m) => {
             const c = SEAM[roleOf(m.id)];

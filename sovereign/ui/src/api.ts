@@ -16,6 +16,7 @@ import type {
   ZeroneGuide,
   ZeroneStatus,
 } from "./types";
+import { allowsSensitiveBrowserTransport } from "./transport";
 
 /**
  * Session token lives in module memory + sessionStorage: a refresh survives,
@@ -72,6 +73,17 @@ export function errorMessage(e: unknown): string {
 }
 
 async function request<T>(path: string, body?: unknown): Promise<T> {
+  if (
+    !allowsSensitiveBrowserTransport(window.location) &&
+    (body !== undefined || token !== null)
+  ) {
+    setToken(null);
+    throw new ApiError(
+      "CashLoom blocked a sensitive request over non-loopback plain HTTP. Use this node on loopback or through reviewed HTTPS ingress.",
+      "insecure_transport",
+    );
+  }
+
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
