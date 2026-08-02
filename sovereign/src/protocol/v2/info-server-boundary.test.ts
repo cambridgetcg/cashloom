@@ -51,6 +51,25 @@ describe("hosted info-server boundary", () => {
     );
     try {
       const port = await waitForPort(processHandle.stdout);
+      const capabilitiesResponse = await fetch(
+        `http://127.0.0.1:${port}/v1/capabilities`,
+      );
+      expect(capabilitiesResponse.status).toBe(200);
+      expect(capabilitiesResponse.headers.get("cache-control")).toContain(
+        "max-age=300",
+      );
+      const capabilities = await capabilitiesResponse.json();
+      expect(capabilities.hosted_surface).toMatchObject({
+        mode: "information_only",
+        moves_money: false,
+        holds_keys: false,
+        identity_authority: "none",
+      });
+      const wellKnownResponse = await fetch(
+        `http://127.0.0.1:${port}/.well-known/cashloom.json`,
+      );
+      expect(wellKnownResponse.status).toBe(200);
+      expect(await wellKnownResponse.json()).toEqual(capabilities);
       const response = await fetch(
         `http://127.0.0.1:${port}/.well-known/cashloom/v2`,
       );

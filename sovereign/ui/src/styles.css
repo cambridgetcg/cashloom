@@ -404,6 +404,66 @@ code {
   color: var(--parch-dim);
 }
 
+/* ── local authority boundary ───────────────────────────────────── */
+.node-boundary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 18px 20px;
+  border: 1px solid rgba(162, 181, 109, 0.34);
+  border-radius: var(--radius);
+  background: linear-gradient(110deg, rgba(162, 181, 109, 0.09), rgba(23, 19, 16, 0.44));
+}
+.node-boundary.is-exposed {
+  border-color: rgba(212, 80, 46, 0.52);
+  background: linear-gradient(110deg, rgba(212, 80, 46, 0.13), rgba(23, 19, 16, 0.5));
+}
+.node-boundary-mark {
+  width: 11px;
+  height: 11px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--in);
+  box-shadow: 0 0 0 5px rgba(162, 181, 109, 0.1);
+}
+.node-boundary.is-exposed .node-boundary-mark {
+  background: var(--ember);
+  box-shadow: 0 0 0 5px rgba(212, 80, 46, 0.12);
+}
+.node-boundary-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--in);
+}
+.node-boundary.is-exposed .node-boundary-label { color: var(--ember-hi); }
+.node-boundary h2 { margin-top: 4px; font-size: 17px; }
+.node-boundary p:not(.node-boundary-label) {
+  margin-top: 5px;
+  max-width: 78ch;
+  color: var(--parch-dim);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.node-boundary code {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--gold);
+  font-size: 11.5px;
+}
+
+.gate-local-note,
+.gate-loading {
+  max-width: 48ch;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+.gate-loading { margin-top: 14px; }
+
 /* ── badges ───────────────────────────────────────────────────────── */
 .badge {
   display: inline-block;

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { api, errorMessage, setToken } from "../api";
 import { WeaveMark } from "../components";
+import { isLoopbackHostname } from "../transport";
 import type { Meta } from "../types";
 
 /**
@@ -10,6 +11,8 @@ import type { Meta } from "../types";
  */
 export function Gate({ meta, onEnter }: { meta: Meta; onEnter: () => void }) {
   const creating = !meta.initialized;
+  const hostname = window.location.hostname;
+  const loopback = isLoopbackHostname(hostname);
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,7 +55,7 @@ export function Gate({ meta, onEnter }: { meta: Meta; onEnter: () => void }) {
         <h1 className="wordmark wordmark-lg">
           Cash<span className="wm-loom">Loom</span>
         </h1>
-        <p className="gate-tagline">Everyone pays everyone.</p>
+        <p className="gate-tagline">Payment authority stays on this node.</p>
 
         <form className="gate-card" onSubmit={(e) => void submit(e)}>
           <h2>{creating ? "Forge your passphrase" : "Welcome back"}</h2>
@@ -61,6 +64,15 @@ export function Gate({ meta, onEnter }: { meta: Meta; onEnter: () => void }) {
               ? "This phrase seals the vault on this machine."
               : "The loom is resting. Unlock it to continue."}
           </p>
+
+          {!loopback && (
+            <div className="gate-warning" role="alert">
+              <strong>Non-loopback address: {window.location.origin}</strong>{" "}
+              HTTPS protects transport to this origin, but CashLoom does not
+              certify its access gateway or device boundary. Verify both
+              before entering a passphrase.
+            </div>
+          )}
 
           {creating && (
             <div className="gate-warning">
@@ -113,6 +125,10 @@ export function Gate({ meta, onEnter }: { meta: Meta; onEnter: () => void }) {
           <span className="gate-meta">
             {meta.name} · {meta.mode} · v{meta.version}
           </span>
+        </p>
+        <p className="gate-local-note">
+          This is the local application—not cashloom.io. The public website
+          cannot unlock this vault or act as your identity.
         </p>
       </div>
     </div>

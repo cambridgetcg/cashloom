@@ -4,25 +4,29 @@
 > Your keys, your data, your machine.
 
 A sovereign money manager that runs entirely on **one machine** with **zero
-CashLoom-operated infrastructure** — no database server, no hosted CashLoom
-account, and no telemetry. Local account rows are labels in your own SQLite
-file, not a CashLoom identity. Optional rail APIs and public blockchain nodes
-are contacted only for the connectors and payments you choose. It is the
+CashLoom-operated infrastructure** — no database server or hosted CashLoom
+account. The application emits no CashLoom telemetry; selected rail APIs,
+public blockchain nodes, and your network boundary may still observe requests.
+Local account rows are labels in your own SQLite file, not a CashLoom identity.
+Optional rail APIs and public blockchain nodes are contacted only for the
+connectors and payments you choose. It is the
 reference implementation of the
 [CashLoom Protocol](../PROTOCOL.md): read every rail (crypto + fiat), pay over
-open rails, hold nothing, collect nothing.
+open rails, while no CashLoom-hosted service holds participant money or state.
 
 ## What it is (and isn't)
 
 - **One Bun process.** API + UI served from the same origin, bound to
   `127.0.0.1`. This is your node, not a server.
-- **One file for all data.** `bun:sqlite` (ships inside Bun) →
-  `~/.cashloom/sovereign.db`. Startup tightens the data directory to `0700`
-  and database sidecars to `0600`. Nothing to install, start, or host.
+- **One local SQLite database.** `bun:sqlite` (ships inside Bun) →
+  `~/.cashloom/sovereign.db`, with SQLite-managed WAL/SHM sidecars while live.
+  Startup tightens the data directory to `0700` and database files to `0600`.
+  Back up through a coherent SQLite snapshot—not by copying one live file.
 - **Local encrypted key custody.** Argon2id(passphrase) → AES-256-GCM. Private
   keys are sealed at rest, decrypted only in memory, only to sign, and
-  **never leave the machine** — CashLoom signs locally and broadcasts the
-  *signed* transaction through a public node.
+  are never sent to a rail provider — the node signs locally and broadcasts
+  only the *signed* transaction through a public node. Keep the UI on loopback;
+  non-loopback browser access is blocked on plain HTTP and requires HTTPS.
 - **No SaaS.** No plans, no quotas, no pricing, no upgrade nags. There is one
   mode: yours.
 

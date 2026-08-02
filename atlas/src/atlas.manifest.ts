@@ -51,17 +51,17 @@ export interface RoadmapThread {
 
 export const PHILOSOPHY = {
   name: "CashLoom",
-  line: "Money you can read. Code you can read.",
+  line: "Your payment node, on your machine.",
   creed: [
     "Non-custodial — it holds no funds, ever.",
-    "Local-first — one process, your machine, no server, no telemetry.",
-    "Everyone pays everyone — over every open rail, fiat or crypto.",
+    "Local-first — one loopback process; no hosted CashLoom account.",
+    "Useful today — send BTC and Base ETH or USDC; exchange signed Bitcoin terms offline.",
     "Pass-through fees only — no CashLoom fee, ever, because there is no intermediary to take one.",
     "Your keys, your data, your machine.",
     "Open — this is the reference implementation; anyone may run, read, fork, or rebuild it.",
   ],
   invitation:
-    "Most open source hands you a folder and wishes you luck. This is the opposite: follow an idea, and the real code that enacts it comes with you. Nothing here is a diagram of the code — it IS the code, wired to the reasons it exists.",
+    "cashloom.io is a replaceable map, never your wallet or identity. Follow an idea and the real code comes with it; run the node and payment authority stays with you.",
 };
 
 export const MODULES: Module[] = [
@@ -72,7 +72,7 @@ export const MODULES: Module[] = [
     sources: ["../../sovereign/src/index.ts?raw"],
     idea: "A single Bun process serves the API and the UI from one origin, listening only to you.",
     doctrine: [
-      "CashLoom is not a service you sign into — it is a program you run. The node binds to 127.0.0.1 by default: the only thing that can reach it is the machine it runs on. There is no account, no tenant, no operator on the other end.",
+      "CashLoom is not a service you sign into — it is a program you run. The node binds to 127.0.0.1 by default: the only thing that can reach it is the machine it runs on. There is no CashLoom account, tenant, or hosted operator on the other end. Rebinding it is an explicit security decision.",
       "One process serves both the API and the interface from the same origin, so there is no CORS, no second server, no cloud hop. The whole thing is small enough to read in an afternoon.",
       "Everything that can touch money sits behind an unlocked-vault session. The public surface is deliberately tiny: read the node's own state, initialize a vault, unlock one.",
     ],
@@ -96,7 +96,7 @@ export const MODULES: Module[] = [
       "The passphrase IS custody: there is no recovery, no reset link, no support line that can let you back in. That is the cost of holding nothing on your behalf, stated plainly rather than hidden.",
     ],
     loadBearing: [
-      { marker: "The passphrase IS custody", note: "No recovery by design. A recoverable vault is a custodial vault wearing a costume." },
+      { marker: "It IS custody", note: "No recovery by design. A recoverable vault is a custodial vault wearing a costume." },
       { marker: "One error for every wrong-passphrase shape — no oracle", note: "Unlock failures are indistinguishable, so the error can never become a guessing aid." },
       { marker: "lives for the duration of one signature", note: "The decrypted key's lifetime is a single call. Exposure is measured in microseconds, never persisted." },
     ],
@@ -116,7 +116,7 @@ export const MODULES: Module[] = [
     ],
     loadBearing: [
       { marker: "NEVER auto-retried", note: "The single most important rule about moving money: one attempt, then a human decides." },
-      { marker: "Point of no return is INSIDE send()", note: "Ordering chosen so a mid-flight crash can never look like a payment that never happened." },
+      { marker: "The signed tx's id lands in the row BEFORE the network hears the", note: "Ordering chosen so a mid-flight crash can never look like a payment that never happened." },
       { marker: "only a fresh quote can be confirmed", note: "A stale or already-spent quote is inert. Fees move; a disclosure you didn't just see is not a disclosure." },
     ],
     relatesTo: ["the-outbound-seam", "the-vault", "the-ledger"],
@@ -134,9 +134,9 @@ export const MODULES: Module[] = [
       "Fees are pass-through only — the network's gas, nothing added. The fee summary says so out loud: 'No CashLoom fee, ever.'",
     ],
     loadBearing: [
-      { marker: "a connector that could initiate movement does not belong behind the read interface", note: "The seam boundary as a sentence. Read and write are kept apart at the type level, not just by convention." },
-      { marker: "Disclose the UPPER BOUND", note: "A confirm screen is never shown a fee lower than what could be charged. Honesty rounds against the house." },
-      { marker: "the private key never touches the network", note: "Sign here, broadcast the signature. The secret and the internet never meet." },
+      { marker: "a connector that could initiate movement does", note: "The seam boundary as a sentence. Read and write are kept apart at the type level, not just by convention." },
+      { marker: "fee disclosed BEFORE submit", note: "A confirm screen separates fee disclosure from submission. Base also names the parts its transaction cannot hard-cap." },
+      { marker: "the private key never touches the", note: "Sign here, broadcast the signature. The secret and the internet never meet in the default local flow." },
     ],
     relatesTo: ["pay", "the-vault", "btc-sending"],
     weave: { x: 0.78, y: 0.4 },
@@ -153,7 +153,7 @@ export const MODULES: Module[] = [
       "The indexer it reads is public and keyless, and the design assumes it lies. BIP-143 makes a lying indexer harmless to funds — a wrong claimed value yields a consensus-invalid signature, rejected loudly. And when a broadcast goes unanswered, the payment refuses to call itself failed: the signed txid was recorded before the network ever heard it, so the one wrong move — signing the same money twice — stays impossible.",
     ],
     loadBearing: [
-      { marker: "Re-selection at confirm is never a fallback", note: "The built-ONCE doctrine, ported to UTXO land. What confirm signs is what quote disclosed — structurally, not aspirationally." },
+      { marker: "Re-selection at confirm is", note: "The built-ONCE doctrine, ported to UTXO land. What confirm signs is what quote disclosed — structurally, not aspirationally." },
       { marker: "BEFORE the network hears the tx", note: "The txid is deterministic once signed, so it is written down before broadcast. A crash mid-flight leaves a payment you can check on-chain, never a mystery." },
       { marker: "the double-pay lever", note: "An unanswered broadcast is not a failure — it is unknown. Calling it 'failed' would invite the second send a hostile indexer is fishing for." },
     ],
@@ -163,7 +163,7 @@ export const MODULES: Module[] = [
   {
     id: "the-read-seam",
     title: "The Read Seam",
-    subtitle: "Observe every rail. Move nothing.",
+    subtitle: "Observe connected rails. Move nothing.",
     sources: ["../../sovereign/src/connectors/types.ts?raw", "../../sovereign/src/connectors/agenttool.connector.ts?raw"],
     idea: "RailConnector reads balances and transactions from any rail — Stripe, banks, Bitcoin, Ethereum, the agent economy — and can never, by construction, move money.",
     doctrine: [
@@ -173,7 +173,7 @@ export const MODULES: Module[] = [
     ],
     loadBearing: [
       { marker: "nothing behind this interface can move money", note: "The read seam's whole reason for being. Safety by shape, not by care." },
-      { marker: "credentialRef is the NAME of an environment variable", note: "Secrets are referenced, never stored. The database holds a pointer; the value lives only in the process environment." },
+      { marker: "credentialRef is the NAME of the env var holding the secret", note: "Secrets are referenced, never stored. The database holds a pointer; the value lives only in the process environment." },
       { marker: "SIGNED integer minor-unit string", note: "Money is integers-as-text end to end. Floats are never allowed near an amount." },
     ],
     relatesTo: ["sync", "the-node"],
@@ -205,7 +205,7 @@ export const MODULES: Module[] = [
     sources: ["../../sovereign/src/db.ts?raw"],
     idea: "All state is one SQLite file that ships inside Bun — no database server to install, start, or host. Money is stored as exact integer strings.",
     doctrine: [
-      "The entire data plane is one file at ~/.cashloom/sovereign.db, opened by bun:sqlite which is built into the runtime. There is nothing to provision — the zero-infra promise is literal.",
+      "The data plane is local SQLite at ~/.cashloom/sovereign.db, opened by bun:sqlite which is built into the runtime. There is no database service to provision. A safe backup still needs a coherent SQLite snapshot; copying one live file is not promised as recovery.",
       "Every amount is a TEXT minor-unit string, BigInt-exact: an account holds no funds itself, it is the labelled container a balance syncs into, and the numbers in it can be trusted to the last unit.",
       "Outbound payments are their own table with an audit trail: quoted, confirmed, broadcast, or failed — each state recorded, none ever silently retried.",
     ],
@@ -263,9 +263,9 @@ export const DECISIONS: Decision[] = [
     question: "What database?",
     options: [
       { label: "MongoDB / Postgres server", verdict: "rejected", note: "Infra to install, run, and host — friction against 'everyone runs their own'." },
-      { label: "bun:sqlite — one file, built into the runtime", verdict: "chosen", note: "Nothing to provision. The whole data plane is a single file you can back up by copying it." },
+      { label: "bun:sqlite — local state, built into the runtime", verdict: "chosen", note: "No database service to provision. Backup still requires a coherent SQLite snapshot and tested restore." },
     ],
-    because: "The zero-infra promise had to be literal. If running your own node needs a database server, most people never will.",
+    because: "No CashLoom-operated database should stand between a participant and their records. Local SQLite removes a service dependency without pretending backup and restore are automatic.",
     livesIn: "the-ledger",
   },
   {
@@ -299,10 +299,10 @@ export const ROADMAP: RoadmapThread[] = [
     whyNotYet: "A whole sub-design about where the Lightning node lives; scoped as its own slice.",
   },
   {
-    title: "BTC fee-bump & broadcast reconciliation",
-    status: "planned",
-    mindset: "Every send already signals RBF and records its txid before broadcast — the door is open. What remains is walking back through it: bump a stuck fee, and re-check payments whose broadcast went unanswered against the chain.",
-    whyNotYet: "The safe-by-default posture shipped first; the recovery tooling is its own small, careful slice.",
+    title: "Durable BTC broadcast recovery",
+    status: "next",
+    mindset: "Persist the exact signed bytes before first egress, then reconcile and re-submit those same bytes when a crash or indexer leaves the outcome unknown. Never manufacture a replacement payment to solve uncertainty.",
+    whyNotYet: "The current node keeps unknown sticky and blocks retry, but same-byte crash recovery is still explicit debt.",
   },
   {
     title: "Payment pointers — you@cashloom",
@@ -317,10 +317,10 @@ export const ROADMAP: RoadmapThread[] = [
     whyNotYet: "The old build leaned on a cloud AI for this; the sovereign version needs a local parser, which is its own piece of work.",
   },
   {
-    title: "Tauri desktop packaging",
+    title: "Signed desktop packaging",
     status: "considering",
-    mindset: "Double-click to run, zero terminal. The node already is the whole app; packaging just removes the last friction between a person and their own sovereign wallet.",
-    whyNotYet: "The core had to be right first. Packaging is the last mile, not the foundation.",
+    mindset: "Double-click to run, no vendor account. The desktop shell must keep loopback authority local and ship checksums, signed updates, optional mirrors, tested backup, and a reversible upgrade path.",
+    whyNotYet: "Packaging creates an update authority and recovery promise; those contracts need to be designed and tested before a download button appears.",
   },
   {
     title: "More rails — SEPA, UPI, Solana, and beyond",
@@ -337,6 +337,6 @@ export const HOW_WE_BUILD = {
     { name: "Refuse loudly over guess quietly", body: "When the code isn't sure — a mismatched currency, an unknown scale, a stale quote — it stops and says why, instead of proceeding into a silent error that surfaces as wrong money weeks later." },
     { name: "Errors are written to be read", body: "Every failure carries instructions for the person who hit it, and never carries a secret. The message is part of the product." },
     { name: "The code is the spec's reference implementation", body: "The protocol is the promise; this repo is one honest way to keep it. Anyone may read it, run it, fork it, or write their own — and interoperate over the same open rails." },
-    { name: "Everyone runs their own", body: "The whole design bends toward the day a person double-clicks and holds their own money, needing no one else's server. Every decision is measured against that." },
+    { name: "Everyone runs their own", body: "The whole design bends toward the day a person double-clicks and keeps payment authority locally. Public rails and chosen providers may still observe requests; no CashLoom-operated wallet server is required." },
   ],
 };

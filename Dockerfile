@@ -1,6 +1,6 @@
-# CashLoom INFO node — the hosted MONEYWORLD door. Ships ONLY the info
-# entrypoint: no vault, no ledger, no senders, no UI in this image. The module
-# graph of info-server.ts is the security boundary; the image just honors it.
+# CashLoom INFO node — the hosted MONEYWORLD door. Runs ONLY the info
+# entrypoint. The source image also contains shared modules, so the audited
+# module graph of info-server.ts—not artifact minimization—is the boundary.
 FROM oven/bun:1-slim
 WORKDIR /app
 

@@ -37,6 +37,7 @@ export function mountMoneyworld(app: Hono) {
       what: "a public, cited, non-custodial window on the money world — for humans and agents alike",
       rights_baseline: "xenia.rights/0.1 · https://github.com/cambridgetcg/xenia",
       doors: {
+        cashloom_capabilities: "/v1/capabilities",
         chains: "/v1/chains",
         chain_balance: "/v1/chain/{caip2}/{address}",
         fx_rate: "/v1/fx/{base}/{quote}",
@@ -50,8 +51,10 @@ export function mountMoneyworld(app: Hono) {
       formats: { moneyfact: MONEYFACT_MEDIA_TYPE },
       terms: {
         read_without_registration: true,
-        collects: "nothing",
+        collects:
+          "no CashLoom profile or payment state; hosting/network logs may observe requests, and upstream public-data sources observe the addresses queried",
         custody: "none — reads public chain state only, never holds or moves money",
+        identity_authority: "none — no CashLoom account, company, domain, or hosted key is required",
         pricing:
           "current-value reads are free; safety signals are free forever; a failed answer is never charged",
         provenance: "every fact cites its sources and its proof_state — no naked numbers",

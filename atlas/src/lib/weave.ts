@@ -26,7 +26,7 @@ export const SEAM: Record<
     glow: "#7fd8c9",
     soft: "rgba(87,182,169,0.16)",
     name: "Read seam",
-    gloss: "observe every rail · move nothing",
+    gloss: "observe connected rails · move nothing",
   },
   write: {
     stroke: "#d4502e",

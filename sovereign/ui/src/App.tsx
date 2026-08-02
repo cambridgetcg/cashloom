@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, errorMessage, hasToken, onSessionLost, setToken } from "./api";
 import { Toasts, WeaveMark } from "./components";
 import { toast } from "./toast";
+import { allowsSensitiveBrowserTransport } from "./transport";
 import type { Meta } from "./types";
 import { Accounts } from "./views/Accounts";
 import { Dashboard } from "./views/Dashboard";
@@ -27,6 +28,9 @@ const VIEWS = [
 type View = (typeof VIEWS)[number]["id"];
 
 export default function App() {
+  const sensitiveTransportAllowed = allowsSensitiveBrowserTransport(
+    window.location,
+  );
   const [meta, setMeta] = useState<Meta | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [authed, setAuthed] = useState(hasToken());
@@ -42,8 +46,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!sensitiveTransportAllowed) {
+      setToken(null);
+      setAuthed(false);
+      return;
+    }
     void refreshMeta();
-  }, [refreshMeta]);
+  }, [refreshMeta, sensitiveTransportAllowed]);
 
   useEffect(() => {
     onSessionLost(() => setAuthed(false));
@@ -63,6 +72,34 @@ export default function App() {
     setAuthed(false);
     setView("dashboard");
     toast("Vault locked. The loom rests.", "info");
+  }
+
+  if (!sensitiveTransportAllowed) {
+    return (
+      <div className="gate">
+        <div className="gate-inner stagger">
+          <WeaveMark size={64} />
+          <h1 className="wordmark wordmark-lg">
+            Cash<span className="wm-loom">Loom</span>
+          </h1>
+          <div className="gate-card gate-card--blocked" role="alert">
+            <h2>Sensitive access blocked</h2>
+            <p className="gate-sub">
+              CashLoom will not send a vault passphrase, session token,
+              private key, or payment instruction over plain HTTP beyond
+              loopback.
+            </p>
+            <p className="gate-warning">
+              Current origin: <strong>{window.location.origin}</strong>. Open
+              the node at <a href="http://127.0.0.1:4747">127.0.0.1:4747</a>{" "}
+              on its machine, or place a reviewed HTTPS ingress in front of
+              this origin.
+            </p>
+          </div>
+          <p className="gate-truths">No secret was sent from this page.</p>
+        </div>
+      </div>
+    );
   }
 
   if (bootErr && !meta) {
@@ -94,6 +131,7 @@ export default function App() {
       <div className="gate">
         <div className="gate-inner">
           <WeaveMark size={64} />
+          <p className="gate-loading" role="status">Connecting to your local node…</p>
         </div>
       </div>
     );

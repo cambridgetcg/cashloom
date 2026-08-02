@@ -27,7 +27,7 @@ export default function Hero() {
       </div>
 
       <div className="hero__inner">
-        <p className="hero__kicker">The Atlas · the human door</p>
+        <p className="hero__kicker">Open protocol · local payment node</p>
 
         <h1 className="hero__title">{PHILOSOPHY.name}</h1>
 
@@ -50,16 +50,16 @@ export default function Hero() {
         <p className="hero__invitation">{PHILOSOPHY.invitation}</p>
 
         <div className="hero__cta">
-          <a className="btn btn--ember" href="#weave">
-            Enter the weave
+          <a className="btn btn--ember" href="#start">
+            Run from source
           </a>
-          <a className="btn btn--ghost" href="#decisions">
-            Read the reasons
+          <a className="btn btn--ghost" href="#truth">
+            See exactly what works
           </a>
         </div>
       </div>
 
-      <a className="hero__scroll" href="#weave" aria-label="Scroll to the weave">
+      <a className="hero__scroll" href="#start" aria-label="Scroll to ways to use CashLoom">
         <span />
       </a>
     </header>

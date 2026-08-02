@@ -164,6 +164,25 @@ describe("/v1/convert", () => {
   });
 });
 
+describe("CashLoom capability doors", () => {
+  const app = appWith({ fxRate: fakeFx });
+
+  it("serves one static hosted/local authority contract at both discovery paths", async () => {
+    const [canonical, wellKnown] = await Promise.all([
+      app.request("/v1/capabilities"),
+      app.request("/.well-known/cashloom.json"),
+    ]);
+    expect(canonical.status).toBe(200);
+    expect(wellKnown.status).toBe(200);
+    expect(canonical.headers.get("cache-control")).toContain("max-age=300");
+    const contract = await canonical.json();
+    expect(await wellKnown.json()).toEqual(contract);
+    expect(contract.hosted_surface.moves_money).toBe(false);
+    expect(contract.participant_node.default_origin).toBe("http://127.0.0.1:4747");
+    expect(contract.content_fingerprint).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
+  });
+});
+
 describe("/v1/fees door", () => {
   it("serves partial results with the failure named", async () => {
     const app = appWith({
