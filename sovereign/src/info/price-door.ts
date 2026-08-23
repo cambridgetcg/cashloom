@@ -10,25 +10,50 @@
  *   /v1/value/:amount_minor/:asset/:quote   REPORT value of a holding in fiat
  *
  * This composes crypto→fiat WITHOUT touching the parallel-owned /v1/convert:
- * different verb (value, not convert), different provenance (onchain-rederivable),
- * and it refuses the instant EITHER leg is stale — a valuation on a stale price
- * is a lie with a decimal point.
+ * different verb (value, not convert), combined provenance (the strictest
+ * source reuse condition wins), and it refuses a stale on-chain price. Derived
+ * facts keep the older ECB reference date so consumers can also apply their
+ * own date-aware FX freshness policy.
  */
 
 import type { Hono } from "hono";
-import { makeFact } from "./money-fact.ts";
-import { getFxRate } from "./fx.ts";
+import { makeFact, type Redistribution } from "./money-fact.ts";
+import {
+  fxReferenceExpiresAt,
+  fxReferenceIsStale,
+  getFxRate,
+} from "./fx.ts";
 import { resolveAsset } from "./assets.ts";
 import { applyRate, divHalfEven } from "../utils/minor-units.ts";
 import { PRICE_FEEDS, resolveFeed, listFeeds, readPrice, spotPriceLeg, defaultFetchers, type OracleFetchers, type PriceFeed } from "./price.ts";
 
-const problem = (status: number, title: string, detail: string, next?: string[]) => ({
+const problem = (status: number, title: string, detail: string, next?: string[], code?: string) => ({
   type: "about:blank",
   title,
   status,
+  ...(code ? { code } : {}),
   detail,
   ...(next ? { next_actions: next } : {}),
 });
+
+const FX_FAILURE = Object.freeze({
+  upstream: {
+    code: "fx_upstream_unavailable",
+    message: "The ECB reference-rate source did not answer with a usable observation.",
+  },
+  pair: {
+    code: "fx_pair_unsupported",
+    message: "The requested currency pair is not available in the ECB reference set.",
+  },
+  stale: {
+    code: "fx_reference_stale",
+    message: "The ECB reference-rate observation is too old for a current derived value.",
+  },
+  expired: {
+    code: "derived_price_expired",
+    message: "One of the cited price legs has expired.",
+  },
+} as const);
 
 const INTEGER_STRING = /^-?\d+$/;
 const PRICE_SCALE = 8; // every price value is carried at 10^8, USD-native and cross alike
@@ -37,6 +62,13 @@ const TEN8 = 10n ** 8n;
 export interface PriceDoorDeps {
   fetchers: OracleFetchers;
   fxRate: typeof getFxRate;
+  now: () => Date;
+}
+
+function staleAfterFromExpiry(observedAt: string, expiresAtMs: number): number {
+  const observedMs = Date.parse(observedAt);
+  if (!Number.isFinite(observedMs)) return 1;
+  return Math.max(1, Math.ceil((expiresAtMs - observedMs) / 1000));
 }
 
 // Price of 1 base asset in `quoteCode` fiat, at PRICE_SCALE. USD is the oracle's
@@ -53,15 +85,20 @@ type PriceInQuote =
       sources: { name: string; url: string; fetched_at: string }[];
       recompute: string;
       method: "observed" | "derived";
+      redistribution: Redistribution;
+      /** One expiry shared by every input leg, represented relative to observed_at. */
+      stale_after_s: number;
+      expires_at_ms: number;
     }
-  | { ok: false; status: number; title: string; detail: string; next?: string[] };
+  | { ok: false; status: number; title: string; code: string; detail: string; next?: string[] };
 
 async function priceInQuote(feed: PriceFeed, quoteCode: string, deps: PriceDoorDeps): Promise<PriceInQuote> {
   const leg = await spotPriceLeg(feed, deps.fetchers);
   if ("stale" in leg) {
-    return { ok: false, status: 503, title: "price unavailable", detail: leg.detail, next: ["retry shortly", "GET /v1/prices for what is fresh"] };
+    return { ok: false, status: 503, title: "price unavailable", code: leg.code, detail: leg.detail, next: ["retry shortly", "GET /v1/prices for what is fresh"] };
   }
   if (quoteCode === "USD") {
+    const expiresAt = Date.parse(leg.observed_at) + feed.heartbeat_s * 1000;
     return {
       ok: true,
       valueScaled: leg.valueScaled,
@@ -72,6 +109,9 @@ async function priceInQuote(feed: PriceFeed, quoteCode: string, deps: PriceDoorD
       sources: leg.sources,
       recompute: leg.recompute.how,
       method: "observed",
+      redistribution: "onchain-rederivable",
+      stale_after_s: feed.heartbeat_s,
+      expires_at_ms: expiresAt,
     };
   }
   // non-USD: multiply the on-chain USD price by the ECB USD→quote cross.
@@ -79,24 +119,44 @@ async function priceInQuote(feed: PriceFeed, quoteCode: string, deps: PriceDoorD
   try {
     fx = await deps.fxRate("USD", quoteCode);
   } catch {
-    return { ok: false, status: 502, title: "fx source unreachable", detail: "the ECB reference-rate feed did not answer", next: ["retry shortly"] };
+    return { ok: false, status: 502, title: "fx source unreachable", code: FX_FAILURE.upstream.code, detail: FX_FAILURE.upstream.message, next: ["retry shortly"] };
   }
   if ("error" in fx) {
-    return { ok: false, status: 422, title: "unknown currency", detail: `'${quoteCode}' is not in the ECB reference set`, next: ["GET /v1/rates/fiat for the supported set"] };
+    return { ok: false, status: 422, title: "unknown currency", code: FX_FAILURE.pair.code, detail: FX_FAILURE.pair.message, next: ["GET /v1/rates/fiat for the supported set"] };
+  }
+  if (fxReferenceIsStale(fx.refDate, deps.now())) {
+    return {
+      ok: false,
+      status: 503,
+      title: "fx reference unavailable",
+      code: FX_FAILURE.stale.code,
+      detail: FX_FAILURE.stale.message,
+      next: ["retry after the next ECB reference-rate publication", "GET /v1/rates/fiat for the source date"],
+    };
   }
   // quote per base (scale 8) = USDperBase(8) × quotePerUSD(8) / 10^8, half-even.
   const combined = divHalfEven(BigInt(leg.valueScaled) * BigInt(fx.valueScaled), TEN8);
   const quoteDecimals = resolveAsset(`iso4217:${quoteCode}`)?.decimals ?? 2;
+  const observedAt = fx.refDate < leg.observed_at ? fx.refDate : leg.observed_at;
+  const oracleExpiresAt = Date.parse(leg.observed_at) + feed.heartbeat_s * 1000;
+  const fxExpiresAt = fxReferenceExpiresAt(fx.refDate);
+  const expiresAt = Math.min(oracleExpiresAt, fxExpiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= deps.now().getTime()) {
+    return { ok: false, status: 503, title: "derived price stale", code: FX_FAILURE.expired.code, detail: FX_FAILURE.expired.message, next: ["retry shortly"] };
+  }
   return {
     ok: true,
     valueScaled: combined.toString(),
     scale: PRICE_SCALE,
     unit: `iso4217:${quoteCode}`,
     quoteDecimals,
-    observed_at: fx.refDate < leg.observed_at ? fx.refDate : leg.observed_at, // stalest leg
-    sources: [...leg.sources, { name: "European Central Bank — euro foreign-exchange reference rates", url: fx.sourceUrl, fetched_at: new Date().toISOString() }],
+    observed_at: observedAt, // stalest leg
+    sources: [...leg.sources, { name: "European Central Bank — euro foreign-exchange reference rates", url: fx.sourceUrl, fetched_at: fx.fetchedAt }],
     recompute: `(${leg.recompute.how}) × ECB(USD→${quoteCode})=${fx.valueScaled}×10^-${fx.decimals} [${fx.recompute.how}], product renormalised to ${PRICE_SCALE}dp half-even`,
     method: "derived",
+    redistribution: "attribution-required",
+    stale_after_s: staleAfterFromExpiry(observedAt, expiresAt),
+    expires_at_ms: expiresAt,
   };
 }
 
@@ -107,52 +167,63 @@ const quoteDecimalsFor = (quoteCode: string) => resolveAsset(`iso4217:${quoteCod
 // the ECB rate (or is the identity when it already IS the quote). Anything else,
 // or a stale/unreachable leg, comes back {ok:false} with a reason — never a guess.
 type LegValue =
-  | { ok: true; asset: string; isCrypto: boolean; valueMinor: string; method: "observed" | "derived"; sources: { name: string; url: string; fetched_at: string }[]; observed_at: string | null }
-  | { ok: false; asset: string; reason: string };
+  | { ok: true; asset: string; isCrypto: boolean; valueMinor: string; method: "observed" | "derived"; redistribution: Redistribution; sources: { name: string; url: string; fetched_at: string }[]; observed_at: string | null; expires_at_ms: number | null }
+  | { ok: false; asset: string; code: string; reason: string };
 
 async function valueHolding(sym: string, amountMinor: string, quoteCode: string, quoteDecimals: number, deps: PriceDoorDeps): Promise<LegValue> {
   const feed = resolveFeed(sym);
   if (feed) {
     const piq = await priceInQuote(feed, quoteCode, deps);
-    if (!piq.ok) return { ok: false, asset: feed.base, reason: piq.detail };
+    if (!piq.ok) return { ok: false, asset: feed.base, code: piq.code, reason: piq.detail };
     return {
       ok: true,
       asset: feed.base,
       isCrypto: true,
       valueMinor: applyRate(amountMinor, feed.base_decimals, piq.valueScaled, piq.scale, quoteDecimals),
       method: "derived",
+      redistribution: piq.redistribution,
       sources: piq.sources,
       observed_at: piq.observed_at,
+      expires_at_ms: piq.expires_at_ms,
     };
   }
   const a = resolveAsset(sym);
   if (a && a.id.startsWith("iso4217:")) {
     if (a.symbol === quoteCode) {
       // identity — the holding already IS the quote currency; no rate, no source.
-      return { ok: true, asset: a.id, isCrypto: false, valueMinor: amountMinor, method: "observed", sources: [], observed_at: null };
+      return { ok: true, asset: a.id, isCrypto: false, valueMinor: amountMinor, method: "observed", redistribution: "own-data", sources: [], observed_at: null, expires_at_ms: null };
     }
     let fx;
     try {
       fx = await deps.fxRate(a.symbol, quoteCode);
     } catch {
-      return { ok: false, asset: a.id, reason: "ECB fx source unreachable" };
+      return { ok: false, asset: a.id, code: FX_FAILURE.upstream.code, reason: FX_FAILURE.upstream.message };
     }
-    if ("error" in fx) return { ok: false, asset: a.id, reason: `no ECB rate ${a.symbol}→${quoteCode}` };
+    if ("error" in fx) return { ok: false, asset: a.id, code: FX_FAILURE.pair.code, reason: FX_FAILURE.pair.message };
+    if (fxReferenceIsStale(fx.refDate, deps.now())) {
+      return { ok: false, asset: a.id, code: FX_FAILURE.stale.code, reason: FX_FAILURE.stale.message };
+    }
+    const expiresAt = fxReferenceExpiresAt(fx.refDate);
+    if (!Number.isFinite(expiresAt) || expiresAt <= deps.now().getTime()) {
+      return { ok: false, asset: a.id, code: FX_FAILURE.expired.code, reason: FX_FAILURE.expired.message };
+    }
     return {
       ok: true,
       asset: a.id,
       isCrypto: false,
       valueMinor: applyRate(amountMinor, a.decimals, fx.valueScaled, fx.decimals, quoteDecimals),
       method: "derived",
-      sources: [{ name: "European Central Bank — euro foreign-exchange reference rates", url: fx.sourceUrl, fetched_at: new Date().toISOString() }],
+      redistribution: "attribution-required",
+      sources: [{ name: "European Central Bank — euro foreign-exchange reference rates", url: fx.sourceUrl, fetched_at: fx.fetchedAt }],
       observed_at: fx.refDate,
+      expires_at_ms: expiresAt,
     };
   }
-  return { ok: false, asset: sym, reason: "unknown asset — not a priced crypto or a registered fiat" };
+  return { ok: false, asset: sym, code: "asset_unsupported", reason: "unknown asset: no configured crypto price or fiat reference is available." };
 }
 
 export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {}) {
-  const deps: PriceDoorDeps = { fetchers: defaultFetchers, fxRate: getFxRate, ...overrides };
+  const deps: PriceDoorDeps = { fetchers: defaultFetchers, fxRate: getFxRate, now: () => new Date(), ...overrides };
 
   // ── price: what is 1 unit of a crypto asset worth right now ─────────────
   app.get("/v1/price/:base/:quote", async (c) => {
@@ -169,7 +240,7 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
       );
     }
     const piq = await priceInQuote(feed, quoteCode, deps);
-    if (!piq.ok) return c.json(problem(piq.status, piq.title, piq.detail, piq.next), piq.status as any);
+    if (!piq.ok) return c.json(problem(piq.status, piq.title, piq.detail, piq.next, piq.code), piq.status as any);
     const fact = makeFact({
       subject: feed.base,
       predicate: "spot_price",
@@ -179,10 +250,10 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
       plane: "public",
       method: piq.method,
       proof_state: "tested",
-      redistribution: "onchain-rederivable",
+      redistribution: piq.redistribution,
       sources: piq.sources,
       observed_at: piq.observed_at,
-      stale_after_s: feed.heartbeat_s,
+      stale_after_s: piq.stale_after_s,
       recompute: { how: piq.recompute },
     });
     return c.json(fact);
@@ -196,9 +267,9 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
     for (let i = 0; i < results.length; i++) {
       const r = results[i];
       if (r.kind === "price") prices.push(r.fact);
-      else if (r.kind === "stale") unavailable.push({ pair: r.pair, reason: `stale (${r.age_s}s > ${r.heartbeat_s}s heartbeat)` });
-      else if (r.kind === "invalid") unavailable.push({ pair: r.pair, reason: r.reason });
-      else unavailable.push({ pair: r.pair, reason: `source unreachable: ${r.detail}` });
+      else if (r.kind === "stale") unavailable.push({ pair: r.pair, code: r.code, reason: "The on-chain price observation is older than its configured heartbeat." });
+      else if (r.kind === "invalid") unavailable.push({ pair: r.pair, code: r.code, reason: r.reason });
+      else unavailable.push({ pair: r.pair, code: r.code, reason: r.detail });
     }
     return c.json({
       count: prices.length,
@@ -235,7 +306,7 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
       );
     }
     const piq = await priceInQuote(feed, quoteCode, deps);
-    if (!piq.ok) return c.json(problem(piq.status, piq.title, piq.detail, piq.next), piq.status as any);
+    if (!piq.ok) return c.json(problem(piq.status, piq.title, piq.detail, piq.next, piq.code), piq.status as any);
 
     // single final rounding: base minor × (quote per base, scale 8) → quote minor.
     const resultMinor = applyRate(amountMinor, feed.base_decimals, piq.valueScaled, piq.scale, piq.quoteDecimals);
@@ -248,10 +319,10 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
       plane: "public",
       method: "derived",
       proof_state: "tested",
-      redistribution: "onchain-rederivable",
+      redistribution: piq.redistribution,
       sources: piq.sources,
       observed_at: piq.observed_at,
-      stale_after_s: feed.heartbeat_s,
+      stale_after_s: piq.stale_after_s,
       recompute: {
         how: `${amountMinor} (${feed.symbol} minor, ${feed.base_decimals}dp) × [${piq.recompute}] → ${quoteCode} minor at ${piq.quoteDecimals}dp, BigInt half-even at the final digit`,
       },
@@ -312,27 +383,39 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
     const withheld = [];
     const sourceMap = new Map<string, { name: string; url: string; fetched_at: string }>();
     const observedDates: string[] = [];
-    let anyCrypto = false;
+    const expiryTimes: number[] = [];
+    let aggregateRedistribution: Redistribution = "own-data";
+    const redistributionRank: Record<Redistribution, number> = {
+      "own-data": 0,
+      "onchain-rederivable": 1,
+      "public-domain": 1,
+      "attribution-required": 2,
+      "third-party-restricted": 3,
+    };
     for (let k = 0; k < legs.length; k++) {
       const leg = legs[k];
       const inp = parsed[k];
       if (!leg.ok) {
-        withheld.push({ asset: leg.asset, input: inp.sym, reason: leg.reason });
+        withheld.push({ asset: leg.asset, input: inp.sym, code: leg.code, reason: leg.reason });
         continue;
       }
       sum += BigInt(leg.valueMinor);
-      anyCrypto = anyCrypto || leg.isCrypto;
+      if (redistributionRank[leg.redistribution] > redistributionRank[aggregateRedistribution]) {
+        aggregateRedistribution = leg.redistribution;
+      }
       if (leg.observed_at) observedDates.push(leg.observed_at);
+      if (leg.expires_at_ms !== null) expiryTimes.push(leg.expires_at_ms);
       for (const s of leg.sources) sourceMap.set(s.url, s);
       holdings.push({
         input: { symbol: inp.sym, amount_minor: inp.amount },
         asset: leg.asset,
-        value: { value: leg.valueMinor, unit: `iso4217:${quoteCode}`, decimals: quoteDecimals, method: leg.method },
+        value: { value: leg.valueMinor, unit: `iso4217:${quoteCode}`, decimals: quoteDecimals, method: leg.method, redistribution: leg.redistribution, ...(leg.expires_at_ms !== null ? { expires_at: new Date(leg.expires_at_ms).toISOString() } : {}) },
       });
     }
 
     const complete = withheld.length === 0;
-    const stalest = observedDates.sort()[0] ?? new Date().toISOString();
+    const stalest = observedDates.sort()[0] ?? deps.now().toISOString();
+    const earliestExpiry = expiryTimes.sort((a, b) => a - b)[0];
     const total = makeFact({
       subject: "aggregate:portfolio",
       predicate: complete ? "total_value" : "partial_value",
@@ -342,10 +425,10 @@ export function mountPriceDoors(app: Hono, overrides: Partial<PriceDoorDeps> = {
       plane: "public",
       method: "derived",
       proof_state: "tested",
-      redistribution: anyCrypto ? "onchain-rederivable" : "public-domain",
+      redistribution: aggregateRedistribution,
       sources: [...sourceMap.values()],
       observed_at: stalest, // as fresh only as the STALEST leg summed
-      stale_after_s: 3600,
+      stale_after_s: earliestExpiry === undefined ? 3600 : staleAfterFromExpiry(stalest, earliestExpiry),
       recompute: {
         how: `Σ over holdings[] of (amount_minor × its cited rate → ${quoteCode} minor, half-even); ${holdings.length} leg(s) summed${complete ? "" : `, ${withheld.length} withheld (see withheld[]) — this total is PARTIAL`}`,
       },

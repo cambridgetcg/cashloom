@@ -3,16 +3,18 @@ frontend:
   phases:
     preBuild:
       commands:
-        - cd client
+        - cd atlas
         - npm install --legacy-peer-deps
     build:
       commands:
-        - cd client
-        - npm run build
+        - cd atlas
+        # Amplify does not deploy the Cloudflare Pages same-origin Function.
+        # Keep this fallback build on the public read-only API origin.
+        - VITE_CASHLOOM_API_BASE=https://cashloom-api.fly.dev npm run build
   artifacts:
-    baseDirectory: client/dist
+    baseDirectory: atlas/dist
     files:
       - '**/*'
   cache:
     paths:
-      - client/node_modules/**/*
+      - atlas/node_modules/**/*

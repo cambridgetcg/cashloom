@@ -1,7 +1,7 @@
 name: CI
 
-# Typecheck + test the sovereign node and build the atlas on every push / PR
-# to main, so a regression can't merge quietly.
+# Typecheck + test the sovereign node and its wallet UI, then build Atlas on
+# every push / PR to main, so a regression can't merge quietly.
 on:
   push:
     branches: [main]
@@ -20,6 +20,15 @@ jobs:
       - run: bun install
       - run: bun run typecheck
       - run: bun run test
+      - name: Install wallet UI dependencies
+        working-directory: sovereign/ui
+        run: bun install --frozen-lockfile
+      - name: Test wallet UI
+        working-directory: sovereign/ui
+        run: bun run test
+      - name: Build wallet UI
+        working-directory: sovereign/ui
+        run: bun run build
 
   atlas:
     runs-on: ubuntu-latest
@@ -31,4 +40,53 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: bunx tsc --noEmit
+      - run: bun run test
       - run: bun run build
+
+  public-info-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build minimal public INFO image
+        run: docker build --tag cashloom-info-ci .
+      - name: Audit runtime files and custody boundary
+        run: |
+          docker run --rm --entrypoint sh cashloom-info-ci -ec '
+            actual="$(find /app -type f -print | sort)"
+            expected="$(printf "%s\n" /app/RIGHTS.md /app/rights-adoption.json /app/sovereign/src/info-server.js | sort)"
+            test "$actual" = "$expected"
+            for symbol in \
+              WalletKernelStore \
+              signEvmTransaction \
+              createEvmSender \
+              createPaymentIntentV1 \
+              AmbiguousBroadcastError \
+              CASHLOOM_DATA_DIR \
+              sovereign.db \
+              bun:sqlite \
+              vault.salt \
+              /api/pay/confirm \
+              src/connectors/ \
+              src/senders/ \
+              src/wallet/ \
+              src/vault.ts \
+              src/db.ts \
+              src/pay.ts \
+              .test.ts \
+              .demo.ts
+            do
+              ! grep -Fq "$symbol" /app/sovereign/src/info-server.js
+            done
+          '
+      - name: Smoke-test the packaged INFO server
+        run: |
+          container_id="$(docker run --detach --publish 127.0.0.1:4747:4747 cashloom-info-ci)"
+          trap 'docker rm --force "$container_id" >/dev/null' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:4747/api/meta >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$container_id"
+          exit 1

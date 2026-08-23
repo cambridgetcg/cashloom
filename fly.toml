@@ -1,9 +1,9 @@
 # cashloom-api — the hosted MONEYWORLD info door (CASHLOOM_MODE landed as its
-# own entrypoint: info-server.ts; see INFORM.md). Scale-to-zero: the door
-# sleeps when no one knocks and costs nearly nothing.
+# own entrypoint: info-server.ts; see INFORM.md). One small machine stays warm
+# so the public read door keeps its verified snapshot/cache across visits.
 #
-# ⚠ NEVER set CASHLOOM_BASE_RPC_URL to a URL carrying an embedded API key —
-# source URLs are published verbatim in every fee fact (provenance by design).
+# Configured RPC endpoints may contain provider credentials. Public receipts
+# cite chain documentation or contract explorers and never echo connection URLs.
 app = "cashloom-api"
 primary_region = "lhr"
 
@@ -12,7 +12,14 @@ primary_region = "lhr"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/meta"
+    timeout = "5s"
 
 [[vm]]
   size = "shared-cpu-1x"

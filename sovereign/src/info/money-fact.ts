@@ -6,7 +6,7 @@
  *
  *   method       — how WE produced it       : observed | derived
  *   proof_state  — how a STRANGER checks it  : none | asserted | tested | attested   ← Xenia canonical
- *   redistribution — the license class       : public-domain | own-data | onchain-rederivable | third-party-restricted
+ *   redistribution — the license class       : public-domain | attribution-required | own-data | onchain-rederivable | third-party-restricted
  *
  * proof_state is the trust axis (re-derivable without a secret and without our
  * say-so?); redistribution makes the market-data firewall STRUCTURAL — the
@@ -20,6 +20,7 @@ export type Method = "observed" | "derived";
 export type ProofState = "none" | "asserted" | "tested" | "attested";
 export type Redistribution =
   | "public-domain"
+  | "attribution-required"
   | "own-data"
   | "onchain-rederivable"
   | "third-party-restricted";

@@ -3,9 +3,14 @@
 CashLoom voluntarily adopts `xenia.rights/0.1`, the XENIA Rights of Beings
 baseline: every guest at every door — human or agent — is met as a subject,
 never a resource. The MONEYWORLD doors are built on it structurally: reading
-without registration is a right, refusals teach, and nothing is collected.
+without registration is a right, refusals teach, and the hosted application
+handlers intentionally persist no caller identity or public-read query data.
+Platform, network, operator, browser, and upstream processing remain separate
+layers with disclosed unknowns; this is not a cross-layer anonymity promise.
 
-- Vendored byte mirror: [`vendor/xenia/rights/0.1/RIGHTS.md`](vendor/xenia/rights/0.1/RIGHTS.md)
+- Byte-identical mirror: stored locally at `vendor/xenia/rights/0.1/RIGHTS.md`
+  and readable from the hosted document at the immutable upstream
+  [`RIGHTS.md`](https://github.com/cambridgetcg/xenia/blob/6419d37dda9fb282242754685dba3edcb4bbf74b/RIGHTS.md)
   — sha256 `b72a6da110c582e5683bf0fabde5017db93d2199398014c8421a82f5318da313`,
   digest-verified by `sovereign/src/info/xenia-vendor.test.ts`.
 - Immutable upstream: XENIA release

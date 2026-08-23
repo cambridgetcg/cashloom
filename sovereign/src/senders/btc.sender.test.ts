@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,8 +11,12 @@ process.env.CASHLOOM_DATA_DIR ||= mkdtempSync(join(tmpdir(), "cashloom-btc-test-
 const { db, newId } = await import("../db.ts");
 const vault = await import("../vault.ts");
 const { btcSender } = await import("./btc.sender.ts");
-const { AmbiguousBroadcastError } = await import("./types.ts");
-const { quotePayment, confirmPayment } = await import("../pay.ts");
+const {
+  quotePayment,
+  confirmPayment,
+  resumePaymentBroadcast,
+  getWalletKernelIntent,
+} = await import("../pay.ts");
 const { Address, NETWORK, OutScript, RawTx, WIF } = await import("@scure/btc-signer");
 const { hex } = await import("@scure/base");
 
@@ -256,6 +260,61 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
       .get(result.txHash) as { amount_minor: string; source: string };
     expect(ledger.source).toBe("PAYMENT");
     expect(BigInt(ledger.amount_minor)).toBe(-(150_000n + BigInt(quote.feeMinor)));
+
+    // The compatibility facade is backed by a complete v2 audit spine.
+    const intent = db.query(
+      "SELECT state, intent_hash FROM wk_payment_intents WHERE id=?",
+    ).get(quote.paymentId) as { state: string; intent_hash: string };
+    expect(intent.state).toBe("submitted");
+    expect(intent.intent_hash).toBe(quote.intentHash);
+    const authorization = db.query(
+      "SELECT status, request_hash FROM wk_authorizations WHERE intent_id=?",
+    ).get(quote.paymentId) as { status: string; request_hash: string };
+    expect(authorization.status).toBe("CONSUMED");
+    expect(authorization.request_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const execution = db.query(
+      `SELECT state, network_tx_id, signed_artifact_id, response_json
+       FROM wk_executions WHERE intent_id=?`,
+    ).get(quote.paymentId) as {
+      state: string;
+      network_tx_id: string;
+      signed_artifact_id: string;
+      response_json: string;
+    };
+    expect(execution.state).toBe("submitted");
+    expect(execution.network_tx_id).toBe(result.txHash!);
+    expect(JSON.parse(execution.response_json)).toMatchObject({
+      signed_artifact: {
+        id: execution.signed_artifact_id,
+        encoding: "hex",
+        external_tx_id: result.txHash,
+      },
+      recovery: "explicit-exact-rebroadcast-only",
+    });
+    const artifact = db.query(
+      `SELECT payload, external_tx_id, envelope_hash
+       FROM wk_signed_artifacts WHERE id=?`,
+    ).get(execution.signed_artifact_id) as {
+      payload: string;
+      external_tx_id: string;
+      envelope_hash: string;
+    };
+    expect(artifact).toMatchObject({
+      payload: `0x${broadcastBodies[0]}`,
+      external_tx_id: result.txHash,
+    });
+    expect(artifact.envelope_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const postings = db.query(
+      `SELECT direction, amount_atomic FROM wk_postings
+       WHERE journal_entry_id=? ORDER BY posting_index`,
+    ).all(`journal.${quote.paymentId}.submitted`) as Array<{
+      direction: string;
+      amount_atomic: string;
+    }>;
+    expect(postings).toEqual([
+      { direction: "DEBIT", amount_atomic: (150_000n + BigInt(quote.feeMinor)).toString() },
+      { direction: "CREDIT", amount_atomic: (150_000n + BigInt(quote.feeMinor)).toString() },
+    ]);
   });
 
   it("treats a doctored detail as hostile — reconciliation failure refuses to sign", async () => {
@@ -271,8 +330,32 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
 
     const result = await confirmPayment(quote.paymentId);
     expect(result.status).toBe("failed");
-    expect(result.error).toMatch(/do not reconcile/);
+    expect(result.error).toMatch(/immutable Wallet Kernel intent/);
     expect(broadcastBodies).toHaveLength(0); // nothing was signed, nothing left
+  });
+
+  it("refuses a coherent recipient+detail rewrite that no longer matches the immutable quote", async () => {
+    resetMock({ utxos: [utxo(utxoId("ee"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    const stored = db.query("SELECT detail FROM payments WHERE id = ?").get(quote.paymentId) as {
+      detail: string;
+    };
+    const rewritten = JSON.parse(stored.detail) as DetailShape;
+    rewritten.to = SELF;
+    db.query("UPDATE payments SET to_addr=?, detail=? WHERE id=?").run(
+      SELF,
+      JSON.stringify(rewritten),
+      quote.paymentId,
+    );
+
+    const result = await confirmPayment(quote.paymentId);
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/immutable Wallet Kernel intent/);
+    expect(broadcastBodies).toHaveLength(0);
+    expect(db.query("SELECT COUNT(*) AS n FROM wk_authorizations WHERE intent_id=?").get(
+      quote.paymentId,
+    )).toEqual({ n: 0 });
   });
 
   it("refuses to confirm when the detail is missing — re-selection is never a fallback", async () => {
@@ -282,7 +365,7 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     db.query("UPDATE payments SET detail = NULL WHERE id = ?").run(quote.paymentId);
     const result = await confirmPayment(quote.paymentId);
     expect(result.status).toBe("failed");
-    expect(result.error).toMatch(/no stored coin selection/);
+    expect(result.error).toMatch(/immutable Wallet Kernel intent/);
     expect(broadcastBodies).toHaveLength(0);
   });
 
@@ -313,7 +396,274 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     await expect(confirmPayment(quote.paymentId)).rejects.toThrow(/only a fresh quote/);
   });
 
-  it("a definitive node rejection fails loud, with the spent-coins hint", async () => {
+  it("recovers a signed-before-broadcast crash by rebroadcasting the exact durable bytes", async () => {
+    resetMock({ utxos: [utxo(utxoId("e8"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    const deferred = await confirmPayment(quote.paymentId, { deferBroadcastAfterSigning: true });
+    expect(deferred.intentState).toBe("signed");
+    expect(broadcastBodies).toHaveLength(0);
+    const durable = db.query(
+      `SELECT artifact.payload
+       FROM wk_executions execution
+       JOIN wk_signed_artifacts artifact ON artifact.id=execution.signed_artifact_id
+       WHERE execution.intent_id=?`,
+    ).get(quote.paymentId) as { payload: string };
+    const envelope = durable.payload;
+    const audit = getWalletKernelIntent(quote.paymentId)!;
+    expect(JSON.stringify(audit)).not.toContain(envelope);
+    expect(audit.signed_artifact).toMatchObject({
+      byte_length: (envelope.length - 2) / 2,
+      recovery_available: true,
+    });
+
+    const recovered = await resumePaymentBroadcast(quote.paymentId);
+    expect(recovered.status).toBe("broadcast");
+    expect(recovered.txHash).toBe(deferred.txHash);
+    expect(broadcastBodies).toEqual([envelope.slice(2)]);
+    expect(db.query("SELECT state FROM wk_executions WHERE intent_id=?").get(
+      quote.paymentId,
+    )).toEqual({ state: "submitted" });
+  });
+
+  it("cryptographically refuses invalid or non-SIGHASH_ALL recovery witnesses", async () => {
+    resetMock({ utxos: [utxo(utxoId("e0"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    const deferred = await confirmPayment(quote.paymentId, { deferBroadcastAfterSigning: true });
+    const stored = db.query(
+      `SELECT payment.detail, artifact.payload
+       FROM payments payment
+       JOIN wk_signed_artifacts artifact ON artifact.intent_id=payment.id
+       WHERE payment.id=?`,
+    ).get(quote.paymentId) as { detail: string; payload: string };
+    const instruction = {
+      to: DEST,
+      amountMinor: "50000",
+      asset: "BTC",
+      detail: stored.detail,
+    } as const;
+    const mutateWitness = (kind: "signature" | "sighash"): `0x${string}` => {
+      const raw = RawTx.decode(hex.decode(stored.payload.slice(2)));
+      const witnesses = raw.witnesses!.map((witness) => witness.map((item) => item.slice()));
+      const signature = witnesses[0]![0]!;
+      if (kind === "sighash") signature[signature.length - 1] = 0x02;
+      else signature[signature.length - 2] ^= 0x01;
+      return `0x${hex.encode(RawTx.encode({ ...raw, witnesses }))}`;
+    };
+
+    await expect(
+      btcSender.resumeBroadcast!(
+        ctx,
+        instruction,
+        { encoding: "hex", payload: mutateWitness("signature") },
+        deferred.txHash!,
+      ),
+    ).rejects.toThrow(/invalid witness signature/);
+    await expect(
+      btcSender.resumeBroadcast!(
+        ctx,
+        instruction,
+        { encoding: "hex", payload: mutateWitness("sighash") },
+        deferred.txHash!,
+      ),
+    ).rejects.toThrow(/invalid signer or sighash policy/);
+    expect(broadcastBodies).toHaveLength(0);
+  });
+
+  it("recovers a crash after atomic vault commit without re-signing or reselecting", async () => {
+    resetMock({ utxos: [utxo(utxoId("e9"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+
+    await expect(
+      confirmPayment(quote.paymentId, { simulateCrashAfterVaultCommit: true }),
+    ).rejects.toThrow(/Injected crash after durable vault signing/);
+    expect(broadcastBodies).toHaveLength(0);
+    expect(db.query("SELECT status, tx_hash FROM payments WHERE id=?").get(quote.paymentId)).toEqual({
+      status: "confirmed",
+      tx_hash: null,
+    });
+    expect(db.query("SELECT state FROM wk_payment_intents WHERE id=?").get(quote.paymentId)).toEqual({
+      state: "prepared",
+    });
+    expect(db.query(
+      "SELECT state, signed_artifact_id FROM wk_executions WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ state: "prepared", signed_artifact_id: null });
+    expect(db.query(
+      "SELECT status FROM wk_authorizations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ status: "CONSUMED" });
+    const artifact = db.query(
+      `SELECT payload, external_tx_id FROM wk_signed_artifacts WHERE intent_id=?`,
+    ).get(quote.paymentId) as { payload: string; external_tx_id: string };
+    expect(artifact.payload).toMatch(/^0x[0-9a-f]+$/);
+    const audit = getWalletKernelIntent(quote.paymentId)!;
+    expect(JSON.stringify(audit)).not.toContain(artifact.payload);
+    expect(audit.signed_artifact).toMatchObject({
+      external_tx_id: artifact.external_tx_id,
+      recovery_available: true,
+    });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_reservations WHERE intent_id=? AND state='CONSUMED'",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+
+    const recovered = await resumePaymentBroadcast(quote.paymentId);
+    expect(recovered).toMatchObject({
+      status: "broadcast",
+      txHash: artifact.external_tx_id,
+      intentState: "submitted",
+    });
+    expect(broadcastBodies).toEqual([artifact.payload.slice(2)]);
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_authorizations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_signed_artifacts WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_reservations WHERE intent_id=? AND state='CONSUMED'",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+  });
+
+  it("finishes the same prepared authorization after a pre-artifact crash", async () => {
+    resetMock({ utxos: [utxo(utxoId("eb"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    const before = db.query("SELECT detail FROM payments WHERE id=?").get(quote.paymentId) as {
+      detail: string;
+    };
+
+    await expect(
+      confirmPayment(quote.paymentId, { simulateCrashBeforeVaultCommit: true }),
+    ).rejects.toThrow(/before vault artifact commit/);
+    expect(broadcastBodies).toHaveLength(0);
+    const authorization = db.query(
+      `SELECT id, status, request_hash FROM wk_authorizations WHERE intent_id=?`,
+    ).get(quote.paymentId) as { id: string; status: string; request_hash: string };
+    expect(authorization.status).toBe("ACTIVE");
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_signed_artifacts WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 0 });
+    expect(db.query(
+      "SELECT state, request_hash, prepared_ref FROM wk_executions WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({
+      state: "prepared",
+      request_hash: authorization.request_hash,
+      prepared_ref: authorization.id,
+    });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_reservations WHERE intent_id=? AND state='ACTIVE'",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+
+    const recovered = await resumePaymentBroadcast(quote.paymentId);
+    expect(recovered).toMatchObject({ status: "broadcast", intentState: "submitted" });
+    expect(broadcastBodies).toHaveLength(1);
+    expect(db.query("SELECT detail FROM payments WHERE id=?").get(quote.paymentId)).toEqual(before);
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_authorizations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_signed_artifacts WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_reservations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+  });
+
+  it("expires an unstarted prepared authorization and releases its claim", async () => {
+    resetMock({ utxos: [utxo(utxoId("ec"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    await expect(
+      confirmPayment(quote.paymentId, { simulateCrashBeforeVaultCommit: true }),
+    ).rejects.toThrow(/before vault artifact commit/);
+
+    let expired;
+    try {
+      setSystemTime(Date.parse(quote.expiresAt) + 1);
+      expired = await resumePaymentBroadcast(quote.paymentId);
+    } finally {
+      setSystemTime();
+    }
+    expect(expired).toMatchObject({
+      status: "failed",
+      txHash: null,
+      intentState: "expired",
+      error: expect.stringMatching(/authorization expired/),
+    });
+    expect(broadcastBodies).toHaveLength(0);
+    expect(db.query(
+      "SELECT status FROM wk_authorizations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ status: "EXPIRED" });
+    expect(db.query(
+      "SELECT state FROM wk_payment_intents WHERE id=?",
+    ).get(quote.paymentId)).toEqual({ state: "expired" });
+    expect(db.query(
+      "SELECT state, error_code FROM wk_executions WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({
+      state: "failed",
+      error_code: "SIGNING_AUTHORIZATION_EXPIRED",
+    });
+    expect(db.query(
+      "SELECT state FROM wk_reservations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ state: "RELEASED" });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_signed_artifacts WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 0 });
+  });
+
+  it("coalesces concurrent recovery into one signing and network attempt", async () => {
+    resetMock({ utxos: [utxo(utxoId("ed"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    await expect(
+      confirmPayment(quote.paymentId, { simulateCrashBeforeVaultCommit: true }),
+    ).rejects.toThrow(/before vault artifact commit/);
+
+    const [first, second] = await Promise.all([
+      resumePaymentBroadcast(quote.paymentId),
+      resumePaymentBroadcast(quote.paymentId),
+    ]);
+    expect(second).toEqual(first);
+    expect(first).toMatchObject({ status: "broadcast", intentState: "submitted" });
+    expect(broadcastBodies).toHaveLength(1);
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_signed_artifacts WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ count: 1 });
+  });
+
+  it("refuses coherent evidence or prepared-payment mutation during recovery", async () => {
+    resetMock({ utxos: [utxo(utxoId("ea"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    await confirmPayment(quote.paymentId, { deferBroadcastAfterSigning: true });
+    expect(broadcastBodies).toHaveLength(0);
+
+    expect(() =>
+      db.query(
+        `UPDATE wk_signed_artifacts
+         SET payload='0x0102', envelope_hash=?, external_tx_id=?
+         WHERE intent_id=?`,
+      ).run(`sha256:${"0".repeat(64)}`, "coherent-attacker-txid", quote.paymentId),
+    ).toThrow(/append-only/);
+
+    const stored = db.query("SELECT detail FROM payments WHERE id=?").get(quote.paymentId) as {
+      detail: string;
+    };
+    const rewritten = JSON.parse(stored.detail) as DetailShape;
+    rewritten.to = SELF;
+    db.query("UPDATE payments SET to_addr=?, detail=? WHERE id=?").run(
+      SELF,
+      JSON.stringify(rewritten),
+      quote.paymentId,
+    );
+    await expect(resumePaymentBroadcast(quote.paymentId)).rejects.toThrow(
+      /immutable Wallet Kernel intent|own sending account/,
+    );
+    expect(broadcastBodies).toHaveLength(0);
+  });
+
+  it("keeps a post-sign missing/spent rejection ambiguous and the UTXO claimed", async () => {
     resetMock({
       utxos: [utxo(utxoId("e5"), 0, 100_000)],
       broadcast: () =>
@@ -324,12 +674,63 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     const accountId = makeBtcAccount();
     const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
     const result = await confirmPayment(quote.paymentId);
-    expect(result.status).toBe("failed");
-    expect(result.error).toMatch(/network refused/);
-    expect(result.error).toMatch(/earlier payment may have spent/);
+    expect(result.status).toBe("confirmed");
+    expect(result.intentState).toBe("ambiguous");
+    expect(result.error).toMatch(/outcome unknown/);
+    expect(db.query(
+      "SELECT state FROM wk_reservations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ state: "CONSUMED" });
+    expect(db.query(
+      "SELECT state FROM wk_executions WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ state: "ambiguous" });
   });
 
-  it("send() without pay.ts still enforces the seam (direct AmbiguousBroadcastError shape)", async () => {
+  it("treats an exact already-known rebroadcast as idempotently accepted", async () => {
+    resetMock({ utxos: [utxo(utxoId("e7"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    const deferred = await confirmPayment(quote.paymentId, { deferBroadcastAfterSigning: true });
+    resetMock({
+      broadcast: () => new Response("sendrawtransaction RPC error: txn-already-known", { status: 400 }),
+    });
+
+    const recovered = await resumePaymentBroadcast(quote.paymentId);
+    expect(recovered).toMatchObject({
+      status: "broadcast",
+      txHash: deferred.txHash,
+      intentState: "submitted",
+    });
+    expect(broadcastBodies).toHaveLength(1);
+  });
+
+  it("does not turn a possibly accepted tx into failed on missing/spent recovery", async () => {
+    resetMock({ utxos: [utxo(utxoId("ef"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    const deferred = await confirmPayment(quote.paymentId, { deferBroadcastAfterSigning: true });
+    resetMock({
+      broadcast: () =>
+        new Response("sendrawtransaction RPC error: bad-txns-inputs-missingorspent", {
+          status: 400,
+        }),
+    });
+
+    const recovered = await resumePaymentBroadcast(quote.paymentId);
+    expect(recovered).toMatchObject({
+      status: "confirmed",
+      txHash: deferred.txHash,
+      intentState: "ambiguous",
+      error: expect.stringMatching(/may already be live/),
+    });
+    expect(db.query(
+      "SELECT state FROM wk_reservations WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ state: "CONSUMED" });
+    expect(db.query(
+      "SELECT state FROM wk_executions WHERE intent_id=?",
+    ).get(quote.paymentId)).toEqual({ state: "ambiguous" });
+  });
+
+  it("send() without the kernel refuses before signing or broadcasting", async () => {
     resetMock({ utxos: [utxo(utxoId("e6"), 0, 100_000)] });
     const quote = await btcSender.quote(ctx, { to: DEST, amountMinor: "50000", asset: "BTC" });
     route.broadcast = () => {
@@ -341,8 +742,9 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     } catch (e) {
       caught = e;
     }
-    expect(caught).toBeInstanceOf(AmbiguousBroadcastError);
-    expect((caught as InstanceType<typeof AmbiguousBroadcastError>).externalId).toMatch(/^[0-9a-f]{64}$/);
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/bound payment authorization/);
+    expect(broadcastBodies).toHaveLength(0);
   });
 
   it("refuses an evm key id — kind guard, not a mis-derived address", async () => {
@@ -383,7 +785,7 @@ describe("btc sender — review regressions", () => {
     db.query("UPDATE payments SET detail = ? WHERE id = ?").run(JSON.stringify(doctored), quote.paymentId);
     const result = await confirmPayment(quote.paymentId);
     expect(result.status).toBe("failed");
-    expect(result.error).toMatch(/duplicate input/);
+    expect(result.error).toMatch(/immutable Wallet Kernel intent/);
     expect(broadcastBodies).toHaveLength(0);
   });
 
@@ -428,6 +830,32 @@ describe("btc sender — review regressions", () => {
     expect(rB.status).toBe("failed");
     expect(rB.error).toMatch(/already committed to another payment/);
     expect(broadcastBodies).toHaveLength(1); // B never signed, never broadcast
+  });
+
+  it("two concurrent confirms produce one signature and one broadcast", async () => {
+    resetMock({ utxos: [utxo(utxoId("f6"), 0, 100_000)] });
+    const accountId = makeBtcAccount();
+    const quote = await quotePayment({ accountId, to: DEST, amountMinor: "50000", asset: "BTC" });
+    const [left, right] = await Promise.allSettled([
+      confirmPayment(quote.paymentId),
+      confirmPayment(quote.paymentId),
+    ]);
+    const fulfilled = [left, right].filter(
+      (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof confirmPayment>>> =>
+        result.status === "fulfilled",
+    );
+    const rejected = [left, right].filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(fulfilled).toHaveLength(1);
+    expect(fulfilled[0]!.value.status).toBe("broadcast");
+    expect(rejected).toHaveLength(1);
+    expect(String(rejected[0]!.reason)).toMatch(/already claimed|only a fresh quote/);
+    expect(broadcastBodies).toHaveLength(1);
+    const authorizations = db.query(
+      "SELECT COUNT(*) AS count FROM wk_authorizations WHERE intent_id=?",
+    ).get(quote.paymentId) as { count: number };
+    expect(authorizations.count).toBe(1);
   });
 });
 

@@ -16,6 +16,7 @@ const fakeFx: typeof getFxRate = async (base, quote) => ({
   proof_state: "tested",
   recompute: { how: "test fixture" },
   refDate: "2026-07-21",
+  fetchedAt: "2026-07-21T16:00:00.000Z",
   sourceUrl: "https://example.test/ecb",
 });
 
@@ -26,7 +27,7 @@ const goodFetchers: FeeFetchers = {
 
 function appWith(deps: Parameters<typeof mountInfoDoors>[1]) {
   const app = new Hono();
-  mountInfoDoors(app, deps);
+  mountInfoDoors(app, { now: () => new Date("2026-07-22T12:00:00.000Z"), ...deps });
   return app;
 }
 
@@ -86,6 +87,19 @@ describe("readFees", () => {
   it("treats an empty filter as all chains", async () => {
     const r = await readFees("", goodFetchers);
     expect(r.facts).toHaveLength(2);
+  });
+
+  it("never publishes a configured Base RPC credential in a source receipt", async () => {
+    const previous = process.env.CASHLOOM_BASE_RPC_URL;
+    process.env.CASHLOOM_BASE_RPC_URL = "https://provider.example/v2/SUPER-SECRET-BASE-KEY";
+    try {
+      const result = await readFees("base", goodFetchers);
+      expect(JSON.stringify(result)).not.toContain("SUPER-SECRET-BASE-KEY");
+      expect(result.facts[0].sources[0].url).toContain("docs.base.org");
+    } finally {
+      if (previous === undefined) delete process.env.CASHLOOM_BASE_RPC_URL;
+      else process.env.CASHLOOM_BASE_RPC_URL = previous;
+    }
   });
 });
 
@@ -147,6 +161,17 @@ describe("/v1/convert", () => {
     const body = await res.json();
     expect(body.ref_date).toBe("2026-07-21");
     expect(body.result.observed_at).toBe("2026-07-21");
+    expect(body.result.stale_after_s).toBe(7 * 86_400);
+  });
+
+  it("refuses conversion when the ECB reference leg is too old", async () => {
+    const stale = appWith({
+      fxRate: fakeFx,
+      now: () => new Date("2026-08-20T12:00:00.000Z"),
+    });
+    const response = await stale.request("/v1/convert?amount_minor=10000&from=GBP&to=USD");
+    expect(response.status).toBe(503);
+    expect((await response.json()).title).toContain("fx reference");
   });
 
   it("names the supported rounding when refused", async () => {

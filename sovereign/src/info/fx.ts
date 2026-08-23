@@ -10,8 +10,9 @@
  *     number from the two cited public ECB rates via the stated formula, so our
  *     arithmetic is checkable (an error would be caught), not merely trusted.
  *
- * All ECB reference rates are `public-domain` redistribution class — no license
- * firewall. Values stay exact fixed-point strings; a float never touches money.
+ * ECB statistics are free to reuse when the ECB is cited and modifications are
+ * disclosed, so these facts are `attribution-required` rather than public
+ * domain. Values stay exact fixed-point strings; a float never touches money.
  */
 
 import { divHalfEven } from "../utils/minor-units";
@@ -19,12 +20,37 @@ import { divHalfEven } from "../utils/minor-units";
 const ECB_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
 const SCALE = 8; // fixed-point decimals carried on every FX value
 const REFRESH_MS = 60 * 60 * 1000; // ECB updates once/day; refresh at most hourly
+export const FX_REFERENCE_MAX_BUSINESS_DAY_AGE = 3;
+export const FX_REFERENCE_DATE_TTL_S = 7 * 86_400;
 
 const TEN = 10n;
 const pow = (n: number) => TEN ** BigInt(n);
 
-type Rates = { refDate: string; eurPer: Map<string, bigint> }; // ccy -> (ccy per 1 EUR) × 10^SCALE
+export function fxReferenceBusinessDayAge(refDate: string, now = new Date()): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(refDate)) return null;
+  const start = new Date(`${refDate}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== refDate) return null;
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (start >= end) return 0;
+  let count = 0;
+  for (const cursor = new Date(start.getTime() + 86_400_000); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const day = cursor.getUTCDay();
+    if (day !== 0 && day !== 6) count += 1;
+  }
+  return count;
+}
+
+export function fxReferenceIsStale(refDate: string, now = new Date()): boolean {
+  return (fxReferenceBusinessDayAge(refDate, now) ?? Infinity) > FX_REFERENCE_MAX_BUSINESS_DAY_AGE;
+}
+
+export function fxReferenceExpiresAt(refDate: string): number {
+  return Date.parse(`${refDate}T00:00:00.000Z`) + FX_REFERENCE_DATE_TTL_S * 1000;
+}
+
+type Rates = { refDate: string; fetchedAt: string; eurPer: Map<string, bigint> }; // ccy -> (ccy per 1 EUR) × 10^SCALE
 let cache: { at: number; rates: Rates } | null = null;
+let inflight: Promise<Rates> | null = null;
 
 // "1.1408" → BigInt scaled by 10^SCALE, exact (no float).
 function parseScaled(s: string): bigint {
@@ -36,19 +62,22 @@ function parseScaled(s: string): bigint {
 
 async function loadRates(): Promise<Rates> {
   if (cache && Date.now() - cache.at < REFRESH_MS) return cache.rates;
-  const res = await fetch(ECB_URL, { signal: AbortSignal.timeout(10_000) });
-  if (!res.ok) throw new Error(`ECB HTTP ${res.status}`);
-  const xml = await res.text();
-  const refDate = xml.match(/time=['"]([0-9-]+)['"]/)?.[1] ?? "";
-  const eurPer = new Map<string, bigint>();
-  eurPer.set("EUR", pow(SCALE)); // 1 EUR = 1 EUR
-  for (const m of xml.matchAll(/currency=['"]([A-Z]{3})['"]\s+rate=['"]([0-9.]+)['"]/g)) {
-    eurPer.set(m[1], parseScaled(m[2]));
-  }
-  if (eurPer.size < 2) throw new Error("ECB feed parsed empty");
-  const rates: Rates = { refDate, eurPer };
-  cache = { at: Date.now(), rates };
-  return rates;
+  inflight ??= (async () => {
+    const res = await fetch(ECB_URL, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) throw new Error(`ECB HTTP ${res.status}`);
+    const xml = await res.text();
+    const refDate = xml.match(/time=['"]([0-9-]+)['"]/)?.[1] ?? "";
+    const eurPer = new Map<string, bigint>();
+    eurPer.set("EUR", pow(SCALE)); // 1 EUR = 1 EUR
+    for (const m of xml.matchAll(/currency=['"]([A-Z]{3})['"]\s+rate=['"]([0-9.]+)['"]/g)) {
+      eurPer.set(m[1], parseScaled(m[2]));
+    }
+    if (eurPer.size < 2) throw new Error("ECB feed parsed empty");
+    const rates: Rates = { refDate, fetchedAt: new Date().toISOString(), eurPer };
+    cache = { at: Date.now(), rates };
+    return rates;
+  })().finally(() => { inflight = null; });
+  return inflight;
 }
 
 export interface FxFact {
@@ -60,6 +89,8 @@ export interface FxFact {
   proof_state: "asserted" | "tested";
   recompute: { how: string };
   refDate: string;
+  /** Actual retrieval time of the cached ECB document, stable across cache hits. */
+  fetchedAt: string;
   sourceUrl: string;
 }
 
@@ -71,7 +102,7 @@ export interface FxError {
 export async function getFxRate(base: string, quote: string): Promise<FxFact | FxError> {
   base = base.toUpperCase();
   quote = quote.toUpperCase();
-  const { refDate, eurPer } = await loadRates();
+  const { refDate, fetchedAt, eurPer } = await loadRates();
   if (!eurPer.has(base) || !eurPer.has(quote)) {
     return { error: "unknown currency", available: [...eurPer.keys()].sort() };
   }
@@ -103,6 +134,7 @@ export async function getFxRate(base: string, quote: string): Promise<FxFact | F
     proof_state,
     recompute: { how },
     refDate,
+    fetchedAt,
     sourceUrl: ECB_URL,
   };
 }

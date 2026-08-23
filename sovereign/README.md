@@ -39,17 +39,31 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 | Var | Purpose |
 |---|---|
 | `CASHLOOM_PORT` | HTTP port (default `4747`). |
-| `CASHLOOM_BIND` | Bind address (default `127.0.0.1` — change only if you know why). |
+| `CASHLOOM_BIND` | Loopback bind address (default `127.0.0.1`; only `localhost`, `127.0.0.1`, or `::1` are accepted). Wallet Kernel v2 refuses remote custody exposure. |
+| `CASHLOOM_ALLOWED_HOSTS` | Optional extra Host aliases for a loopback-only development setup. This is a DNS-rebinding control, not remote authentication. |
+| `CASHLOOM_ALLOWED_ORIGINS` | Optional extra browser origins for a loopback-only development setup. This is not an access-control or TLS boundary. |
 | `CASHLOOM_DATA_DIR` | Where the SQLite file + keys live (default `~/.cashloom`). |
-| `CASHLOOM_BASE_RPC_URL` | Base L2 RPC for sending (default public `mainnet.base.org`). A URL, not a credential. |
+| `CASHLOOM_BASE_RPC_URL` | Primary Base RPC for quotes, sending, and evidence (default public `mainnet.base.org`). API-bearing URLs are accepted but never returned in receipts/errors. |
+| `CASHLOOM_BASE_CONFIRMATION_RPC_URL` | Independent Base evidence provider (default public `base-rpc.publicnode.com`). Must be a distinct endpoint; two-provider finalized agreement is required to settle. |
 | `STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*` | Read-only connector keys, **only** if you connect those rails. Each is an env-var **pointer** named on an account; the value is never stored in the DB. |
 
-## What works today (first protocol slice)
+## What works today
 
-- **Vault** — passphrase custody, generate/import EVM keys, lock/unlock.
-- **Pay** — `pay()` over Base L2: **ETH + USDC**, as a two-step rite —
-  `quote` (fee disclosed, nothing signed) → `confirm` (signed + broadcast,
-  once). Failed sends are recorded and surfaced, **never auto-retried**.
+- **Wallet Kernel v2** — CAIP-qualified accounts/assets, canonical intents,
+  exact resource reservations, scoped human/agent authorization, one-time
+  signing, crash-safe exact-byte recovery, reconciliation, and balanced journal
+  evidence. See [`WALLET-KERNEL-V2.md`](../WALLET-KERNEL-V2.md).
+- **Vault** — passphrase custody; generate/import EVM and Bitcoin keys;
+  Argon2id + AES-256-GCM sealing; scoped, expiring sessions; no raw-key signing
+  callback.
+- **Pay** — Base L2 **ETH + USDC** and Bitcoin mainnet **P2WPKH**, as a
+  two-step rite: `quote` (fee disclosed, nothing signed) → `confirm` (signed +
+  broadcast once). Unknown broadcast outcomes are reconciled or explicitly
+  rebroadcast from the same durable bytes, **never re-quoted or auto-retried**.
+- **Base truth** — explicit checks begin from the durable signed transaction,
+  require two-provider `finalized` consensus, verify native USDC effects, and
+  post exact L2 + L1 data/security + operator fees. Missing evidence remains
+  unknown and never releases the nonce.
 - **Read rails** — sync balances + transactions from Stripe, GoCardless,
   Bitcoin (Esplora), Ethereum (Alchemy), and the agenttool agent economy.
   Strictly read-only: nothing behind a connector can move money.
@@ -58,7 +72,8 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 
 ## What's next (honest roadmap)
 
-- **BTC sending** — PSBT + coin selection; its own careful slice.
+- **Hardware/external signers**, passkey-backed smart accounts, WalletConnect,
+  and an opt-in bounded scheduler for the now-live Base reconciliation path.
 - **Lightning**, **more rails** (SEPA, UPI, SOL), **payment pointers**
   (`you@cashloom`), **CSV/receipt import** without any cloud AI.
 - **Tauri desktop packaging** — double-click to run, zero terminal.

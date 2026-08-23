@@ -12,7 +12,6 @@
  */
 
 import * as vault from "../vault.ts";
-import * as ed25519 from "@noble/ed25519";
 import { signatureToBase64Url, type RecordSigner } from "@agenttool/wallet";
 
 const HOST_LABEL = "moneyworld-host-authority";
@@ -26,21 +25,13 @@ export async function ensureHostAuthority(): Promise<{ keyId: string; publicKey:
   return { keyId: info.id, publicKey: info.address as string };
 }
 
-/** A RecordSigner whose signatures come from the vault authority key. Reveals
- *  the seed for exactly one signature and zeroizes it; never returns key
- *  material to the caller. */
+/** A RecordSigner whose signatures come from the vault authority key. The
+ *  plaintext seed never crosses the vault boundary. */
 export async function vaultRecordSigner(keyId: string, publicKey: string): Promise<RecordSigner> {
   return {
     public_key: publicKey,
     async sign_digest(digest: Uint8Array): Promise<string> {
-      const seedHex = await vault.revealForSigning(keyId); // 64-hex ed25519 seed
-      const seed = new Uint8Array(Buffer.from(seedHex, "hex"));
-      try {
-        const sig = await ed25519.signAsync(digest, seed);
-        return signatureToBase64Url(sig);
-      } finally {
-        seed.fill(0);
-      }
+      return signatureToBase64Url(await vault.signEd25519Digest(keyId, digest));
     },
   };
 }

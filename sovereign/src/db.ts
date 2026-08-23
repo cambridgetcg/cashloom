@@ -11,6 +11,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { installWalletKernelSchema } from "./wallet/infrastructure/sqlite/schema.ts";
 
 const dataDir = process.env.CASHLOOM_DATA_DIR ?? join(homedir(), ".cashloom");
 mkdirSync(dataDir, { recursive: true });
@@ -45,6 +46,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   balance_minor       TEXT NOT NULL DEFAULT '0', -- integer minor units as TEXT
   balance_as_of       TEXT,
   external_account_id TEXT,                      -- rail's own id (address, wallet uuid, acct id)
+  chain_id           TEXT,                      -- CAIP-2 for chain accounts
+  asset_id           TEXT,                      -- CAIP-19 for this legacy position
+  account_ref        TEXT,                      -- CAIP-10 for chain accounts
   credential_ref      TEXT,                      -- env-var NAME, never a value
   vault_key_id        TEXT,                      -- local signing key backing this account, if any
   status              TEXT NOT NULL DEFAULT 'ACTIVE',
@@ -105,5 +109,19 @@ const paymentColumns = db.query("PRAGMA table_info(payments)").all() as { name: 
 if (!paymentColumns.some((c) => c.name === "detail")) {
   db.exec("ALTER TABLE payments ADD COLUMN detail TEXT");
 }
+
+// Wallet Kernel v2 makes crypto routing explicit. These additive legacy-table
+// columns let the v1 UI/API name the same CAIP identities without rewriting
+// existing account ids or silently guessing an EVM chain.
+const accountColumns = db.query("PRAGMA table_info(accounts)").all() as { name: string }[];
+for (const column of ["chain_id", "asset_id", "account_ref"] as const) {
+  if (!accountColumns.some((candidate) => candidate.name === column)) {
+    db.exec(`ALTER TABLE accounts ADD COLUMN ${column} TEXT`);
+  }
+}
+
+// Wallet Kernel v2 is additive and migration-transactional. Installing here
+// makes database shape independent of which application route imports first.
+installWalletKernelSchema(db);
 
 export const newId = (): string => crypto.randomUUID();

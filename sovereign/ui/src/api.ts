@@ -1,12 +1,17 @@
 import type {
   Account,
   ConfirmResult,
+  CreateAccountInput,
   Meta,
+  PaymentListItem,
+  PaymentTruth,
+  PaymentReconcileResult,
   Quote,
   SummaryRow,
   SyncResult,
   Tx,
   VaultKey,
+  WalletIntentAudit,
   ZeroneGuide,
   ZeroneStatus,
 } from "./types";
@@ -116,16 +121,8 @@ export const api = {
   }) => request<{ key: VaultKey }>("/api/vault/keys", body),
 
   accounts: () => request<{ accounts: Account[] }>("/api/accounts"),
-  createAccount: (body: {
-    rail: string;
-    display_name: string;
-    currency: string;
-    decimals: number;
-    connector_type?: string;
-    external_account_id?: string;
-    credential_ref?: string;
-    vault_key_id?: string;
-  }) => request<{ account: Account }>("/api/accounts", body),
+  createAccount: (body: CreateAccountInput) =>
+    request<{ account: Account }>("/api/accounts", body),
   archiveAccount: (id: string) =>
     request<{ ok: boolean }>(`/api/accounts/${encodeURIComponent(id)}/archive`, {}),
   syncAccount: (id: string) =>
@@ -152,6 +149,17 @@ export const api = {
     request<Quote>("/api/pay/quote", body),
   payConfirm: (paymentId: string) =>
     request<ConfirmResult>("/api/pay/confirm", { paymentId }),
+
+  payments: () => request<{ payments: PaymentListItem[] }>("/api/payments"),
+  walletIntentAudit: (intentId: string) =>
+    request<WalletIntentAudit>(
+      `/api/wallet/v2/intents/${encodeURIComponent(intentId)}`,
+    ),
+  reconcileBasePayment: (intentId: string) =>
+    request<PaymentReconcileResult | PaymentTruth>(
+      `/api/wallet/v2/intents/${encodeURIComponent(intentId)}/reconcile`,
+      {},
+    ),
 
   // zerone front — public, read-only (works with or without a vault session).
   zeroneGuide: () => request<ZeroneGuide>("/api/zerone/guide"),

@@ -6,7 +6,7 @@
 
 import type { Hono } from "hono";
 import { makeFact } from "./money-fact.ts";
-import { getFxRate } from "./fx.ts";
+import { FX_REFERENCE_DATE_TTL_S, fxReferenceIsStale, getFxRate } from "./fx.ts";
 import { readFees, supportedFeeChains } from "./fees.ts";
 import { ASSETS, resolveAsset, searchAssets } from "./assets.ts";
 import { applyRate } from "../utils/minor-units.ts";
@@ -25,10 +25,11 @@ const INTEGER_STRING = /^-?\d+$/;
 export interface InfoDoorDeps {
   fxRate: typeof getFxRate;
   fees: typeof readFees;
+  now: () => Date;
 }
 
 export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {}) {
-  const deps: InfoDoorDeps = { fxRate: getFxRate, fees: readFees, ...overrides };
+  const deps: InfoDoorDeps = { fxRate: getFxRate, fees: readFees, now: () => new Date(), ...overrides };
 
   // ── fees: what does moving money cost right now ─────────────────────────
   app.get("/v1/fees", async (c) => {
@@ -156,6 +157,14 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         422,
       );
     }
+    if (fxReferenceIsStale(r.refDate, deps.now())) {
+      return c.json(problem(
+        503,
+        "fx reference unavailable",
+        `the ECB ${r.refDate || "undated"} reference observation is too old for conversion`,
+        ["retry after the next ECB publication", "GET /v1/rates/fiat for the source date"],
+      ), 503);
+    }
     const resultMinor = applyRate(amountMinor, from.decimals, r.valueScaled, r.decimals, to.decimals);
     const fact = makeFact({
       subject: from.id,
@@ -166,12 +175,12 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
       plane: "public",
       method: "derived",
       proof_state: "tested",
-      redistribution: "public-domain",
+      redistribution: "attribution-required",
       sources: [
-        { name: "European Central Bank — euro foreign-exchange reference rates", url: r.sourceUrl, fetched_at: new Date().toISOString() },
+          { name: "European Central Bank — euro foreign-exchange reference rates", url: r.sourceUrl, fetched_at: r.fetchedAt },
       ],
       observed_at: r.refDate, // the ECB fixing's own date — never a fabricated "now"
-      stale_after_s: 3600,
+      stale_after_s: FX_REFERENCE_DATE_TTL_S,
       recompute: {
         how: `${amountMinor} × ${r.valueScaled} × 10^(${to.decimals}−${from.decimals}−${r.decimals}), BigInt, final digit half-even; rate: ${r.recompute.how}`,
       },
@@ -191,33 +200,55 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
   app.get("/v1/guide", (c) =>
     c.json({
       "@type": "Guide",
+      schema_version: "cashloom.guide/1",
       what: "MONEYWORLD — a public, cited, non-custodial window on the money world",
       the_stranger_receives: {
-        everything_current: "all doors, full freshness, no registration, no key, no CAPTCHA",
+        everything_current: "all currently served observations at their stated cadence, no registration, no key, no CAPTCHA",
         provenance: "every fact carries sources, method, proof_state, redistribution — no naked numbers",
-        refusals_that_teach: "errors are RFC-9457 problems with next_actions; a dead end names the way forward",
+        refusals_that_teach:
+          "the XENIA Surface resources and router fall-through use typed problems with next_actions; older data routes retain route-specific JSON errors",
       },
       doors: {
+        discovery: "/.well-known/agent.json",
+        orientation: "/v1/orientation",
+        rights_disclosure: "/v1/rights",
+        data_practices: "/v1/data-practices",
+        world: "/v1/world?base={ccy}",
+        onchain: "/v1/onchain",
+        onchain_networks: "/v1/onchain/chains",
+        onchain_stablecoins: "/v1/onchain/stablecoins",
+        onchain_lending: "/v1/onchain/lending-markets",
+        onchain_pools: "/v1/onchain/pools",
+        onchain_bridges: "/v1/onchain/bridges",
         chains: "/v1/chains",
         chain_balance: "/v1/chain/{caip2}/{address}",
         fx_rate: "/v1/fx/{base}/{quote}",
         fx_matrix: "/v1/rates/fiat?base={ccy}",
+        cash_rates: "/v1/rates/cash",
+        fed_announcements: "/v1/announcements/fed",
         fees: "/v1/fees?chain={caip2}",
         assets: "/v1/assets?q={name}",
         convert: "/v1/convert?amount_minor={int}&from={asset}&to={asset}",
+        prices: "/v1/prices",
+        price: "/v1/price/{asset}/{quote}",
+        value: "/v1/value/{amount_minor}/{asset}/{quote}",
+        portfolio: "/v1/portfolio?quote={ccy}&hold={symbol}:{amount_minor}",
       },
       promises_not_to: [
-        "no tracking, fingerprinting, or dossiers — the anonymous floor is a right",
-        "no sale of caller data; nothing is collected to sell",
+        "no account, API key, cookie, or CAPTCHA required by the public GET handlers",
+        "the hosted application entrypoint intentionally persists no caller identity or public-read query values; external logging and retention layers remain separately disclosed and unknown",
         "no delayed-data upsell — freshness is never a paid feature",
         "no fake urgency, no retry pressure, no dark patterns in refusals",
         "no naked numbers — a fact that cannot cite itself is not served",
       ],
+      layer_boundary:
+        "These application-handler practices are not a cross-layer anonymity promise; read /v1/data-practices for Fly.io, Cloudflare, network, operator, browser, and upstream unknowns.",
       not_covered: [
-        "crypto spot prices (no honest source wired yet — refusing beats rumoring)",
-        "commodities benchmarks (licensing unresolved; tokenized proxies would mislead)",
+        "live commodity benchmark prices (display licensing unresolved; tokenized proxies would mislead)",
+        "geopolitical causal scores (association is not proof of impact)",
         "equities and derivatives (structurally out — display licensing is a minefield)",
-        "history beyond the current observation (snapshots are planned, not present)",
+        "long-horizon chart history beyond the official observations currently fetched",
+        "historical onchain volume, TVL rankings, bridge completion aggregates, and protocol-wide risk scores (the launch surface is latest-state and contract-specific)",
       ],
       rights: {
         baseline: "xenia.rights/0.1",
@@ -229,6 +260,13 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         { name: "zerone cosmos REST", keyless: true, license: "public chain data (kingdom's own truth chain)" },
         { name: "Base public RPC", keyless: true, license: "public chain data" },
         { name: "European Central Bank reference rates", keyless: true, license: "free reuse with acknowledgment — named on every fact" },
+        { name: "New York Fed SOFR and EFFR", keyless: true, license: "business reuse with required attribution and reference-rate notice" },
+        { name: "Federal Reserve monetary-policy press release RSS", keyless: true, license: "official titles and links; source document remains authoritative" },
+        { name: "BIS central-bank policy rates", keyless: true, license: "reuse with BIS attribution and commercial-product conditions" },
+        { name: "US Treasury par-yield curve", keyless: true, license: "US government source; methodology linked" },
+        { name: "ECB euro-area yield curve", keyless: true, license: "free reuse with acknowledgment; third-party exclusions still apply" },
+        { name: "Japan Ministry of Finance JGB yields", keyless: true, license: "official reference observations; source terms linked" },
+        { name: "Chainlink BTC/USD and ETH/USD aggregators", keyless: true, license: "public on-chain observations, independently re-derivable" },
       ],
     }),
   );

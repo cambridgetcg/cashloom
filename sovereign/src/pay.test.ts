@@ -33,6 +33,40 @@ describe("pay — quote/confirm discipline", () => {
     ).rejects.toThrow(/No sender for asset "DOGE"/);
   });
 
+  it("refuses a known asset that does not match the account position", async () => {
+    const id = makeAccount(newId());
+    await expect(
+      quotePayment({ accountId: id, to: "0x" + "1".repeat(40), amountMinor: "1", asset: "ETH" }),
+    ).rejects.toThrow(/holds USDC; it cannot send ETH/);
+  });
+
+  it("never routes a generic Ethereum account to Base by symbol", async () => {
+    const keyId = newId();
+    const address = `0x${"3".repeat(40)}`;
+    db.query(
+      `INSERT INTO vault_keys (id, label, kind, address, enc_blob)
+       VALUES (?, 'routing-only fixture', 'evm', ?, ?)`,
+    ).run(keyId, address, new Uint8Array([1]));
+    const accountId = newId();
+    const ethereum = "eip155:1";
+    db.query(
+      `INSERT INTO accounts
+         (id, rail, display_name, currency, decimals, external_account_id,
+          chain_id, asset_id, account_ref, vault_key_id)
+       VALUES (?, 'CRYPTO', 'Ethereum USDC', 'USDC', 6, ?, ?, ?, ?, ?)`,
+    ).run(
+      accountId,
+      address,
+      ethereum,
+      `${ethereum}/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`,
+      `${ethereum}:${address}`,
+      keyId,
+    );
+    await expect(
+      quotePayment({ accountId, to: `0x${"4".repeat(40)}`, amountMinor: "1", asset: "USDC" }),
+    ).rejects.toThrow(/will not guess a chain/);
+  });
+
   it("refuses to confirm a payment that does not exist", async () => {
     await expect(confirmPayment(newId())).rejects.toThrow(/No payment/);
   });

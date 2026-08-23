@@ -11,6 +11,21 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Re-fetch behind the newest known row so late-booking rows still land.
 const OVERLAP_MS = 3 * DAY_MS;
 const FIRST_SYNC_LOOKBACK_MS = 90 * DAY_MS;
+const ATOMIC_INTEGER = /^-?[0-9]+$/;
+
+const requireAtomicInteger = (value: unknown, field: string): string => {
+  if (typeof value !== "string" || !ATOMIC_INTEGER.test(value)) {
+    throw new Error(`Connector ${field} must be a signed decimal integer string.`);
+  }
+  return value;
+};
+
+const requireIsoDate = (value: unknown, field: string): string => {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error(`Connector ${field} must be a valid Date.`);
+  }
+  return value.toISOString();
+};
 
 export interface SyncResult {
   accountId: string;
@@ -45,7 +60,23 @@ export const syncAccount = async (accountId: string): Promise<SyncResult> => {
     externalAccountId: account.external_account_id,
   };
 
-  const balance = await connector.fetchBalance(ctx);
+  const newest = db
+    .query(
+      `SELECT MAX(date) AS d
+       FROM transactions
+       WHERE account_id = ? AND source = 'CONNECTOR' AND external_id IS NOT NULL`,
+    )
+    .get(account.id) as { d: string | null };
+  const since = newest.d
+    ? new Date(Date.parse(newest.d) - OVERLAP_MS)
+    : new Date(Date.now() - FIRST_SYNC_LOOKBACK_MS);
+
+  // Both calls are observation-only and independent. Complete every network
+  // read before opening the short local write transaction.
+  const [balance, fetched] = await Promise.all([
+    connector.fetchBalance(ctx),
+    connector.fetchTransactions(ctx, since),
+  ]);
   if (balance.currency.trim().toUpperCase() !== account.currency.trim().toUpperCase()) {
     throw new Error(
       `Connector reports ${balance.currency} but the account is ${account.currency} — refusing to mix currencies.`
@@ -56,45 +87,71 @@ export const syncAccount = async (accountId: string): Promise<SyncResult> => {
       `Connector reports ${balance.decimals} decimals but the account is set to ${account.decimals} — refusing to mis-scale.`
     );
   }
+  const balanceMinor = requireAtomicInteger(balance.balanceMinor, "balanceMinor");
+  const balanceAsOf = requireIsoDate(balance.asOf, "balance asOf");
 
-  const newest = db
-    .query("SELECT MAX(date) AS d FROM transactions WHERE account_id = ?")
-    .get(account.id) as { d: string | null };
-  const since = newest.d
-    ? new Date(Date.parse(newest.d) - OVERLAP_MS)
-    : new Date(Date.now() - FIRST_SYNC_LOOKBACK_MS);
-
-  const fetched = await connector.fetchTransactions(ctx, since);
-
-  let imported = 0;
-  let skipped = 0;
-  const insert = db.query(
-    `INSERT OR IGNORE INTO transactions (id, account_id, external_id, title, amount_minor, date, source, raw)
-     VALUES (?, ?, ?, ?, ?, ?, 'CONNECTOR', ?)`
-  );
-  for (const tx of fetched) {
+  // Validate and serialize connector material before beginning to write. A
+  // malformed payload therefore leaves both rows and balance untouched.
+  let rejected = 0;
+  const prepared = fetched.flatMap((tx) => {
     if (tx.currency.trim().toUpperCase() !== account.currency.trim().toUpperCase()) {
-      skipped += 1; // foreign-currency row would corrupt every sum — skip loudly in the count
-      continue;
+      rejected += 1;
+      return [];
     }
-    const result = insert.run(
-      newId(),
-      account.id,
-      tx.externalId,
-      tx.title,
-      tx.amountMinor,
-      tx.date.toISOString(),
-      tx.raw === undefined ? null : JSON.stringify(tx.raw)
+    return [{
+      externalId: tx.externalId,
+      title: tx.title,
+      amountMinor: requireAtomicInteger(tx.amountMinor, "transaction amountMinor"),
+      date: requireIsoDate(tx.date, "transaction date"),
+      raw: tx.raw === undefined ? null : JSON.stringify(tx.raw),
+    }];
+  });
+
+  const commit = db.transaction(() => {
+    let imported = 0;
+    let skipped = rejected;
+    const insert = db.query(
+      `INSERT OR IGNORE INTO transactions (id, account_id, external_id, title, amount_minor, date, source, raw)
+       VALUES (?, ?, ?, ?, ?, ?, 'CONNECTOR', ?)`,
     );
-    if (result.changes > 0) imported += 1;
-    else skipped += 1;
-  }
+    for (const tx of prepared) {
+      const result = insert.run(
+        newId(),
+        account.id,
+        tx.externalId,
+        tx.title,
+        tx.amountMinor,
+        tx.date,
+        tx.raw,
+      );
+      if (result.changes > 0) imported += 1;
+      else skipped += 1;
+    }
 
-  db.query("UPDATE accounts SET balance_minor = ?, balance_as_of = ? WHERE id = ?").run(
-    balance.balanceMinor,
-    balance.asOf.toISOString(),
-    account.id
-  );
+    db
+      .query(
+         `UPDATE accounts SET balance_minor = ?, balance_as_of = ?
+         WHERE id = ? AND status = 'ACTIVE'
+           AND (balance_as_of IS NULL OR balance_as_of <= ?)`,
+      )
+      .run(balanceMinor, balanceAsOf, account.id, balanceAsOf);
+    const retained = db
+      .query("SELECT status, balance_minor FROM accounts WHERE id = ?")
+      .get(account.id) as { status: string; balance_minor: string } | null;
+    if (!retained || retained.status !== "ACTIVE") {
+      throw new Error(`Account ${account.id} stopped being active during sync.`);
+    }
 
-  return { accountId: account.id, balanceMinor: balance.balanceMinor, imported, skipped };
+    // A slower, older observation may finish after a newer one. Its ledger
+    // rows still reconcile, but it must not move the account balance backward.
+    return { imported, skipped, balanceMinor: retained.balance_minor };
+  });
+
+  const result = commit();
+  return {
+    accountId: account.id,
+    balanceMinor: result.balanceMinor,
+    imported: result.imported,
+    skipped: result.skipped,
+  };
 };

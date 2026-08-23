@@ -2,18 +2,122 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../api";
 import { EmptyState, Field, LoadingThreads, SectionTitle } from "../components";
 import {
+  PaymentActivity,
+  paymentHasFinalizedConsensus,
+} from "../components/PaymentActivity";
+import { QuoteFeeTerms } from "../components/QuoteFeeTerms";
+import {
   ASSET_DECIMALS,
   formatMinor,
   formatMinorCompact,
   parseToMinor,
 } from "../format";
-import type { Account, ConfirmResult, Quote, VaultKey } from "../types";
+import {
+  LIVE_CRYPTO_IDENTITIES,
+  type Account,
+  type ConfirmResult,
+  type LiveCryptoIdentity,
+  type PaymentListItem,
+  type PaymentReconcileResult,
+  type PaymentTruth,
+  type Quote,
+  type VaultKey,
+} from "../types";
 
 const ASSETS = ["ETH", "USDC", "BTC"] as const;
-type Asset = (typeof ASSETS)[number];
+export type Asset = (typeof ASSETS)[number];
 
-/** Which vault-key kind can sign which asset. */
-const kindFor = (asset: Asset): string => (asset === "BTC" ? "btc" : "evm");
+export function baseReconciliationNotice(
+  truth: PaymentTruth,
+  check?: PaymentReconcileResult["check"],
+): { kind: "status" | "alert"; text: string } {
+  if (check?.available_providers === "0") {
+    return {
+      kind: "alert",
+      text: "Base check reached no evidence provider. Prior local truth is unchanged; try again later.",
+    };
+  }
+  return {
+    kind: "status",
+    text: paymentHasFinalizedConsensus(truth)
+      ? "Base check complete. Finalized evidence is recorded."
+      : "Base check complete. The available provider evidence is recorded; CashLoom has not reached finalized consensus yet.",
+  };
+}
+
+const LIVE_IDENTITY_BY_ASSET: Record<Asset, LiveCryptoIdentity> = {
+  ETH: LIVE_CRYPTO_IDENTITIES.BASE_ETH,
+  USDC: LIVE_CRYPTO_IDENTITIES.BASE_USDC,
+  BTC: LIVE_CRYPTO_IDENTITIES.BITCOIN_BTC,
+};
+
+// Loose client-side shape check only — quote() is the authoritative
+// validator (btc-signer decodes and refuses testnet/mixed-case/bad checksums).
+const BTC_ADDR_SHAPE = /^(bc1[02-9ac-hj-np-z]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
+
+export function isLegacyMappedBitcoinAccount(account: Account): boolean {
+  return (
+    account.chain_id === null &&
+    account.asset_id === null &&
+    account.account_ref === null &&
+    account.connector_type?.toLowerCase() === "esplora"
+  );
+}
+
+/** Pure UI projection of pay.ts's account-routing eligibility boundary. */
+export function isLiveSendingAccount(
+  account: Account,
+  asset: Asset,
+  keyById: ReadonlyMap<string, VaultKey>,
+): boolean {
+  if (
+    account.rail !== "CRYPTO" ||
+    account.status.toUpperCase() !== "ACTIVE" ||
+    !account.vault_key_id
+  ) {
+    return false;
+  }
+  const identity = LIVE_IDENTITY_BY_ASSET[asset];
+  const key = keyById.get(account.vault_key_id);
+  if (!key || key.kind !== identity.keyKind) return false;
+
+  const address = identity.keyKind === "evm" ? key.address.toLowerCase() : key.address;
+  const validAddress =
+    identity.keyKind === "evm"
+      ? /^0x[0-9a-f]{40}$/.test(address)
+      : BTC_ADDR_SHAPE.test(address);
+  if (!validAddress) return false;
+
+  if (
+    account.currency.trim().toUpperCase() !== identity.currency ||
+    account.decimals !== identity.decimals
+  ) {
+    return false;
+  }
+
+  const connector = account.connector_type?.toLowerCase();
+  if (connector === "esplora" && account.external_account_id !== address) {
+    return false;
+  }
+
+  if (asset === "BTC") {
+    const explicitIdentity =
+      account.chain_id === identity.chain_id &&
+      account.asset_id === identity.asset_id &&
+      account.account_ref === `${identity.chain_id}:${address}`;
+    const legacyIdentity =
+      isLegacyMappedBitcoinAccount(account) &&
+      account.external_account_id === address;
+    return explicitIdentity || legacyIdentity;
+  }
+
+  if (account.connector_type?.toLowerCase() === "alchemy") return false;
+  return (
+    account.chain_id === identity.chain_id &&
+    account.asset_id?.toLowerCase() === identity.asset_id &&
+    account.account_ref?.toLowerCase() === `${identity.chain_id}:${address}`
+  );
+}
 
 const explorerFor = (asset: Asset, tx: string) =>
   asset === "BTC"
@@ -23,10 +127,6 @@ const explorerFor = (asset: Asset, tx: string) =>
 const networkNameFor = (asset: Asset): string =>
   asset === "BTC" ? "the Bitcoin network" : "Base";
 
-// Loose client-side shape check only — quote() is the authoritative
-// validator (btc-signer decodes and refuses testnet/mixed-case/bad checksums).
-const BTC_ADDR_SHAPE = /^(bc1[02-9ac-hj-np-z]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
-
 type Stage =
   | { step: "form" }
   | { step: "quoted"; quote: Quote; quotedAt: number }
@@ -34,7 +134,7 @@ type Stage =
   | { step: "done"; result: ConfirmResult };
 
 function decimalsFor(asset: Asset, account: Account | undefined): number {
-  if (account && account.currency === asset) return account.decimals;
+  if (account) return account.decimals;
   return ASSET_DECIMALS[asset] ?? 18;
 }
 
@@ -42,6 +142,13 @@ export function Pay() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [keys, setKeys] = useState<VaultKey[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [payments, setPayments] = useState<PaymentListItem[] | null>(null);
+  const [paymentsErr, setPaymentsErr] = useState<string | null>(null);
+  const [checkingPaymentId, setCheckingPaymentId] = useState<string | null>(null);
+  const [activityNotice, setActivityNotice] = useState<{
+    kind: "status" | "alert";
+    text: string;
+  } | null>(null);
 
   const [accountId, setAccountId] = useState("");
   const [to, setTo] = useState("");
@@ -61,9 +168,11 @@ export function Pay() {
         if (!live) return;
         setAccounts(r.accounts);
         setKeys(k.keys);
-        const first = r.accounts.find(
-          (a) => a.vault_key_id && a.status !== "archived",
-        );
+        const keyById = new Map(k.keys.map((key) => [key.id, key]));
+        const first = r.accounts.find((candidate) => {
+          if (!(ASSETS as readonly string[]).includes(candidate.currency)) return false;
+          return isLiveSendingAccount(candidate, candidate.currency as Asset, keyById);
+        });
         if (first) {
           setAccountId(first.id);
           if ((ASSETS as readonly string[]).includes(first.currency)) {
@@ -79,6 +188,25 @@ export function Pay() {
     };
   }, []);
 
+  // Recent records are local projections. Loading them independently keeps a
+  // slow account connector from hiding payment truth after a refresh.
+  useEffect(() => {
+    let live = true;
+    void api.payments().then(
+      (result) => {
+        if (!live) return;
+        setPayments(result.payments);
+        setPaymentsErr(null);
+      },
+      (ex: unknown) => {
+        if (live) setPaymentsErr(errorMessage(ex));
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
   // Countdown clock while a quote is on the table.
   useEffect(() => {
     if (stage.step !== "quoted") return;
@@ -86,18 +214,15 @@ export function Pay() {
     return () => window.clearInterval(t);
   }, [stage.step]);
 
-  // Only accounts whose bound key can actually SIGN the chosen asset —
-  // a btc key cannot sign Base, an evm key cannot sign Bitcoin.
-  const keyKindById = useMemo(() => new Map(keys.map((k) => [k.id, k.kind])), [keys]);
+  // Eligibility mirrors the kernel's exact routing boundary: asset position,
+  // chain, account address and key kind must all agree before it appears here.
+  const keyById = useMemo(() => new Map(keys.map((key) => [key.id, key])), [keys]);
   const eligible = useMemo(
     () =>
-      (accounts ?? []).filter(
-        (a) =>
-          a.vault_key_id &&
-          a.status !== "archived" &&
-          keyKindById.get(a.vault_key_id) === kindFor(asset),
+      (accounts ?? []).filter((candidate) =>
+        isLiveSendingAccount(candidate, asset, keyById),
       ),
-    [accounts, keyKindById, asset],
+    [accounts, keyById, asset],
   );
   const account = eligible.find((a) => a.id === accountId);
   const decimals = decimalsFor(asset, account);
@@ -107,6 +232,8 @@ export function Pay() {
   useEffect(() => {
     if (!eligible.some((a) => a.id === accountId) && eligible.length > 0) {
       setAccountId(eligible[0].id);
+    } else if (eligible.length === 0 && accountId !== "") {
+      setAccountId("");
     }
   }, [asset, eligible, accountId]);
 
@@ -170,6 +297,41 @@ export function Pay() {
           error: errorMessage(ex),
         },
       });
+    } finally {
+      void refreshPayments();
+    }
+  }
+
+  async function refreshPayments(): Promise<void> {
+    try {
+      const result = await api.payments();
+      setPayments(result.payments);
+      setPaymentsErr(null);
+    } catch (ex) {
+      setPaymentsErr(errorMessage(ex));
+    }
+  }
+
+  async function reconcile(payment: PaymentListItem): Promise<void> {
+    setCheckingPaymentId(payment.id);
+    setActivityNotice(null);
+    try {
+      const response = await api.reconcileBasePayment(payment.id);
+      const truth: PaymentTruth = "truth" in response ? response.truth : response;
+      const check = "truth" in response ? response.check : undefined;
+      setPayments((current) =>
+        current?.map((candidate) =>
+          candidate.id === payment.id ? { ...candidate, truth } : candidate,
+        ) ?? null,
+      );
+      setActivityNotice(baseReconciliationNotice(truth, check));
+      // Re-read the local projection so lifecycle and legacy status changes
+      // committed by reconciliation arrive alongside the returned truth.
+      await refreshPayments();
+    } catch (ex) {
+      setActivityNotice({ kind: "alert", text: `Base check unavailable: ${errorMessage(ex)}` });
+    } finally {
+      setCheckingPaymentId(null);
     }
   }
 
@@ -180,22 +342,51 @@ export function Pay() {
     setFormErr(null);
   }
 
-  if (loadErr) return <EmptyState>{loadErr}</EmptyState>;
-  if (!accounts) return <LoadingThreads />;
+  const activity = (
+    <PaymentActivity
+      payments={payments}
+      error={paymentsErr}
+      checkingId={checkingPaymentId}
+      notice={activityNotice}
+      onReconcile={(payment) => void reconcile(payment)}
+    />
+  );
+
+  if (loadErr) {
+    return (
+      <div className="stagger">
+        <SectionTitle>Pay</SectionTitle>
+        <EmptyState>{loadErr}</EmptyState>
+        {activity}
+      </div>
+    );
+  }
+  if (!accounts) {
+    return (
+      <div className="stagger">
+        <SectionTitle>Pay</SectionTitle>
+        <LoadingThreads />
+        {activity}
+      </div>
+    );
+  }
 
   // Only bail out entirely when NOTHING can sign — if the mismatch is just
   // the chosen asset (evm key, BTC picked), keep the form so the asset
   // switcher stays reachable.
-  const anyKeyBacked = accounts.some((a) => a.vault_key_id && a.status !== "archived");
-  if (!anyKeyBacked) {
+  const anyLiveSending = ASSETS.some((candidateAsset) =>
+    accounts.some((candidate) => isLiveSendingAccount(candidate, candidateAsset, keyById)),
+  );
+  if (!anyLiveSending) {
     return (
       <div className="stagger">
         <SectionTitle>Pay</SectionTitle>
         <EmptyState>
-          Nothing here can sign yet. Paying needs a CRYPTO account bound to a
-          vault key — weave a key under <strong>Keys</strong>, then bind it to
-          an account under <strong>Accounts</strong>.
+          Nothing here is an exact live sending position yet. Paying needs a
+          Base ETH, Base USDC, or Bitcoin mainnet account whose CAIP identity
+          and public address match its vault key. Add one under <strong>Accounts</strong>.
         </EmptyState>
+        {activity}
       </div>
     );
   }
@@ -259,6 +450,7 @@ export function Pay() {
             Weave another payment
           </button>
         </div>
+        {activity}
       </div>
     );
   }
@@ -293,7 +485,7 @@ export function Pay() {
 
           <dl className="quote-facts">
             <div>
-              <dt>Network fee</dt>
+              <dt>{quote.feeTerms ? "Estimated network fee" : "Network fee"}</dt>
               <dd>
                 <span className="amt">
                   {formatMinorCompact(quote.feeMinor, feeDecimals)} {quote.feeAsset}
@@ -305,6 +497,14 @@ export function Pay() {
               <dd className="fee-zero">Nothing. Pass-through only, ever.</dd>
             </div>
           </dl>
+
+          {quote.feeTerms && (
+            <QuoteFeeTerms
+              terms={quote.feeTerms}
+              feeAsset={quote.feeAsset}
+              feeDecimals={feeDecimals}
+            />
+          )}
 
           {hasClock && (
             <div className={`quote-clock${expired ? " is-expired" : ""}`}>
@@ -349,6 +549,7 @@ export function Pay() {
             </p>
           )}
         </div>
+        {activity}
       </div>
     );
   }
@@ -362,14 +563,16 @@ export function Pay() {
           label="From"
           hint={
             eligible.length === 0
-              ? `No account holds a ${kindFor(asset)}-kind key, so nothing can sign ${asset} — weave one under Keys, bind it under Accounts.`
-              : "Only accounts bound to a vault key of the right kind can sign."
+              ? `No account exactly matches the live ${LIVE_IDENTITY_BY_ASSET[asset].networkLabel} ${asset} identity and its vault key.`
+              : "Only an exact asset, chain, account-address and vault-key match appears here."
           }
         >
           <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            {eligible.length === 0 && <option value="">no eligible account</option>}
             {eligible.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.display_name} · {formatMinor(a.balance_minor, a.decimals)} {a.currency}
+                {a.display_name} · {formatMinor(a.balance_minor, a.decimals)} {a.currency} · {a.chain_id ?? "Bitcoin mainnet"}
+                {isLegacyMappedBitcoinAccount(a) ? " · legacy mapped" : ""}
               </option>
             ))}
           </select>
@@ -439,6 +642,7 @@ export function Pay() {
           </span>
         </div>
       </form>
+      {activity}
     </div>
   );
 }

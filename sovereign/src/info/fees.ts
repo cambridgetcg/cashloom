@@ -16,6 +16,7 @@ const BASE_CAIP2 = "eip155:8453";
 const ESPLORA_FEES_URL = "https://blockstream.info/api/fee-estimates";
 const BASE_RPC_URL = (): string =>
   process.env.CASHLOOM_BASE_RPC_URL?.trim() || "https://mainnet.base.org";
+const BASE_RPC_REFERENCE_URL = "https://docs.base.org/base-chain/reference/public-rpc-endpoints";
 
 export type FeeFetchers = {
   esploraFees: () => Promise<Record<string, number>>;
@@ -103,7 +104,13 @@ export const FEE_ENTRIES: FeeEntry[] = [
         proof_state: "tested",
         redistribution: "onchain-rederivable",
         sources: [
-          { name: "Base public RPC", url: BASE_RPC_URL(), fetched_at: new Date().toISOString() },
+          {
+            name: "Base mainnet eth_gasPrice via configured/public RPC",
+            // A configured provider URL may contain an API credential. Cite the
+            // public method documentation, never echo connection configuration.
+            url: BASE_RPC_REFERENCE_URL,
+            fetched_at: new Date().toISOString(),
+          },
         ],
         observed_at: new Date().toISOString(),
         stale_after_s: 30,
@@ -121,7 +128,7 @@ export function supportedFeeChains(): string[] {
   return FEE_ENTRIES.map((e) => `${e.chain} (${e.label})`);
 }
 
-// 30s micro-cache + in-flight dedupe for the default (network) path only —
+// 20s micro-cache + in-flight dedupe for the default (network) path only —
 // honest by the facts' own stale_after_s labels; injected test fetchers bypass.
 let feeCache: { at: number; result: Awaited<ReturnType<typeof readAll>> } | null = null;
 let feeInflight: Promise<Awaited<ReturnType<typeof readAll>>> | null = null;
@@ -151,7 +158,7 @@ export async function readFees(
   if (chainFilter?.trim() && wanted.length === 0) return { facts: [], failed: [], unknown: chainFilter };
   let all;
   if (fetchers === defaultFetchers) {
-    if (feeCache && Date.now() - feeCache.at < 30_000) all = feeCache.result;
+    if (feeCache && Date.now() - feeCache.at < 20_000) all = feeCache.result;
     else {
       feeInflight ??= readAll(fetchers).then((r) => {
         feeCache = { at: Date.now(), result: r };

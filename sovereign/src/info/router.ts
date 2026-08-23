@@ -1,6 +1,6 @@
 /**
- * MONEYWORLD — the first public door. A secretless, cited, Xenia-negotiated
- * window on the money world. Mounted ABOVE the vault session gate (like
+ * MONEYWORLD — the first public door. A secretless, cited window on the money
+ * world. Mounted ABOVE the vault session gate (like
  * /api/zerone): it never touches the vault, so it is non-custodial by POSITION,
  * not by promise. Humans and agents hit the same door and get their own shape.
  */
@@ -8,10 +8,16 @@
 import type { Hono } from "hono";
 import { makeFact, factToHtml, MONEYFACT_MEDIA_TYPE, type MoneyFact } from "./money-fact.ts";
 import { resolveChain, listChains } from "./chains.ts";
-import { getFxRate, listQuotesFrom, type FxFact } from "./fx.ts";
+import {
+  FX_REFERENCE_DATE_TTL_S,
+  fxReferenceIsStale,
+  getFxRate,
+  listQuotesFrom,
+  type FxFact,
+} from "./fx.ts";
 
-// Xenia legibility: a human browser (Accept: text/html) gets the card; a
-// machine (application/json, a MoneyFact media type, or ?agent) gets the fact.
+// Legacy human/machine legibility outside the bounded XENIA Surface resources:
+// a browser gets a card; a machine or ?agent caller gets the MoneyFact.
 function wantsMachine(c: { req: { header(k: string): string | undefined; query(k: string): string | undefined } }): boolean {
   if (c.req.query("agent") !== undefined) return true;
   const a = c.req.header("Accept") ?? "";
@@ -30,35 +36,6 @@ const problem = (status: number, title: string, detail: string, next?: string[])
 });
 
 export function mountMoneyworld(app: Hono) {
-  // Machine discovery — findable and nameable by machines alone.
-  app.get("/.well-known/agent.json", (c) =>
-    c.json({
-      name: "cashloom · moneyworld",
-      what: "a public, cited, non-custodial window on the money world — for humans and agents alike",
-      rights_baseline: "xenia.rights/0.1 · https://github.com/cambridgetcg/xenia",
-      doors: {
-        chains: "/v1/chains",
-        chain_balance: "/v1/chain/{caip2}/{address}",
-        fx_rate: "/v1/fx/{base}/{quote}",
-        fx_matrix: "/v1/rates/fiat?base={ccy}",
-        fees: "/v1/fees?chain={caip2}",
-        assets: "/v1/assets?q={name}",
-        convert: "/v1/convert?amount_minor={int}&from={asset}&to={asset}",
-        guide: "/v1/guide",
-        rights: "/RIGHTS.md",
-      },
-      formats: { moneyfact: MONEYFACT_MEDIA_TYPE },
-      terms: {
-        read_without_registration: true,
-        collects: "nothing",
-        custody: "none — reads public chain state only, never holds or moves money",
-        pricing:
-          "current-value reads are free; safety signals are free forever; a failed answer is never charged",
-        provenance: "every fact cites its sources and its proof_state — no naked numbers",
-      },
-    }),
-  );
-
   // The CAIP-2 registry — proof that chain-agnosticism is a table lookup.
   app.get("/v1/chains", (c) =>
     c.json({
@@ -130,12 +107,12 @@ export function mountMoneyworld(app: Hono) {
       plane: "public",
       method: r.method,
       proof_state: r.proof_state,
-      redistribution: "public-domain",
+      redistribution: "attribution-required",
       sources: [
-        { name: "European Central Bank — euro foreign-exchange reference rates", url: r.sourceUrl, fetched_at: new Date().toISOString() },
+        { name: "European Central Bank — euro foreign-exchange reference rates", url: r.sourceUrl, fetched_at: r.fetchedAt },
       ],
-      observed_at: new Date().toISOString(),
-      stale_after_s: 3600,
+      observed_at: r.refDate,
+      stale_after_s: FX_REFERENCE_DATE_TTL_S,
       recompute: r.recompute,
     });
 
@@ -151,6 +128,9 @@ export function mountMoneyworld(app: Hono) {
     if ("error" in r) {
       return c.json(problem(422, "unknown currency", `'${base}' or '${quote}' is not in the ECB reference set`, ["GET /v1/rates/fiat"]), 422);
     }
+    if (fxReferenceIsStale(r.refDate)) {
+      return c.json(problem(503, "fx reference unavailable", `the ECB ${r.refDate || "undated"} reference observation is too old`, ["retry after the next ECB publication"]), 503);
+    }
     const fact = fxToFact(r);
     if (!wantsMachine(c)) return c.html(factToHtml(fact, `${r.quote} per ${r.base}`));
     c.header("Content-Type", MONEYFACT_MEDIA_TYPE);
@@ -165,6 +145,9 @@ export function mountMoneyworld(app: Hono) {
       listing = await listQuotesFrom(base);
     } catch {
       return c.json(problem(502, "source unreachable", "the ECB reference-rate feed did not answer", ["retry shortly"]), 502);
+    }
+    if (fxReferenceIsStale(listing.refDate)) {
+      return c.json(problem(503, "fx references unavailable", `the ECB ${listing.refDate || "undated"} reference observations are too old`, ["retry after the next ECB publication"]), 503);
     }
     const facts: MoneyFact[] = [];
     for (const quote of listing.quotes) {

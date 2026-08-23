@@ -18,6 +18,16 @@ export default function Nav() {
         <span className="selvage__sub">The Atlas</span>
       </a>
       <ul className="selvage__links">
+        <li>
+          <a href="/world" className="selvage__link">
+            World ↗
+          </a>
+        </li>
+        <li>
+          <a href="/onchain" className="selvage__link">
+            Onchain ↗
+          </a>
+        </li>
         {LINKS.map((l) => (
           <li key={l.id}>
             <a

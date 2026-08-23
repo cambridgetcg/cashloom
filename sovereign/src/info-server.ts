@@ -19,13 +19,73 @@ import {
 } from "./zerone.ts";
 import { mountMoneyworld } from "./info/router.ts";
 import { mountInfoDoors } from "./info/doors.ts";
+import { mountPriceDoors } from "./info/price-door.ts";
+import { mountZeroneTruth } from "./info/zerone-truth.ts";
+import { mountWorldDoor } from "./info/world-door.ts";
+import { mountCashRatesDoor } from "./info/cash-rates.ts";
+import { mountFedAnnouncementsDoor } from "./info/fed-announcements.ts";
+import { mountOnchainDoor } from "./info/blockchain/door.ts";
+import {
+  CASHLOOM_PUBLIC_ORIGIN_HEADER,
+  mountXeniaSurface,
+  surfaceInternalErrorResponse,
+  surfaceRouteNotFoundResponse,
+} from "./info/xenia-surface.ts";
 import { readFileSync } from "node:fs";
+import { cors } from "hono/cors";
+import {
+  compressPublicResponses,
+  publicDeliveryHeaders,
+} from "./info/http-delivery.ts";
 
 const app = new Hono();
 
 const PORT = Number(process.env.CASHLOOM_PORT ?? 4747);
-// The hosted door binds wide on purpose — it holds nothing and collects nothing.
+// The hosted door binds wide on purpose — its module graph has no custody,
+// ledger, or sender modules. Request metadata at external layers is disclosed
+// separately by /v1/data-practices.
 const HOSTNAME = process.env.CASHLOOM_BIND ?? "0.0.0.0";
+
+// Apply the representation transform inside the delivery-receipt middleware:
+// responses keep every existing Vary field and additionally disclose that
+// content coding changes with Accept-Encoding.
+app.use("*", publicDeliveryHeaders);
+app.use("*", compressPublicResponses());
+
+// This process exposes public, read-only facts only. Wildcard CORS is therefore
+// deliberate: cashloom.io, self-hosted dashboards, spreadsheets, and agents can
+// read the same application surface, while no credentialed route exists here.
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowMethods: ["GET", "HEAD", "OPTIONS"],
+    allowHeaders: [
+      "Accept",
+      "Cache-Control",
+      "Content-Type",
+      "If-Modified-Since",
+      "If-None-Match",
+      "Prefer",
+      CASHLOOM_PUBLIC_ORIGIN_HEADER,
+    ],
+    exposeHeaders: [
+      "Age",
+      "Cache-Control",
+      "ETag",
+      "Last-Modified",
+      "Preference-Applied",
+      "Retry-After",
+      "Server-Timing",
+      "Timing-Allow-Origin",
+      "Vary",
+      "Warning",
+      "X-CashLoom-Cache",
+      "X-CashLoom-Snapshot-Age",
+    ],
+    maxAge: 86_400,
+  }),
+);
 
 app.get("/api/meta", (c) =>
   c.json({
@@ -52,8 +112,15 @@ app.get("/api/zerone/balance/:address", async (c) => {
 });
 
 /* ------------------------- moneyworld (the point) ------------------------- */
+mountXeniaSurface(app);
 mountMoneyworld(app);
 mountInfoDoors(app);
+mountPriceDoors(app);
+mountCashRatesDoor(app);
+mountFedAnnouncementsDoor(app);
+mountWorldDoor(app);
+mountOnchainDoor(app);
+mountZeroneTruth(app);
 
 /* ------------------------------- the rights ------------------------------- */
 const rightsMd = readFileSync(new URL("../../RIGHTS.md", import.meta.url), "utf-8");
@@ -68,37 +135,11 @@ app.get("/.well-known/xenia-rights.json", (c) =>
 );
 
 /* --------------------------------- errors --------------------------------- */
-app.onError((err, c) =>
-  c.json(
-    {
-      type: "about:blank",
-      title: "request failed",
-      status: 400,
-      detail: err instanceof Error ? err.message : "something broke",
-      next_actions: ["GET /v1/guide for every door and the terms of hospitality"],
-    },
-    400
-  )
-);
+app.onError((_err, c) => surfaceInternalErrorResponse(c.req.raw));
 
 // The default is a TEACHING 404 — never a shell, never a redirect, never HTML
 // pretending to be an API. Every dead end names the way forward.
-app.notFound((c) =>
-  c.json(
-    {
-      type: "about:blank",
-      title: "not found",
-      status: 404,
-      detail: `nothing lives at ${new URL(c.req.url).pathname}`,
-      next_actions: [
-        "GET /v1/guide — every door, the promises, the honest gaps",
-        "GET /.well-known/agent.json — machine discovery",
-        "GET /RIGHTS.md — the rights these doors stand on",
-      ],
-    },
-    404
-  )
-);
+app.notFound((c) => surfaceRouteNotFoundResponse(c.req.raw));
 
 const server = Bun.serve({ port: PORT, hostname: HOSTNAME, fetch: app.fetch });
 console.log(

@@ -102,9 +102,12 @@ async function ethCall(rpc: string, to: string, data: string): Promise<`0x${stri
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to, data }, "latest"] }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`rpc answered ${res.status}`);
+  if (!res.ok) throw new Error("PRICE_RPC_HTTP_ERROR");
   const body = (await res.json()) as { result?: string; error?: { message?: string } };
-  if (!body.result) throw new Error(`rpc error: ${body.error?.message ?? "no result"}`);
+  // Provider error bodies can echo request URLs, headers, or account metadata.
+  // Keep the diagnostic private to the adapter and expose only the fixed public
+  // failure contract below.
+  if (!body.result) throw new Error("PRICE_RPC_RESULT_MISSING");
   return body.result as `0x${string}`;
 }
 
@@ -136,18 +139,43 @@ export const defaultFetchers: OracleFetchers = {
   },
 };
 
+export const PRICE_FAILURE = Object.freeze({
+  stale: {
+    code: "price_oracle_stale",
+    message: "The on-chain price observation is older than its configured heartbeat.",
+  },
+  answer: {
+    code: "price_oracle_answer_invalid",
+    message: "The on-chain price source returned a non-positive answer.",
+  },
+  decimals: {
+    code: "price_oracle_decimals_mismatch",
+    message: "The on-chain price source decimals did not match the configured feed.",
+  },
+  description: {
+    code: "price_oracle_description_mismatch",
+    message: "The on-chain price source description did not match the configured feed.",
+  },
+  upstream: {
+    code: "price_upstream_unavailable",
+    message: "The on-chain price source did not answer with a usable observation.",
+  },
+} as const);
+
+export type PriceFailureCode = (typeof PRICE_FAILURE)[keyof typeof PRICE_FAILURE]["code"];
+
 export type OracleResult =
   | { kind: "price"; fact: MoneyFact; age_s: number; heartbeat_s: number }
-  | { kind: "stale"; pair: string; age_s: number; heartbeat_s: number; updated_at: string }
-  | { kind: "invalid"; pair: string; reason: string }
-  | { kind: "unreachable"; pair: string; detail: string };
+  | { kind: "stale"; pair: string; code: typeof PRICE_FAILURE.stale.code; age_s: number; heartbeat_s: number; updated_at: string }
+  | { kind: "invalid"; pair: string; code: PriceFailureCode; reason: string }
+  | { kind: "unreachable"; pair: string; code: typeof PRICE_FAILURE.upstream.code; detail: string };
 
-const STALE_GRACE_S = 300; // small buffer over the heartbeat before "stale"
-
-function sourcesFor(feed: PriceFeed, rpc: string, roundId: bigint): Source[] {
+function sourcesFor(feed: PriceFeed, roundId: bigint): Source[] {
   return [{
-    name: `Chainlink ${feed.description} aggregator (on-chain) via public RPC`,
-    url: `${rpc} eth_call getRoundData(${roundId.toString()}) @ ${feed.aggregator} on ${feed.caip2}`,
+    name: `Chainlink ${feed.description} aggregator (on-chain; round ${roundId.toString()})`,
+    // Never publish the configured RPC URL: hosted provider endpoints commonly
+    // contain credentials. The public contract is the durable verification URL.
+    url: `https://etherscan.io/address/${feed.aggregator}#readContract`,
     fetched_at: new Date().toISOString(),
   }];
 }
@@ -169,22 +197,33 @@ export async function readPrice(feed: PriceFeed, fetchers: OracleFetchers = defa
       meta ? Promise.resolve(meta.description) : fetchers.description(rpc, feed.aggregator),
     ]);
     if (useCache && !meta) immutableCache.set(feed.aggregator, { decimals: onchainDecimals, description: onchainDesc });
-  } catch (e: any) {
-    return { kind: "unreachable", pair, detail: `${feed.aggregator} on ${feed.caip2}: ${e?.message ?? e}` };
+  } catch {
+    return {
+      kind: "unreachable",
+      pair,
+      code: PRICE_FAILURE.upstream.code,
+      detail: PRICE_FAILURE.upstream.message,
+    };
   }
 
   // guard: the answer must be a positive number
-  if (round.answer <= 0n) return { kind: "invalid", pair, reason: `oracle answer ${round.answer} is not > 0` };
+  if (round.answer <= 0n) {
+    return { kind: "invalid", pair, code: PRICE_FAILURE.answer.code, reason: PRICE_FAILURE.answer.message };
+  }
   // guard: the aggregator must be the one we think it is
-  if (onchainDecimals !== feed.decimals) return { kind: "invalid", pair, reason: `on-chain decimals ${onchainDecimals} ≠ expected ${feed.decimals}` };
-  if (onchainDesc.trim() !== feed.description) return { kind: "invalid", pair, reason: `on-chain description '${onchainDesc}' ≠ expected '${feed.description}'` };
+  if (onchainDecimals !== feed.decimals) {
+    return { kind: "invalid", pair, code: PRICE_FAILURE.decimals.code, reason: PRICE_FAILURE.decimals.message };
+  }
+  if (onchainDesc.trim() !== feed.description) {
+    return { kind: "invalid", pair, code: PRICE_FAILURE.description.code, reason: PRICE_FAILURE.description.message };
+  }
 
   // guard: staleness, measured against the ORACLE's own clock
   const updatedMs = Number(round.updatedAt) * 1000;
   const observed_at = new Date(updatedMs).toISOString();
   const age_s = Math.max(0, Math.round((Date.now() - updatedMs) / 1000));
-  if (age_s > feed.heartbeat_s + STALE_GRACE_S) {
-    return { kind: "stale", pair, age_s, heartbeat_s: feed.heartbeat_s, updated_at: observed_at };
+  if (age_s > feed.heartbeat_s) {
+    return { kind: "stale", pair, code: PRICE_FAILURE.stale.code, age_s, heartbeat_s: feed.heartbeat_s, updated_at: observed_at };
   }
 
   const fact = makeFact({
@@ -197,7 +236,7 @@ export async function readPrice(feed: PriceFeed, fetchers: OracleFetchers = defa
     method: "observed",
     proof_state: "tested",
     redistribution: "onchain-rederivable",
-    sources: sourcesFor(feed, rpc, round.roundId),
+    sources: sourcesFor(feed, round.roundId),
     observed_at, // the oracle's round clock, NEVER new Date()
     stale_after_s: feed.heartbeat_s,
     recompute: {
@@ -212,7 +251,7 @@ export async function readPrice(feed: PriceFeed, fetchers: OracleFetchers = defa
 export async function spotPriceLeg(
   feed: PriceFeed,
   fetchers?: OracleFetchers,
-): Promise<{ valueScaled: string; scale: number; observed_at: string; sources: Source[]; recompute: { how: string } } | { stale: true; detail: string }> {
+): Promise<{ valueScaled: string; scale: number; observed_at: string; sources: Source[]; recompute: { how: string } } | { stale: true; code: PriceFailureCode; detail: string }> {
   const r = await readPrice(feed, fetchers);
   if (r.kind === "price") {
     return {
@@ -223,7 +262,7 @@ export async function spotPriceLeg(
       recompute: r.fact.recompute!,
     };
   }
-  if (r.kind === "stale") return { stale: true, detail: `${r.pair} price is stale (${r.age_s}s old > ${r.heartbeat_s}s heartbeat; updated ${r.updated_at})` };
-  if (r.kind === "invalid") return { stale: true, detail: `${r.pair} price unusable: ${r.reason}` };
-  return { stale: true, detail: `${r.pair} price source unreachable: ${r.detail}` };
+  if (r.kind === "stale") return { stale: true, code: r.code, detail: PRICE_FAILURE.stale.message };
+  if (r.kind === "invalid") return { stale: true, code: r.code, detail: r.reason };
+  return { stale: true, code: r.code, detail: r.detail };
 }

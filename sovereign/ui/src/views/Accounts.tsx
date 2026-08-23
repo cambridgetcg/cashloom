@@ -11,7 +11,17 @@ import {
 } from "../components";
 import { formatMinor, shortAddress } from "../format";
 import { toast } from "../toast";
-import { RAILS, type Account, type Rail, type VaultKey } from "../types";
+import {
+  LIVE_CRYPTO_IDENTITIES,
+  RAILS,
+  type Account,
+  type Caip10AccountId,
+  type Caip19AssetId,
+  type Caip2ChainId,
+  type LiveCryptoAsset,
+  type Rail,
+  type VaultKey,
+} from "../types";
 
 const RAIL_DEFAULTS: Record<Rail, { currency: string; decimals: number }> = {
   STRIPE: { currency: "USD", decimals: 2 },
@@ -21,6 +31,42 @@ const RAIL_DEFAULTS: Record<Rail, { currency: string; decimals: number }> = {
   PLATFORM_CREDIT: { currency: "USD", decimals: 2 },
   GIFT_CARD: { currency: "USD", decimals: 2 },
 };
+
+type CryptoChoice = LiveCryptoAsset | "ADVANCED";
+
+const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const BITCOIN_MAINNET_ADDRESS =
+  /^(bc1[02-9ac-hj-np-z]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
+const CAIP_2 = /^[-a-z0-9]{3,8}:[-_a-zA-Z0-9]{1,32}$/;
+const CAIP_10 = /^[-a-z0-9]{3,8}:[-_a-zA-Z0-9]{1,32}:[-.%a-zA-Z0-9]{1,128}$/;
+const CAIP_19 =
+  /^[-a-z0-9]{3,8}:[-_a-zA-Z0-9]{1,32}\/[-a-z0-9]{3,8}:[-.%a-zA-Z0-9]{1,128}(?:\/[-.%a-zA-Z0-9]{1,78})?$/;
+
+function chainIdProblem(value: string): string | null {
+  if (!CAIP_2.test(value)) return "Chain ID must be a CAIP-2 id, such as eip155:8453.";
+  const [namespace, reference] = value.split(":", 2);
+  if (namespace === "eip155" && !/^(?:0|[1-9]\d*)$/.test(reference ?? "")) {
+    return "An eip155 chain reference must be a canonical unsigned number.";
+  }
+  if (namespace === "bip122" && !/^[0-9a-f]{32}$/.test(reference ?? "")) {
+    return "A bip122 chain reference must be 32 lowercase hexadecimal characters.";
+  }
+  if (
+    namespace === "solana" &&
+    !/^[1-9A-HJ-NP-Za-km-z]{32}$/.test(reference ?? "")
+  ) {
+    return "A solana chain reference must be 32 base58 characters.";
+  }
+  return null;
+}
+
+function compactAccountAddress(account: Account): string | null {
+  if (!account.chain_id || !account.account_ref) return null;
+  const prefix = `${account.chain_id}:`;
+  return account.account_ref.startsWith(prefix)
+    ? shortAddress(account.account_ref.slice(prefix.length))
+    : null;
+}
 
 export function Accounts() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
@@ -37,6 +83,11 @@ export function Accounts() {
   const [externalId, setExternalId] = useState("");
   const [credentialRef, setCredentialRef] = useState("");
   const [vaultKeyId, setVaultKeyId] = useState("");
+  const [cryptoChoice, setCryptoChoice] = useState<CryptoChoice>("BASE_ETH");
+  const [advancedChainId, setAdvancedChainId] = useState("");
+  const [advancedAssetId, setAdvancedAssetId] = useState("");
+  const [advancedAccountRef, setAdvancedAccountRef] = useState("");
+  const [esploraAutofilled, setEsploraAutofilled] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -60,9 +111,70 @@ export function Accounts() {
 
   function pickRail(r: Rail) {
     setRail(r);
-    setCurrency(RAIL_DEFAULTS[r].currency);
-    setDecimals(RAIL_DEFAULTS[r].decimals);
-    if (r !== "CRYPTO") setVaultKeyId("");
+    if (r === "CRYPTO") {
+      const preset = LIVE_CRYPTO_IDENTITIES[cryptoChoice === "ADVANCED" ? "BASE_ETH" : cryptoChoice];
+      if (cryptoChoice !== "ADVANCED") {
+        setCurrency(preset.currency);
+        setDecimals(preset.decimals);
+      }
+    } else {
+      setCurrency(RAIL_DEFAULTS[r].currency);
+      setDecimals(RAIL_DEFAULTS[r].decimals);
+      setVaultKeyId("");
+      if (esploraAutofilled) {
+        setConnectorChoice("");
+        setExternalId("");
+        setEsploraAutofilled(false);
+      }
+    }
+  }
+
+  function chooseCryptoAsset(choice: CryptoChoice) {
+    setCryptoChoice(choice);
+    if (choice === "ADVANCED") {
+      // Advanced identities are deliberately watch-only. A generic chain or
+      // token must not acquire apparent signing support from an address guess.
+      setVaultKeyId("");
+      if (esploraAutofilled) {
+        setConnectorChoice("");
+        setExternalId("");
+        setEsploraAutofilled(false);
+      }
+      return;
+    }
+
+    const preset = LIVE_CRYPTO_IDENTITIES[choice];
+    setCurrency(preset.currency);
+    setDecimals(preset.decimals);
+
+    const selected = keys.find((key) => key.id === vaultKeyId);
+    if (selected && selected.kind !== preset.keyKind) setVaultKeyId("");
+
+    if (choice === "BITCOIN_BTC" && selected?.kind === "btc") {
+      setConnectorChoice("esplora");
+      setExternalId(selected.address);
+      setCredentialRef("");
+      setEsploraAutofilled(true);
+    } else if (esploraAutofilled) {
+      setConnectorChoice("");
+      setExternalId("");
+      setEsploraAutofilled(false);
+    }
+  }
+
+  function chooseVaultKey(id: string) {
+    setVaultKeyId(id);
+    const key = keys.find((candidate) => candidate.id === id);
+    if (cryptoChoice === "BITCOIN_BTC" && key?.kind === "btc") {
+      setConnectorChoice("esplora");
+      setExternalId(key.address);
+      setCredentialRef("");
+      setEsploraAutofilled(true);
+    } else if (esploraAutofilled) {
+      setConnectorChoice("");
+      setExternalId("");
+      setEsploraAutofilled(false);
+    }
   }
 
   const connectorType =
@@ -79,24 +191,120 @@ export function Accounts() {
       setFormErr("Currency is required — USD, ETH, whatever it holds.");
       return;
     }
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+      setFormErr("Decimals must be a whole number from 0 through 18.");
+      return;
+    }
+
+    let cryptoIdentity:
+      | {
+          chain_id: Caip2ChainId;
+          asset_id: Caip19AssetId;
+          account_ref: Caip10AccountId;
+        }
+      | undefined;
+
+    if (rail === "CRYPTO") {
+      const selectedKey = keys.find((key) => key.id === vaultKeyId);
+      if (cryptoChoice !== "ADVANCED") {
+        const preset = LIVE_CRYPTO_IDENTITIES[cryptoChoice];
+        if (!selectedKey) {
+          setFormErr(
+            `Select a ${preset.keyKind.toUpperCase()} vault key for ${preset.label}, or use Advanced / watch-only and enter the identities yourself.`,
+          );
+          return;
+        }
+        if (selectedKey.kind !== preset.keyKind) {
+          setFormErr(`${preset.label} needs a ${preset.keyKind.toUpperCase()} vault key.`);
+          return;
+        }
+        if (currency.trim().toUpperCase() !== preset.currency || decimals !== preset.decimals) {
+          setFormErr(
+            `${preset.label} is exactly ${preset.currency} with ${preset.decimals} decimals.`,
+          );
+          return;
+        }
+        const validAddress =
+          preset.keyKind === "evm"
+            ? EVM_ADDRESS.test(selectedKey.address)
+            : BITCOIN_MAINNET_ADDRESS.test(selectedKey.address);
+        if (!validAddress) {
+          setFormErr(
+            `The selected key does not expose a valid ${preset.networkLabel} mainnet address.`,
+          );
+          return;
+        }
+        if (connectorType === "esplora" && cryptoChoice !== "BITCOIN_BTC") {
+          setFormErr("The Esplora connector watches Bitcoin addresses; it cannot sync a Base position.");
+          return;
+        }
+        if (
+          connectorType === "esplora" &&
+          externalId.trim() &&
+          externalId.trim() !== selectedKey.address
+        ) {
+          setFormErr("The Esplora watch address must be the selected Bitcoin key's address.");
+          return;
+        }
+        const address =
+          preset.keyKind === "evm" ? selectedKey.address.toLowerCase() : selectedKey.address;
+        cryptoIdentity = {
+          chain_id: preset.chain_id,
+          asset_id: preset.asset_id,
+          account_ref: `${preset.chain_id}:${address}` as Caip10AccountId,
+        };
+      } else {
+        const chainId = advancedChainId.trim();
+        const assetId = advancedAssetId.trim();
+        const accountRef = advancedAccountRef.trim();
+        const chainProblem = chainIdProblem(chainId);
+        if (chainProblem) {
+          setFormErr(chainProblem);
+          return;
+        }
+        if (!CAIP_19.test(assetId) || !assetId.startsWith(`${chainId}/`)) {
+          setFormErr("Asset ID must be a CAIP-19 id on the exact chain above.");
+          return;
+        }
+        if (!CAIP_10.test(accountRef) || !accountRef.startsWith(`${chainId}:`)) {
+          setFormErr("Account ID must be a CAIP-10 id on the exact chain above.");
+          return;
+        }
+        cryptoIdentity = {
+          chain_id: chainId as Caip2ChainId,
+          asset_id: assetId as Caip19AssetId,
+          account_ref: accountRef as Caip10AccountId,
+        };
+      }
+    }
+
+    const common = {
+      display_name: displayName.trim(),
+      currency: currency.trim().toUpperCase(),
+      decimals,
+      ...(connectorType ? { connector_type: connectorType } : {}),
+      ...(connectorType && externalId.trim()
+        ? { external_account_id: externalId.trim() }
+        : {}),
+      // Esplora is a public indexer and must never receive a credential ref.
+      ...(connectorType && connectorType !== "esplora" && credentialRef.trim()
+        ? { credential_ref: credentialRef.trim() }
+        : {}),
+    };
+
     setCreating(true);
     try {
-      await api.createAccount({
-        rail,
-        display_name: displayName.trim(),
-        currency: currency.trim().toUpperCase(),
-        decimals,
-        ...(connectorType ? { connector_type: connectorType } : {}),
-        ...(connectorType && externalId.trim()
-          ? { external_account_id: externalId.trim() }
-          : {}),
-        // esplora is keyless — a credential typed under an earlier connector
-        // choice must never ride along (it would break every future sync).
-        ...(connectorType && connectorType !== "esplora" && credentialRef.trim()
-          ? { credential_ref: credentialRef.trim() }
-          : {}),
-        ...(rail === "CRYPTO" && vaultKeyId ? { vault_key_id: vaultKeyId } : {}),
-      });
+      if (rail === "CRYPTO") {
+        // cryptoIdentity is established by the validated branch above.
+        await api.createAccount({
+          rail: "CRYPTO",
+          ...common,
+          ...cryptoIdentity!,
+          ...(vaultKeyId ? { vault_key_id: vaultKeyId } : {}),
+        });
+      } else {
+        await api.createAccount({ rail, ...common });
+      }
       toast(`"${displayName.trim()}" is on the loom.`, "ok");
       setDisplayName("");
       setExternalId("");
@@ -104,6 +312,10 @@ export function Accounts() {
       setConnectorChoice("");
       setConnectorCustom("");
       setVaultKeyId("");
+      setAdvancedChainId("");
+      setAdvancedAssetId("");
+      setAdvancedAccountRef("");
+      setEsploraAutofilled(false);
       await load();
     } catch (ex) {
       setFormErr(errorMessage(ex));
@@ -148,6 +360,22 @@ export function Accounts() {
   if (!accounts) return <LoadingThreads />;
 
   const keyById = new Map(keys.map((k) => [k.id, k]));
+  const selectedVaultKey = vaultKeyId ? keyById.get(vaultKeyId) : undefined;
+  const selectedPreset =
+    cryptoChoice === "ADVANCED" ? null : LIVE_CRYPTO_IDENTITIES[cryptoChoice];
+  const derivedAccountRef =
+    selectedPreset &&
+    selectedVaultKey &&
+    selectedVaultKey.kind === selectedPreset.keyKind
+      ? `${selectedPreset.chain_id}:${
+          selectedPreset.keyKind === "evm"
+            ? selectedVaultKey.address.toLowerCase()
+            : selectedVaultKey.address
+        }`
+      : "";
+  const selectableKeys = selectedPreset
+    ? keys.filter((key) => key.kind === selectedPreset.keyKind)
+    : [];
   const activeFirst = [...accounts].sort((a, b) =>
     a.status === b.status ? 0 : a.status === "archived" ? 1 : -1,
   );
@@ -176,6 +404,19 @@ export function Accounts() {
                       {a.connector_type && <Badge tone="gold">{a.connector_type}</Badge>}
                       {key && (
                         <Badge tone="ember">key · {shortAddress(key.address)}</Badge>
+                      )}
+                      {a.chain_id && (
+                        <Badge tone="dim">
+                          <span
+                            className="account-chain-id"
+                            title={[a.asset_id, a.account_ref].filter(Boolean).join("\n")}
+                          >
+                            {a.chain_id} · {a.currency}
+                            {compactAccountAddress(a)
+                              ? ` · ${compactAccountAddress(a)}`
+                              : ""}
+                          </span>
+                        </Badge>
                       )}
                       {archived && <Badge tone="dim">archived</Badge>}
                     </span>
@@ -246,6 +487,7 @@ export function Accounts() {
               onChange={(e) => setCurrency(e.target.value.toUpperCase())}
               placeholder="USD"
               maxLength={12}
+              readOnly={rail === "CRYPTO" && cryptoChoice !== "ADVANCED"}
             />
           </Field>
           <Field label="Decimals" hint="Minor units per whole — 2 for cents, 18 for wei.">
@@ -255,6 +497,7 @@ export function Accounts() {
               min={0}
               max={18}
               value={decimals}
+              readOnly={rail === "CRYPTO" && cryptoChoice !== "ADVANCED"}
               onChange={(e) => {
                 const n = Number(e.target.value);
                 if (Number.isInteger(n) && n >= 0 && n <= 18) setDecimals(n);
@@ -262,6 +505,28 @@ export function Accounts() {
             />
           </Field>
         </div>
+
+        {rail === "CRYPTO" && (
+          <Field
+            label="Asset & network"
+            hint="These live presets are exact and send-capable. Advanced identities are explicit and always watch-only."
+          >
+            <select
+              value={cryptoChoice}
+              onChange={(e) => chooseCryptoAsset(e.target.value as CryptoChoice)}
+            >
+              {(Object.keys(LIVE_CRYPTO_IDENTITIES) as LiveCryptoAsset[]).map((choice) => {
+                const preset = LIVE_CRYPTO_IDENTITIES[choice];
+                return (
+                  <option key={choice} value={choice}>
+                    {preset.label} · {preset.chain_id}
+                  </option>
+                );
+              })}
+              <option value="ADVANCED">advanced / watch-only · enter CAIP identities</option>
+            </select>
+          </Field>
+        )}
 
         <Field
           label="Connector"
@@ -272,6 +537,7 @@ export function Accounts() {
             onChange={(e) => {
               const v = e.target.value;
               setConnectorChoice(v);
+              setEsploraAutofilled(false);
               // keyless connector — drop any credential typed under an
               // earlier choice so it can't ride into the payload
               if (v === "esplora") setCredentialRef("");
@@ -310,7 +576,10 @@ export function Accounts() {
               <input
                 className="mono-input"
                 value={externalId}
-                onChange={(e) => setExternalId(e.target.value)}
+                onChange={(e) => {
+                  setExternalId(e.target.value);
+                  setEsploraAutofilled(false);
+                }}
                 placeholder={
                   connectorType === "agenttool"
                     ? "wallet uuid"
@@ -345,48 +614,96 @@ export function Accounts() {
         )}
 
         {rail === "CRYPTO" && (
-          <Field
-            label="Vault key"
-            hint={
-              keys.length === 0
-                ? "No vault keys yet — weave one under Keys, then this account can sign."
-                : "Bind a key and this account can pay, not just watch. Picking a Bitcoin key also wires the esplora watcher to its address, so the balance here is the chain's."
-            }
-          >
-            <select
-              value={vaultKeyId}
-              onChange={(e) => {
-                const id = e.target.value;
-                setVaultKeyId(id);
-                const key = keys.find((k) => k.id === id);
-                // A btc key implies the whole BTC shape: sats at 8 decimals,
-                // and the esplora read rail watching the key's own address —
-                // one account row per address, sender and watcher together.
-                if (key?.kind === "btc") {
-                  setCurrency("BTC");
-                  setDecimals(8);
-                  setConnectorChoice("esplora");
-                  setExternalId(key.address);
-                } else {
-                  // Switching away must also unwind the auto-wiring, or the
-                  // form submits an ETH account watching a Bitcoin address.
-                  setCurrency(RAIL_DEFAULTS.CRYPTO.currency);
-                  setDecimals(RAIL_DEFAULTS.CRYPTO.decimals);
-                  if (connectorChoice === "esplora") {
-                    setConnectorChoice("");
-                    setExternalId("");
-                  }
+          <div className="crypto-identity-card">
+            {selectedPreset ? (
+              <Field
+                label="Vault key"
+                hint={
+                  selectableKeys.length === 0
+                    ? `No ${selectedPreset.keyKind.toUpperCase()} key exists yet. Weave one under Keys, or use Advanced / watch-only.`
+                    : `Required for this live preset. The ${selectedPreset.networkLabel} account identity is derived from its public address.`
                 }
-              }}
-            >
-              <option value="">watch only — no key</option>
-              {keys.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.label} ({k.kind}) · {shortAddress(k.address)}
-                </option>
-              ))}
-            </select>
-          </Field>
+              >
+                <select value={vaultKeyId} onChange={(e) => chooseVaultKey(e.target.value)}>
+                  <option value="">
+                    select a {selectedPreset.keyKind.toUpperCase()} key…
+                  </option>
+                  {selectableKeys.map((key) => (
+                    <option key={key.id} value={key.id}>
+                      {key.label} ({key.kind}) · {shortAddress(key.address)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <Field
+                label="Custody"
+                hint="Advanced identities are deliberately watch-only. CashLoom will not imply signing support for an unrecognised chain or asset."
+              >
+                <input className="mono-input" value="watch only · no local signing key" readOnly />
+              </Field>
+            )}
+
+            {selectedPreset ? (
+              <div className="crypto-id-grid">
+                <Field label="Chain ID" hint="CAIP-2 · fixed by the selected network.">
+                  <input
+                    className="mono-input"
+                    value={selectedPreset.chain_id}
+                    readOnly
+                    spellCheck={false}
+                  />
+                </Field>
+                <Field label="Asset ID" hint="CAIP-19 · the exact native asset or token contract.">
+                  <input
+                    className="mono-input"
+                    value={selectedPreset.asset_id}
+                    readOnly
+                    spellCheck={false}
+                  />
+                </Field>
+                <Field label="Account ID" hint="CAIP-10 · derived only after you select a compatible key.">
+                  <input
+                    className="mono-input"
+                    value={derivedAccountRef}
+                    placeholder={`select a ${selectedPreset.keyKind.toUpperCase()} key above`}
+                    readOnly
+                    spellCheck={false}
+                  />
+                </Field>
+              </div>
+            ) : (
+              <div className="crypto-id-grid">
+                <Field label="Chain ID" hint="CAIP-2 · explicit; an address never implies this.">
+                  <input
+                    className="mono-input"
+                    value={advancedChainId}
+                    onChange={(e) => setAdvancedChainId(e.target.value)}
+                    placeholder="eip155:1"
+                    spellCheck={false}
+                  />
+                </Field>
+                <Field label="Asset ID" hint="CAIP-19 · must belong to the chain above.">
+                  <input
+                    className="mono-input"
+                    value={advancedAssetId}
+                    onChange={(e) => setAdvancedAssetId(e.target.value)}
+                    placeholder="eip155:1/slip44:60"
+                    spellCheck={false}
+                  />
+                </Field>
+                <Field label="Account ID" hint="CAIP-10 · include the same chain and public address.">
+                  <input
+                    className="mono-input"
+                    value={advancedAccountRef}
+                    onChange={(e) => setAdvancedAccountRef(e.target.value)}
+                    placeholder="eip155:1:0x…"
+                    spellCheck={false}
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
         )}
 
         {formErr && <p className="form-error">{formErr}</p>}

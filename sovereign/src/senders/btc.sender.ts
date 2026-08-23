@@ -12,14 +12,24 @@
  *  against a locally-derived script, so a wrong claimed value yields a
  *  consensus-invalid transaction, rejected at broadcast. The indexer's only
  *  levers are DoS-shaped (hidden UTXOs, refused broadcasts, silence) and
- *  every one of them fails LOUD here: a definitive rejection lands 'failed',
- *  an unanswered broadcast lands AmbiguousBroadcastError so nothing invites
- *  a second signing of the same money.
+ *  every post-sign uncertainty fails safe here: duplicate-specific replies
+ *  are idempotent success, while every other rejection or unanswered send
+ *  lands AmbiguousBroadcastError so nothing invites a replacement spend.
  */
 
-import { Address, NETWORK, OutScript, Transaction, selectUTXO } from "@scure/btc-signer";
+import {
+  Address,
+  NETWORK,
+  OutScript,
+  selectUTXO,
+} from "@scure/btc-signer";
 import { hex } from "@scure/base";
-import { revealForSigning } from "../vault.ts";
+import {
+  hashPreparedBitcoinTransaction,
+  signBitcoinTransaction,
+  verifySignedBitcoinTransaction,
+  type PreparedBitcoinTransaction,
+} from "../vault.ts";
 import {
   AmbiguousBroadcastError,
   type PaymentInstruction,
@@ -28,6 +38,7 @@ import {
   type PaymentSender,
   type SenderContext,
   type SendHooks,
+  type SignedTransactionEnvelope,
 } from "./types.ts";
 
 // Same indexer convention as the read rail (esplora.connector.ts): a URL,
@@ -428,13 +439,20 @@ const broadcast = async (rawTxHex: string, txid: string): Promise<void> => {
   if (response.ok) return;
   const body = (await response.text().catch(() => "")).slice(0, 200);
   if (response.status >= 400 && response.status < 500) {
-    // The indexer's node validated and definitively refused — a true failure.
-    // The sendrawtransaction reject reason is the one payload worth surfacing.
-    const hint = /missing.{0,3}or.{0,3}spent|bad-txns-inputs/i.test(body)
-      ? " An earlier payment may have spent these coins — quote again."
-      : "";
-    throw new Error(
-      `The network refused this transaction: ${body || `HTTP ${response.status}`}.${hint}`
+    // A duplicate-specific response proves that this exact raw transaction is
+    // already known and is therefore an idempotent success. Every other 4xx
+    // remains ambiguous once bytes have been signed: "missing or spent" can
+    // be the losing response to a retry after the first request was accepted.
+    if (
+      /already.{0,12}(known|in.{0,3}(mempool|block.?chain))|txn-already-(known|in-mempool)|transaction already exists|code["']?\s*:\s*-27/i.test(
+        body,
+      )
+    ) {
+      return;
+    }
+    throw new AmbiguousBroadcastError(
+      `Broadcast outcome unknown (HTTP ${response.status}: ${body || "transaction rejected"}). Check txid ${txid} on-chain before any replacement — this exact transaction may already be live.`,
+      txid,
     );
   }
   throw new AmbiguousBroadcastError(
@@ -452,6 +470,32 @@ const formatBtc = (sat: bigint): string => {
   const frac = (sat % SATS_PER_BTC).toString().padStart(8, "0").replace(/0+$/, "");
   return frac === "" ? whole.toString() : `${whole}.${frac}`;
 };
+
+const preparedTransaction = (
+  fromAddress: string,
+  to: string,
+  amount: bigint,
+  inputs: readonly { txid: string; vout: number; sat: bigint }[],
+  changeSat: bigint,
+  feeSat: bigint,
+  lockTime: number,
+): PreparedBitcoinTransaction => ({
+  kind: "cashloom.bitcoin-transaction/1",
+  network: "bitcoin-mainnet",
+  fromAddress,
+  inputs: inputs.map((input) => ({
+    txid: input.txid,
+    vout: input.vout,
+    amountSat: input.sat.toString(),
+    sequence: RBF_SEQUENCE,
+  })),
+  outputs: [
+    { address: to, amountSat: amount.toString() },
+    ...(changeSat > 0n ? [{ address: fromAddress, amountSat: changeSat.toString() }] : []),
+  ],
+  lockTime,
+  expectedFeeSat: feeSat.toString(),
+});
 
 /* --------------------------------- sender --------------------------------- */
 
@@ -578,14 +622,39 @@ export const btcSender: PaymentSender = {
     };
   },
 
+  async signingRequestHash(ctx: SenderContext, instruction: PaymentInstruction) {
+    const { to, amount } = parseInstruction(instruction);
+    const self = await senderAddress(ctx);
+    const { inputs, changeSat, feeSat, lockTime } = parseDetail(instruction.detail, {
+      to,
+      amount,
+    });
+    return hashPreparedBitcoinTransaction(
+      preparedTransaction(self, to, amount, inputs, changeSat, feeSat, lockTime),
+    );
+  },
+
+  async reservationClaims(ctx: SenderContext, instruction: PaymentInstruction) {
+    const { to, amount } = parseInstruction(instruction);
+    await senderAddress(ctx); // key-kind guard belongs at the quote boundary
+    const { inputs } = parseDetail(instruction.detail, { to, amount });
+    return inputs.map((input) => ({
+      kind: "UTXO" as const,
+      resourceKey: `bip122:000000000019d6689c085ae165831e93:${input.txid}:${input.vout}`,
+      amountAtomic: input.sat.toString(),
+    }));
+  },
+
   async send(
     ctx: SenderContext,
     instruction: PaymentInstruction,
     hooks?: SendHooks
   ): Promise<PaymentReceipt> {
+    if (!ctx.signingBinding) {
+      throw new Error("Bitcoin signing requires a bound payment authorization.");
+    }
     const { to, amount } = parseInstruction(instruction);
     const self = await senderAddress(ctx);
-    const selfScript = scriptFor(self);
     const { inputs, changeSat, feeSat, lockTime } = parseDetail(instruction.detail, {
       to,
       amount,
@@ -605,44 +674,19 @@ export const btcSender: PaymentSender = {
       }
     }
 
-    // Rebuild EXACTLY what was quoted — the quoted intent, and only it,
-    // is signed. Re-selection at confirm is never a fallback: it would sign
-    // coins and change the human never saw.
-    const tx = new Transaction({ lockTime });
-    for (const input of inputs) {
-      tx.addInput({
-        txid: hex.decode(input.txid),
-        index: input.vout,
-        witnessUtxo: { script: selfScript, amount: input.sat },
-        sequence: RBF_SEQUENCE,
-      });
-    }
-    tx.addOutputAddress(to, amount, NETWORK);
-    if (changeSat > 0n) tx.addOutputAddress(self, changeSat, NETWORK);
-
-    // Reveal lives for exactly this scope; the byte copy is zeroized the
-    // moment the signatures exist.
-    const priv = hex.decode(await revealForSigning(ctx.vaultKeyId));
-    try {
-      tx.sign(priv);
-    } finally {
-      priv.fill(0);
-    }
-    tx.finalize();
-
-    // Belt and braces on the implicit fee: what is about to broadcast pays
-    // EXACTLY the disclosed number, or nothing happens.
-    if (tx.fee !== feeSat) {
-      throw new Error(
-        `Signed fee (${tx.fee} sats) differs from the disclosed ${feeSat} sats — refusing to broadcast.`
-      );
-    }
+    // Rebuild EXACTLY what was quoted as inert data. The vault constructs the
+    // transaction internally; no caller-owned object ever receives a scalar.
+    const signed = await signBitcoinTransaction(
+      ctx.vaultKeyId,
+      preparedTransaction(self, to, amount, inputs, changeSat, feeSat, lockTime),
+      ctx.signingBinding,
+    );
 
     // Segwit txids exclude witness data, so the id is final here — persist it
     // BEFORE the network hears the tx (see SendHooks.onSigned).
-    const txid = tx.id;
-    hooks?.onSigned?.(txid);
-    await broadcast(tx.hex, txid);
+    const txid = signed.txid;
+    hooks?.onSigned?.(txid, { encoding: "hex", payload: `0x${signed.hex}` });
+    await broadcast(signed.hex, txid);
     return {
       externalId: txid,
       status: "broadcast",
@@ -651,5 +695,27 @@ export const btcSender: PaymentSender = {
       // what the read rail would later derive for this txid.
       totalOutMinor: (amount + feeSat).toString(),
     };
+  },
+
+  async resumeBroadcast(
+    ctx: SenderContext,
+    instruction: PaymentInstruction,
+    envelope: SignedTransactionEnvelope,
+    expectedExternalId: string,
+  ): Promise<PaymentReceipt> {
+    if (envelope.encoding !== "hex" || !/^0x[0-9a-f]+$/.test(envelope.payload) || envelope.payload.length % 2 !== 0) {
+      throw new Error("Stored Bitcoin signed envelope is malformed.");
+    }
+    const rawHex = envelope.payload.slice(2);
+    const { to, amount } = parseInstruction(instruction);
+    const self = await senderAddress(ctx);
+    const { inputs, changeSat, feeSat, lockTime } = parseDetail(instruction.detail, {
+      to,
+      amount,
+    });
+    const expected = preparedTransaction(self, to, amount, inputs, changeSat, feeSat, lockTime);
+    verifySignedBitcoinTransaction(expected, rawHex, expectedExternalId);
+    await broadcast(rawHex, expectedExternalId);
+    return { externalId: expectedExternalId, status: "broadcast" };
   },
 };

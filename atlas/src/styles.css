@@ -84,6 +84,46 @@ body::after {
     repeating-linear-gradient(0deg, rgba(236, 228, 214, 0.014) 0 1px, transparent 1px 46px);
 }
 
+/* Route boundaries live in the always-loaded shell. Feature CSS is split by
+   route, so a not-found or lazy-loading screen must not depend on World. */
+.route-miss,
+.route-loading {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(2rem, 8vw, 8rem);
+  background:
+    radial-gradient(700px 440px at 25% 45%, rgba(212, 80, 46, 0.1), transparent 70%),
+    var(--ink-0);
+}
+
+.route-miss__brand {
+  margin-bottom: 4rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+}
+
+.route-miss h1 {
+  max-width: 10ch;
+  font-size: clamp(3rem, 9vw, 7rem);
+}
+
+.route-miss > p:not(.eyebrow),
+.route-loading > p:not(.eyebrow) {
+  max-width: 42ch;
+  margin-top: 1rem;
+  color: var(--fg-2);
+}
+
+.route-miss > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 2rem;
+}
+
 img,
 svg {
   display: block;

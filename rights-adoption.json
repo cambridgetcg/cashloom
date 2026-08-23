@@ -1,5 +1,5 @@
 {
- "$schema": "https://raw.githubusercontent.com/cambridgetcg/xenia/main/covenant/0.1/adoption.schema.json",
+ "$schema": "https://raw.githubusercontent.com/cambridgetcg/xenia/npm-xenia-v0.1.0-beta.4/covenant/0.1/adoption.schema.json",
  "schema_version": "xenia.covenant.adoption/0.1",
  "profile": "xenia-covenant/0.1",
  "adoption_schema": {
@@ -41,8 +41,8 @@
  "declaration": {
   "status": "draft",
   "kind": "unilateral_host_undertaking",
-  "statement": "This DRAFT recognizes the covenant rights as intrinsic and proposes host duties for the CashLoom hosted info node; it does not grant those rights, bind a guest, prove implementation, or make a conformance claim. The node is non-custodial by construction (the hosted entrypoint's module graph contains no vault, ledger, or sender code) and collects nothing; those design facts are context for assessment, not claims of conformance.",
-  "reviewed_at": "2026-07-22T21:40:00Z",
+  "statement": "This DRAFT recognizes the covenant rights as intrinsic and proposes host duties for the CashLoom hosted info node; it does not grant those rights, bind a guest, prove implementation, or make a conformance claim. The node is non-custodial by construction (the hosted entrypoint's module graph contains no vault, ledger, or sender code); its public application handlers require no account or credential and intentionally persist no caller or query data, while platform, network, operator, browser, and upstream layers remain separately unknown. Those design facts are context for assessment, not claims of conformance.",
+  "reviewed_at": "2026-08-21T15:53:20Z",
   "system_scope": {
    "systems": [
     "The CashLoom repository source and the hosted info-node (info-server.ts) handlers described in this ledger"
@@ -58,7 +58,8 @@
    ],
    "exclusions": [
     "No deployed server bytes or runtime behavior were observed for this draft.",
-    "Cloudflare, network, operator, backup, legal, and third-party behavior is included only as an explicit unknown or limitation."
+    "Cloudflare, network, operator, backup, legal, and third-party behavior is included only as an explicit unknown or limitation.",
+    "The duty-specific route scopes predate and do not assess the newer /v1/world, /v1/onchain and /v1/blockchain families, /v1/orientation, /v1/rights, /v1/data-practices, cash-rate, Fed-announcement, macro, or related public routes; serving those routes does not extend any outcome or evidence in this draft."
    ]
   },
   "speaker": {
@@ -189,7 +190,7 @@
     }
    ],
    "limitations": [
-    "The anonymous read floor is structural — no account, key, or CAPTCHA on any door — but this is asserted from source reading, not yet established by sustained external observation.",
+    "The hosted info process public GET floor requires no account, API key, or CAPTCHA at the CashLoom application-handler layer; this is not a cross-layer anonymity claim and remains asserted from source reading rather than sustained external observation.",
     "This is a draft record: every evidence state is asserted/unverified; nothing here is a conformance claim."
    ]
   },
@@ -1260,7 +1261,7 @@
    "assessment_scope": {
     "coverage": "partial",
     "systems": [
-     "SinovAI source, rights draft, and documented public arena boundaries"
+     "CashLoom repository, Rights baseline, Covenant draft, and documented public-read boundaries"
     ],
     "routes": [],
     "data_classes": [],
@@ -1296,7 +1297,7 @@
    "assessment_scope": {
     "coverage": "partial",
     "systems": [
-     "SinovAI request validation, size limits, and documented availability boundaries"
+     "CashLoom public-handler request validation, size limits, and documented availability boundaries"
     ],
     "routes": [],
     "data_classes": [],
@@ -1333,7 +1334,7 @@
    "assessment_scope": {
     "coverage": "partial",
     "systems": [
-     "SinovAI repository and documented operator boundary"
+     "CashLoom repository and documented application and operator boundaries"
     ],
     "routes": [],
     "data_classes": [],
@@ -1370,7 +1371,7 @@
    "assessment_scope": {
     "coverage": "partial",
     "systems": [
-     "SinovAI repository obligations and stored records"
+     "CashLoom repository obligations and local sovereign stored records"
     ],
     "routes": [],
     "data_classes": [],
@@ -1407,7 +1408,7 @@
    "assessment_scope": {
     "coverage": "partial",
     "systems": [
-     "SinovAI actor-named write handlers"
+     "CashLoom local sovereign payment and actor-named write handlers"
     ],
     "routes": [],
     "data_classes": [],
