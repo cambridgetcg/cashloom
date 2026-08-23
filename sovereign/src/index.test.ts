@@ -7,12 +7,21 @@ process.env.CASHLOOM_DATA_DIR = mkdtempSync(join(tmpdir(), "cashloom-local-api-t
 
 const { db, newId } = await import("./db.ts");
 const vault = await import("./vault.ts");
+const { WalletKernelStore } = await import("./wallet/infrastructure/sqlite/store.ts");
+const {
+  BASE_CHAIN_ID,
+  BASE_ETH_ASSET_ID,
+  BASE_USDC_ASSET_ID,
+  ensureBaseAccountProjection,
+} = await import("./wallet/base-account-projection.ts");
 const {
   app,
+  basePositionHttpRefusal,
   isCustodyBindAllowed,
   isRequestHostAllowed,
   requiredScopeForLocalRoute,
 } = await import("./index.ts");
+const { BasePositionServiceError } = await import("./wallet/base-position-service.ts");
 
 const PASSPHRASE = "correct horse battery staple";
 let readToken = "";
@@ -49,10 +58,265 @@ describe("local API vault-session authority", () => {
     expect(requiredScopeForLocalRoute("POST", "/api/vault/sessions")).toBe("keys:manage");
     expect(requiredScopeForLocalRoute("GET", "/api/payments")).toBe("accounts:read");
     expect(requiredScopeForLocalRoute("GET", "/api/wallet/v2/positions")).toBe("accounts:read");
+    expect(requiredScopeForLocalRoute("GET", "/api/wallet/v3/positions")).toBe("accounts:read");
+    expect(requiredScopeForLocalRoute("GET", "/api/wallet/v3")).toBe("accounts:read");
     expect(requiredScopeForLocalRoute("GET", "/api/wallet/v2/intents/example")).toBe("accounts:read");
     expect(
       requiredScopeForLocalRoute("POST", "/api/wallet/v2/intents/example/reconcile"),
     ).toBe("accounts:write");
+    expect(
+      requiredScopeForLocalRoute(
+        "POST",
+        "/api/wallet/v2/accounts/example/base-positions/refresh",
+      ),
+    ).toBe("accounts:write");
+    expect(requiredScopeForLocalRoute(
+      "GET",
+      "/api/wallet/v2/reconciliation/status",
+    )).toBe("accounts:read");
+  });
+
+  it("keeps scheduler status and saved positions networkless on GET", async () => {
+    const status = await app.request(
+      "/api/wallet/v2/reconciliation/status",
+      authorized(readToken),
+    );
+    expect(status.status).toBe(200);
+    const statusBody = await status.json() as Record<string, unknown>;
+    expect(typeof statusBody.enabled).toBe("boolean");
+    expect(statusBody).toMatchObject({
+      schema_version: "cashloom.base-reconciliation-status/1",
+      network_on_read: false,
+      scheduler: { state: "stopped" },
+      jobs: {
+        by_state: {
+          ready: "0",
+          running: "0",
+          backoff: "0",
+          settled: "0",
+          paused: "0",
+        },
+        durable_error_counts: {},
+      },
+    });
+
+    const capabilities = await app.request(
+      "/api/wallet/v3",
+      authorized(readToken),
+    );
+    expect(capabilities.status).toBe(200);
+    expect(await capabilities.json()).toMatchObject({
+      schema_version: "cashloom.wallet-agent-capabilities/1",
+      network_on_get: false,
+      resources: expect.arrayContaining([
+        expect.objectContaining({
+          href: "/api/wallet/v2/positions",
+          method: "GET",
+          scope: "accounts:read",
+          schema_version: "cashloom.wallet-kernel-positions/2",
+        }),
+        expect.objectContaining({
+          href: "/api/wallet/v3/positions",
+          method: "GET",
+          scope: "accounts:read",
+          schema_version: "cashloom.wallet-kernel-positions/3",
+        }),
+      ]),
+      actions: expect.arrayContaining([
+        expect.objectContaining({
+          rel: "refresh-finalized-base-positions",
+          method: "POST",
+          scope: "accounts:write",
+          network_effect: "read_only",
+          refusal_codes: expect.arrayContaining([
+            "base_position_conflict_frozen",
+            "base_position_evidence_rejected",
+          ]),
+        }),
+      ]),
+      safety: {
+        getters_are_local_only: true,
+        observation_never_signs_or_broadcasts: true,
+      },
+    });
+
+    const v2Positions = await app.request(
+      "/api/wallet/v2/positions",
+      authorized(readToken),
+    );
+    expect(v2Positions.status).toBe(200);
+    expect(await v2Positions.json()).toEqual({
+      schema_version: "cashloom.wallet-kernel-positions/2",
+      positions: [],
+    });
+
+    const positions = await app.request(
+      "/api/wallet/v3/positions",
+      authorized(readToken),
+    );
+    expect(positions.status).toBe(200);
+    expect(await positions.json()).toMatchObject({
+      schema_version: "cashloom.wallet-kernel-positions/3",
+      positions: [],
+      base_accounts: [],
+    });
+  });
+
+  it("returns stable Base-position refusal codes instead of raw validation or store errors", async () => {
+    const malformed = await app.request(
+      "/api/wallet/v2/accounts/not-a-uuid/base-positions/refresh",
+      authorized(ownerToken, { method: "POST", body: "{}" }),
+    );
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toEqual({
+      error: "invalid_account_id",
+      message: "Account id must be a UUID.",
+    });
+
+    const missingId = newId();
+    const missing = await app.request(
+      `/api/wallet/v2/accounts/${missingId}/base-positions/refresh`,
+      authorized(ownerToken, { method: "POST", body: "{}" }),
+    );
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({
+      error: "base_account_not_found",
+      message: "No active Base account exists with that id.",
+    });
+
+    const invalidId = newId();
+    db.query(
+      `INSERT INTO accounts
+       (id,rail,display_name,currency,decimals,balance_minor,chain_id,asset_id,
+        account_ref,status)
+       VALUES (?,'CRYPTO','Invalid Base identity','ETH',18,'0',?,?,?,'ACTIVE')`,
+    ).run(invalidId, BASE_CHAIN_ID, BASE_ETH_ASSET_ID, `${BASE_CHAIN_ID}:not-an-address`);
+    const invalid = await app.request(
+      `/api/wallet/v2/accounts/${invalidId}/base-positions/refresh`,
+      authorized(ownerToken, { method: "POST", body: "{}" }),
+    );
+    expect(invalid.status).toBe(422);
+    expect(await invalid.json()).toEqual({
+      error: "base_account_identity_invalid",
+      message: "This account is not an exact supported Base ETH or native USDC identity.",
+    });
+
+    const cancelledId = newId();
+    const cancelledAddress = `0x${"8".repeat(40)}`;
+    db.query(
+      `INSERT INTO accounts
+       (id,rail,display_name,currency,decimals,balance_minor,chain_id,asset_id,
+        account_ref,status)
+       VALUES (?,'CRYPTO','Cancelled Base check','ETH',18,'0',?,?,?,'ACTIVE')`,
+    ).run(
+      cancelledId,
+      BASE_CHAIN_ID,
+      BASE_ETH_ASSET_ID,
+      `${BASE_CHAIN_ID}:${cancelledAddress}`,
+    );
+    const abort = new AbortController();
+    abort.abort();
+    const cancelled = await app.request(
+      `/api/wallet/v2/accounts/${cancelledId}/base-positions/refresh`,
+      authorized(ownerToken, { method: "POST", body: "{}", signal: abort.signal }),
+    );
+    expect(cancelled.status).toBe(408);
+    expect(await cancelled.json()).toEqual({
+      error: "base_position_refresh_cancelled",
+      message: "The Base position refresh was cancelled before evidence settled.",
+    });
+  });
+
+  it("projects every Base-position service failure to a fixed secret-safe HTTP refusal", () => {
+    const cases = [
+      ["base_account_not_found", 404],
+      ["base_account_identity_invalid", 422],
+      ["base_position_conflict_frozen", 409],
+      ["base_position_refresh_cancelled", 408],
+      ["base_position_evidence_rejected", 502],
+    ] as const;
+    const canary = "SECRET_CANARY_must_not_cross_http";
+    for (const [code, status] of cases) {
+      const refusal = basePositionHttpRefusal(
+        new BasePositionServiceError(code, status, canary),
+      );
+      expect(refusal).toMatchObject({ status, body: { error: code } });
+      expect(JSON.stringify(refusal)).not.toContain(canary);
+    }
+    expect(basePositionHttpRefusal(new Error(canary))).toEqual({
+      status: 500,
+      body: {
+        error: "base_position_internal_failure",
+        message: "The local Base position operation could not complete safely.",
+      },
+    });
+  });
+
+  it("returns a stable conflict refusal for a durably frozen Base position", async () => {
+    const accountId = newId();
+    const address = `0x${"a".repeat(40)}`;
+    db.query(
+      `INSERT INTO accounts
+       (id,rail,display_name,currency,decimals,balance_minor,chain_id,asset_id,
+        account_ref,status)
+       VALUES (?,'CRYPTO','Frozen Base wallet','USDC',6,'0',?,?,?,'ACTIVE')`,
+    ).run(accountId, BASE_CHAIN_ID, BASE_USDC_ASSET_ID, `${BASE_CHAIN_ID}:${address}`);
+    const store = new WalletKernelStore(db);
+    ensureBaseAccountProjection({ db, store }, accountId);
+    const blockTime = "2026-08-23T20:00:00.000Z";
+    const items = [
+      { assetId: BASE_ETH_ASSET_ID, observedAtomic: "1" },
+      { assetId: BASE_USDC_ASSET_ID, observedAtomic: "2" },
+    ] as const;
+    const evidence = (
+      hashNibble: string,
+      evidenceNibble: string,
+      suffix: string,
+    ) => {
+      const evidenceHash = `sha256:${evidenceNibble.repeat(64)}` as `sha256:${string}`;
+      const blockHash = `0x${hashNibble.repeat(64)}` as `0x${string}`;
+      const sightings = ["a", "b"].map((provider, index) => store.appendBasePositionSighting({
+        id: `sighting.${accountId}.${suffix}.${provider}`,
+        accountId,
+        providerId: `base-${provider}`,
+        providerTrustDomain: `sha256:${(index === 0 ? "c" : "d").repeat(64)}`,
+        evidenceHash,
+        blockNumber: "100",
+        blockHash,
+        blockTime,
+        items,
+        body: { evidence_hash: evidenceHash, block_hash: blockHash },
+        observedAt: blockTime,
+        fetchedAt: blockTime,
+      }).sighting);
+      return {
+        id: `snapshot.${accountId}.${suffix}`,
+        accountId,
+        blockNumber: "100",
+        blockHash,
+        blockTime,
+        evidenceHash,
+        providerIds: sightings.map(({ providerId }) => providerId),
+        sightingIds: sightings.map(({ id }) => id),
+        quorum: 2,
+        items,
+        decidedAt: blockTime,
+      };
+    };
+    store.applyBasePositionSnapshot(evidence("1", "1", "first"));
+    expect(store.applyBasePositionSnapshot(evidence("2", "2", "conflict")).outcome)
+      .toBe("conflict");
+
+    const response = await app.request(
+      `/api/wallet/v2/accounts/${accountId}/base-positions/refresh`,
+      authorized(ownerToken, { method: "POST", body: "{}" }),
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "base_position_conflict_frozen",
+      message:
+        "This Base position is frozen after conflicting same-height evidence and requires review.",
+    });
   });
 
   it("mints actor-bound agent sessions without ever delegating human confirmation", async () => {

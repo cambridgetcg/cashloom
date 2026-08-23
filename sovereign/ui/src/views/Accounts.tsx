@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../api";
 import {
   Amount,
@@ -12,9 +12,14 @@ import {
 import { formatMinor, shortAddress } from "../format";
 import { toast } from "../toast";
 import {
+  BasePositionPanel,
+  isObservableBaseAccount,
+} from "../components/BasePositionPanel";
+import {
   LIVE_CRYPTO_IDENTITIES,
   RAILS,
   type Account,
+  type BaseAccountPositionView,
   type Caip10AccountId,
   type Caip19AssetId,
   type Caip2ChainId,
@@ -33,6 +38,65 @@ const RAIL_DEFAULTS: Record<Rail, { currency: string; decimals: number }> = {
 };
 
 type CryptoChoice = LiveCryptoAsset | "ADVANCED";
+
+interface AccountsLoadDependencies {
+  accounts(): ReturnType<typeof api.accounts>;
+  keys(): ReturnType<typeof api.keys>;
+  walletPositions(): ReturnType<typeof api.walletPositions>;
+}
+
+interface AccountsLoadCallbacks {
+  essentialsLoaded(accounts: Account[], keys: VaultKey[]): void;
+  essentialsFailed(message: string): void;
+  positionsLoaded(positions: BaseAccountPositionView[]): void;
+  positionsFailed(message: string): void;
+}
+
+/**
+ * Start required account/key hydration and optional chain-position hydration
+ * as separate work. A slow or unavailable observer projection must never hold
+ * the ordinary account ledger page behind its request.
+ */
+export function beginAccountsLoad(
+  dependencies: AccountsLoadDependencies,
+  callbacks: AccountsLoadCallbacks,
+): { essentials: Promise<void>; positions: Promise<void> } {
+  const essentials = Promise.all([
+    dependencies.accounts(),
+    dependencies.keys(),
+  ]).then(
+    ([accountResult, keyResult]) => {
+      callbacks.essentialsLoaded(accountResult.accounts, keyResult.keys);
+    },
+    (error: unknown) => {
+      callbacks.essentialsFailed(errorMessage(error));
+    },
+  );
+
+  const positions = dependencies.walletPositions().then(
+    (result) => {
+      callbacks.positionsLoaded(
+        Array.isArray(result.base_accounts) ? result.base_accounts : [],
+      );
+    },
+    (error: unknown) => {
+      callbacks.positionsFailed(errorMessage(error));
+    },
+  );
+
+  return { essentials, positions };
+}
+
+export function updateRefreshingAccounts(
+  current: ReadonlySet<string>,
+  accountId: string,
+  refreshing: boolean,
+): ReadonlySet<string> {
+  const next = new Set(current);
+  if (refreshing) next.add(accountId);
+  else next.delete(accountId);
+  return next;
+}
 
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const BITCOIN_MAINNET_ADDRESS =
@@ -71,7 +135,10 @@ function compactAccountAddress(account: Account): string | null {
 export function Accounts() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [keys, setKeys] = useState<VaultKey[]>([]);
+  const [basePositions, setBasePositions] = useState<BaseAccountPositionView[]>([]);
+  const [baseLoadError, setBaseLoadError] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
 
   // create form
   const [rail, setRail] = useState<Rail>("CASH");
@@ -93,16 +160,43 @@ export function Accounts() {
 
   // row actions
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [refreshingBase, setRefreshingBase] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const refreshingBaseNow = useRef(new Set<string>());
+  const [baseMessages, setBaseMessages] = useState<Record<string, string>>({});
+  const [baseErrors, setBaseErrors] = useState<Record<string, string>>({});
   const [confirmArchive, setConfirmArchive] = useState<string | null>(null);
 
   async function load() {
-    try {
-      const [a, k] = await Promise.all([api.accounts(), api.keys()]);
-      setAccounts(a.accounts);
-      setKeys(k.keys);
-    } catch (ex) {
-      setErr(errorMessage(ex));
-    }
+    const generation = ++loadGeneration.current;
+    setErr(null);
+    setBaseLoadError(null);
+    const cycle = beginAccountsLoad(api, {
+      essentialsLoaded(nextAccounts, nextKeys) {
+        if (loadGeneration.current !== generation) return;
+        setAccounts(nextAccounts);
+        setKeys(nextKeys);
+      },
+      essentialsFailed(message) {
+        if (loadGeneration.current !== generation) return;
+        setErr(message);
+      },
+      positionsLoaded(positions) {
+        if (loadGeneration.current !== generation) return;
+        setBasePositions(positions);
+        setBaseLoadError(null);
+      },
+      positionsFailed(message) {
+        if (loadGeneration.current !== generation) return;
+        setBaseLoadError(message);
+      },
+    });
+
+    // The optional position promise handles its own rejection and continues in
+    // the background. Callers waiting on load only wait for account essentials.
+    void cycle.positions;
+    await cycle.essentials;
   }
 
   useEffect(() => {
@@ -356,6 +450,42 @@ export function Accounts() {
     }
   }
 
+  async function refreshBasePositions(account: Account) {
+    if (refreshingBaseNow.current.has(account.id)) return;
+    refreshingBaseNow.current.add(account.id);
+    setRefreshingBase((current) =>
+      updateRefreshingAccounts(current, account.id, true)
+    );
+    setBaseErrors((current) => ({ ...current, [account.id]: "" }));
+    setBaseMessages((current) => ({ ...current, [account.id]: "" }));
+    try {
+      const result = await api.refreshBasePositions(account.id);
+      setBasePositions((current) => {
+        const remaining = current.filter((entry) => entry.account_id !== account.id);
+        return [...remaining, result.account];
+      });
+      const message = result.outcome === "partial"
+        ? "The providers did not agree or one was unavailable. The last finalized snapshot, if any, was retained."
+        : result.outcome === "conflict"
+          ? "A same-height conflict froze this position until it can be reviewed."
+          : result.outcome === "stale"
+            ? "An older observation was retained as evidence but did not replace the newer snapshot."
+            : result.outcome === "superseded"
+              ? "A newer finalized block atomically replaced the previous saved snapshot."
+            : result.outcome === "replayed"
+              ? "The same finalized snapshot was re-proved; no balance was posted twice."
+              : "Finalized Base balances updated from two-provider evidence.";
+      setBaseMessages((current) => ({ ...current, [account.id]: message }));
+    } catch (ex) {
+      setBaseErrors((current) => ({ ...current, [account.id]: errorMessage(ex) }));
+    } finally {
+      refreshingBaseNow.current.delete(account.id);
+      setRefreshingBase((current) =>
+        updateRefreshingAccounts(current, account.id, false)
+      );
+    }
+  }
+
   if (err) return <EmptyState>{err}</EmptyState>;
   if (!accounts) return <LoadingThreads />;
 
@@ -394,6 +524,7 @@ export function Accounts() {
           {activeFirst.map((a) => {
             const archived = a.status === "archived";
             const key = a.vault_key_id ? keyById.get(a.vault_key_id) : undefined;
+            const baseView = basePositions.find((entry) => entry.account_id === a.id) ?? null;
             return (
               <article className={`card account-row${archived ? " is-archived" : ""}`} key={a.id}>
                 <div className="account-row-main">
@@ -448,6 +579,15 @@ export function Accounts() {
                       {confirmArchive === a.id ? "Really archive?" : "Archive"}
                     </button>
                   </div>
+                )}
+                {!archived && (isObservableBaseAccount(a) || baseView?.status === "identity_invalid") && (
+                  <BasePositionPanel
+                    view={baseView}
+                    refreshing={refreshingBase.has(a.id)}
+                    message={baseMessages[a.id] ?? null}
+                    error={baseErrors[a.id] ?? baseLoadError ?? null}
+                    onRefresh={() => void refreshBasePositions(a)}
+                  />
                 )}
               </article>
             );

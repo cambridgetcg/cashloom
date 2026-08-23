@@ -13,9 +13,10 @@ import * as vault from "./vault.ts";
 import {
   quotePayment,
   confirmPayment,
+  baseReconciliationService,
   getWalletKernelIntent,
-  listPayments,
   listWalletKernelPositions,
+  listPayments,
   reconcileBasePayment,
   resumePaymentBroadcast,
 } from "./pay.ts";
@@ -51,8 +52,58 @@ import {
   caip19AssetIdSchema,
   chainIdSchema,
 } from "./wallet/domain/identities.ts";
+import { WalletKernelStore } from "./wallet/infrastructure/sqlite/index.ts";
+import { createBasePositionObserver } from "./wallet/adapters/base-position-observer.ts";
+import {
+  BasePositionServiceError,
+  createBasePositionService,
+} from "./wallet/base-position-service.ts";
+import { createBaseReconciliationScheduler } from "./wallet/base-reconciliation-scheduler.ts";
 
 export const app = new Hono();
+
+const BASE_POSITION_HTTP_REFUSALS = {
+  base_account_not_found: {
+    status: 404,
+    message: "No active Base account exists with that id.",
+  },
+  base_account_identity_invalid: {
+    status: 422,
+    message: "This account is not an exact supported Base ETH or native USDC identity.",
+  },
+  base_position_conflict_frozen: {
+    status: 409,
+    message:
+      "This Base position is frozen after conflicting same-height evidence and requires review.",
+  },
+  base_position_refresh_cancelled: {
+    status: 408,
+    message: "The Base position refresh was cancelled before evidence settled.",
+  },
+  base_position_evidence_rejected: {
+    status: 502,
+    message:
+      "Base position evidence was unavailable, malformed, or failed its durable proof checks.",
+  },
+} as const;
+
+/** Fixed HTTP projection: never serialize a provider/store exception message. */
+export const basePositionHttpRefusal = (error: unknown) => {
+  if (!(error instanceof BasePositionServiceError)) {
+    return {
+      status: 500,
+      body: {
+        error: "base_position_internal_failure",
+        message: "The local Base position operation could not complete safely.",
+      },
+    } as const;
+  }
+  const refusal = BASE_POSITION_HTTP_REFUSALS[error.code];
+  return {
+    status: refusal.status,
+    body: { error: error.code, message: refusal.message },
+  } as const;
+};
 
 const PORT = Number(process.env.CASHLOOM_PORT ?? 4747);
 // Local-first: never exposed unless the owner explicitly rebinds.
@@ -97,6 +148,22 @@ const allowedRequestHost = (hostname: string): boolean =>
   isRequestHostAllowed(HOSTNAME, configuredHosts, hostname);
 
 const agentSessionTrust = new Map<string, AgentTrustBinding>();
+
+// Local Wallet Kernel truth runtime. Construction is networkless; the
+// position observer runs only behind the explicit refresh POST, and the
+// reconciliation scheduler remains inert unless the owner opts in.
+const localWalletStore = new WalletKernelStore(db);
+const basePositionService = createBasePositionService({
+  db,
+  store: localWalletStore,
+  observer: createBasePositionObserver(),
+});
+export const BASE_RECONCILIATION_SCHEDULER_ENABLED =
+  process.env.CASHLOOM_BASE_RECONCILIATION_ENABLED === "1";
+const baseReconciliationScheduler = createBaseReconciliationScheduler({
+  reconciliation: baseReconciliationService,
+  jobs: localWalletStore,
+});
 
 // Localhost is a network location, not an authentication primitive. Refuse
 // hostile Host/Origin values before fresh-vault initialization, unlock, or any
@@ -158,6 +225,13 @@ app.get("/api/meta", (c) =>
       intent_schema: "cashloom.payment-intent/1",
       identities: ["CAIP-2", "CAIP-10", "CAIP-19", "ISO-4217"],
       live_signers: ["Base EIP-1559", "Bitcoin mainnet P2WPKH"],
+      live_observers: [
+        "Base transaction finality quorum",
+        "Base finalized ETH + native USDC positions",
+      ],
+      base_reconciliation_scheduler: BASE_RECONCILIATION_SCHEDULER_ENABLED
+        ? "enabled"
+        : "disabled",
       request_schemas: ["EIP-1559", "EIP-712", "BIP-174/370 PSBT", "Solana transaction"],
       agent_policy: "agent-wallet/0.1",
       arithmetic: "exact atomic-unit decimal strings",
@@ -284,7 +358,16 @@ export const requiredScopeForLocalRoute = (
   ) {
     return "accounts:write";
   }
+  if (
+    verb === "POST" &&
+    /^\/api\/wallet\/v2\/accounts\/[^/]+\/base-positions\/refresh$/.test(pathname)
+  ) {
+    return "accounts:write";
+  }
   if (pathname === "/api/wallet/v2" || pathname.startsWith("/api/wallet/v2/")) {
+    return verb === "GET" ? "accounts:read" : undefined;
+  }
+  if (pathname === "/api/wallet/v3" || pathname.startsWith("/api/wallet/v3/")) {
     return verb === "GET" ? "accounts:read" : undefined;
   }
   if (pathname === "/api/payments" || pathname.startsWith("/api/payments/")) {
@@ -642,7 +725,122 @@ app.post("/api/pay/agent/confirm", async (c) => {
 
 app.get("/api/payments", (c) => c.json({ payments: listPayments() }));
 
+// Preserve the strict v2 discriminator for existing agents. The richer Base
+// evidence projection is additive under v3; no caller silently changes schema.
 app.get("/api/wallet/v2/positions", (c) => c.json(listWalletKernelPositions()));
+app.get("/api/wallet/v3", (c) => c.json({
+  schema_version: "cashloom.wallet-agent-capabilities/1",
+  runtime: "local_loopback_custody",
+  network_on_get: false,
+  resources: [
+    {
+      rel: "positions-compatibility",
+      href: "/api/wallet/v2/positions",
+      method: "GET",
+      scope: "accounts:read",
+      schema_version: "cashloom.wallet-kernel-positions/2",
+    },
+    {
+      rel: "base-positions",
+      href: "/api/wallet/v3/positions",
+      method: "GET",
+      scope: "accounts:read",
+      schema_version: "cashloom.wallet-kernel-positions/3",
+    },
+    {
+      rel: "reconciliation-status",
+      href: "/api/wallet/v2/reconciliation/status",
+      method: "GET",
+      scope: "accounts:read",
+      schema_version: "cashloom.base-reconciliation-status/1",
+    },
+  ],
+  actions: [
+    {
+      rel: "refresh-finalized-base-positions",
+      href_template: "/api/wallet/v2/accounts/{account_id}/base-positions/refresh",
+      method: "POST",
+      scope: "accounts:write",
+      network_effect: "read_only",
+      refusal_codes: [
+        "invalid_account_id",
+        "base_account_not_found",
+        "base_account_identity_invalid",
+        "base_position_conflict_frozen",
+        "base_position_refresh_cancelled",
+        "base_position_evidence_rejected",
+        "base_position_internal_failure",
+      ],
+    },
+    {
+      rel: "reconcile-base-payment",
+      href_template: "/api/wallet/v2/intents/{intent_id}/reconcile",
+      method: "POST",
+      scope: "accounts:write",
+      network_effect: "read_only",
+    },
+  ],
+  safety: {
+    getters_are_local_only: true,
+    observation_never_signs_or_broadcasts: true,
+    absent_evidence_is_not_zero_or_dropped: true,
+  },
+}));
+app.get("/api/wallet/v3/positions", (c) => c.json(basePositionService.listPositions()));
+
+app.post("/api/wallet/v2/accounts/:id/base-positions/refresh", async (c) => {
+  const parsed = z.string().uuid().safeParse(c.req.param("id"));
+  if (!parsed.success) {
+    return c.json(
+      { error: "invalid_account_id", message: "Account id must be a UUID." },
+      400,
+    );
+  }
+  try {
+    return c.json(await basePositionService.refreshAccount(parsed.data, c.req.raw.signal));
+  } catch (error) {
+    const refusal = basePositionHttpRefusal(error);
+    switch (refusal.status) {
+      case 404: return c.json(refusal.body, 404);
+      case 408: return c.json(refusal.body, 408);
+      case 409: return c.json(refusal.body, 409);
+      case 422: return c.json(refusal.body, 422);
+      case 500: return c.json(refusal.body, 500);
+      case 502: return c.json(refusal.body, 502);
+    }
+  }
+});
+
+app.get("/api/wallet/v2/reconciliation/status", (c) => {
+  const generatedAt = new Date().toISOString();
+  const rows = db.query(
+    `SELECT state, COUNT(*) AS count
+     FROM wk_base_reconciliation_jobs GROUP BY state ORDER BY state`,
+  ).all() as Array<{ state: string; count: number }>;
+  const states = ["READY", "RUNNING", "BACKOFF", "SETTLED", "PAUSED"] as const;
+  const byState = Object.fromEntries(states.map((state) => [state.toLowerCase(), "0"]));
+  for (const row of rows) byState[row.state.toLowerCase()] = row.count.toString();
+  const errorRows = db.query(
+    `SELECT last_error_code AS code, COUNT(*) AS count
+     FROM wk_base_reconciliation_jobs
+     WHERE last_error_code IS NOT NULL
+     GROUP BY last_error_code ORDER BY last_error_code`,
+  ).all() as Array<{ code: string; count: number }>;
+  return c.json({
+    schema_version: "cashloom.base-reconciliation-status/1",
+    generated_at: generatedAt,
+    enabled: BASE_RECONCILIATION_SCHEDULER_ENABLED,
+    network_on_read: false,
+    scheduler: baseReconciliationScheduler.getStatus(),
+    jobs: {
+      total: rows.reduce((total, row) => total + row.count, 0).toString(),
+      by_state: byState,
+      durable_error_counts: Object.fromEntries(
+        errorRows.map((row) => [row.code, row.count.toString()]),
+      ),
+    },
+  });
+});
 
 app.get("/api/wallet/v2/intents/:id", (c) => {
   const id = z.string().uuid().parse(c.req.param("id"));
@@ -707,7 +905,10 @@ app.notFound((c) => surfaceRouteNotFoundResponse(c.req.raw));
 
 if (import.meta.main) {
   const server = Bun.serve({ port: PORT, hostname: HOSTNAME, fetch: app.fetch });
+  if (BASE_RECONCILIATION_SCHEDULER_ENABLED) {
+    baseReconciliationScheduler.start();
+  }
   console.log(
-    `\n  cashloom sovereign · http://${HOSTNAME}:${server.port}\n  ledger: ${DB_PATH}\n  your keys, your data, your machine.\n`,
+    `\n  cashloom sovereign · http://${HOSTNAME}:${server.port}\n  ledger: ${DB_PATH}\n  Base reconciliation: ${BASE_RECONCILIATION_SCHEDULER_ENABLED ? "enabled" : "off"}\n  your keys, your data, your machine.\n`,
   );
 }
