@@ -335,7 +335,7 @@ const makeHarness = async (options: HarnessOptions = {}): Promise<Harness> => {
     initialState: "quoted",
     intentHash,
     createdBy: { type: "HUMAN", ref: "base-truth-test" },
-    expiresAt: "2026-08-24T00:00:00.000Z",
+    expiresAt: "2099-08-24T00:00:00.000Z",
     metadata: { test_fixture: "real-eip1559-artifact" },
   });
   store.acquireReservation({
@@ -346,7 +346,7 @@ const makeHarness = async (options: HarnessOptions = {}): Promise<Harness> => {
     kind: "NONCE",
     resourceKey: `${BASE_CHAIN_ID}:${signer.address.toLowerCase()}:17`,
     amountAtomic: "1",
-    expiresAt: "2026-08-24T00:00:00.000Z",
+    expiresAt: "2099-08-24T00:00:00.000Z",
   });
   advanceIntent(store, "reserved");
   advanceIntent(store, "authorized");
@@ -360,7 +360,7 @@ const makeHarness = async (options: HarnessOptions = {}): Promise<Harness> => {
     method: "LOCAL_VAULT_CONFIRMATION",
     grantHash: `sha256:${"2".repeat(64)}`,
     constraints: { chain_id: BASE_CHAIN_ID, single_use: true },
-    expiresAt: "2026-08-24T00:00:00.000Z",
+    expiresAt: "2099-08-24T00:00:00.000Z",
   }).authorization;
   advanceIntent(store, "prepared");
   const preparedExecution = store.createExecution({

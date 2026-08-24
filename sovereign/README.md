@@ -84,10 +84,27 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 - **Ledger + analytics** — every movement in one place, BigInt-exact
   minor units, per-account in/out and net position.
 
+## Connectivity foundation (honest release state)
+
+- **External wallets** — strict WebAuthn, hardware EVM, WalletConnect v2, and
+  ERC-4337 v0.7 request/verification adapters plus an additive durable ledger
+  are implemented. They remain execution-disabled until an owner coordinator
+  can atomically persist verified output through the core artifact boundary.
+- **Open banking** — GoCardless Bank Account Data is AIS/read-only. A bounded
+  Yapily one-off domestic GBP preparation/submission/status foundation exists,
+  but live payment initiation remains provider/legal-policy blocked and agents
+  cannot complete owner consent journeys.
+- **Connections view** — the local, networkless page and
+  `GET /api/wallet/v3/integrations` distinguish built adapters, configuration,
+  and live execution without exposing secrets or starting a provider request.
+
+Architecture, standards, activation gates, and exact implementation files are
+documented in [`../WALLET-CONNECTIVITY.md`](../WALLET-CONNECTIVITY.md).
+
 ## What's next (honest roadmap)
 
-- **Hardware/external signers**, passkey-backed smart accounts, WalletConnect,
-  and broader finalized position adapters beyond Base ETH/native USDC.
+- **Owner coordinators** for external signing and provider consent, plus
+  broader finalized position adapters beyond Base ETH/native USDC.
 - **Lightning**, **more rails** (SEPA, UPI, SOL), **payment pointers**
   (`you@cashloom`), **CSV/receipt import** without any cloud AI.
 - **Tauri desktop packaging** — double-click to run, zero terminal.

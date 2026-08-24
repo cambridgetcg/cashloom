@@ -400,6 +400,41 @@ export interface SyncResult {
   skipped: number;
 }
 
+export type WalletIntegrationConfigurationState =
+  | "ready"
+  | "credentials_required"
+  | "policy_blocked";
+
+export interface WalletIntegrationCatalogItem {
+  id: string;
+  family: "passkey" | "hardware" | "walletconnect" | "smart-account" | "bank-data" | "pay-by-bank" | (string & {});
+  label: string;
+  adapter_status: "verified_foundation" | (string & {});
+  configuration_state: WalletIntegrationConfigurationState | (string & {});
+  configured: boolean;
+  execution_enabled: boolean;
+  interaction: "owner_browser" | "owner_device" | "owner_redirect" | (string & {});
+  persisted_connections: string;
+  capabilities: readonly string[];
+  limitations: readonly string[];
+}
+
+export interface WalletIntegrationCatalog {
+  schema_version: "cashloom.wallet-integrations/1" | (string & {});
+  generated_at: string;
+  runtime: "local_loopback_custody" | (string & {});
+  network_on_get: false;
+  integrations: readonly WalletIntegrationCatalogItem[];
+  safety: {
+    owner_interaction_required: true;
+    agent_interactive_completion_allowed: false;
+    verification_adapters_available: true;
+    atomic_verified_persistence_enabled: false;
+    pairing_and_oauth_secrets_excluded: true;
+    hosted_info_runtime_excluded: true;
+  };
+}
+
 // zerone — the truth chain front (public, read-only).
 export interface ZeroneNetworkStatus {
   id: string;

@@ -23,6 +23,9 @@ software you run yourself.
 - **[`WALLET-KERNEL-V2.md`](WALLET-KERNEL-V2.md)** — the implemented wallet
   architecture: identities, custody, authorization, signing, recovery,
   reconciliation, and extension contracts for crypto and fiat.
+- **[`WALLET-CONNECTIVITY.md`](WALLET-CONNECTIVITY.md)** — the verified
+  passkey, hardware EVM, WalletConnect, ERC-4337, bank-data, and pay-by-bank
+  integration foundation, with explicit activation and trust boundaries.
 - **[`FIAT-ROUTE.md`](FIAT-ROUTE.md)** — the plan for touching fiat *legally*:
   never custody, never the transmitter, connect to licensed on-ramps, per-country
   compliance map, ZRN kept out of scope, and the honest line we won't cross.

@@ -13,6 +13,7 @@ import type {
   Tx,
   VaultKey,
   WalletIntentAudit,
+  WalletIntegrationCatalog,
   WalletPositionsResponse,
   ZeroneGuide,
   ZeroneStatus,
@@ -153,6 +154,8 @@ export const api = {
     request<ConfirmResult>("/api/pay/confirm", { paymentId }),
 
   payments: () => request<{ payments: PaymentListItem[] }>("/api/payments"),
+  walletIntegrations: () =>
+    request<WalletIntegrationCatalog>("/api/wallet/v3/integrations"),
   walletPositions: () =>
     request<WalletPositionsResponse>("/api/wallet/v3/positions"),
   refreshBasePositions: (accountId: string) =>
