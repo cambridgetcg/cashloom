@@ -105,6 +105,94 @@ export interface Account {
   created_at: string;
 }
 
+export interface WalletPosition {
+  account_id: string;
+  asset_id: string;
+  observed_atomic: string;
+  pending_atomic: string;
+  source: string;
+  source_cursor: string | null;
+  as_of: string;
+  version: number;
+  symbol: string;
+  name: string;
+  decimals: number;
+}
+
+export interface BasePositionSnapshotView {
+  snapshot_id: string;
+  block: {
+    number: string;
+    hash: string;
+    timestamp: string;
+  };
+  evidence_hash: string;
+  provider_ids: string[];
+  quorum: string;
+  observed_at: string;
+  applied_at: string;
+}
+
+export interface BaseAccountPositionView {
+  account_id: string;
+  label: string;
+  chain_id: "eip155:8453";
+  account_ref: Caip10AccountId;
+  address: string;
+  custody_mode: "watch_only" | "local_self_custody" | (string & {});
+  status: "not_checked" | "finalized" | "conflicted" | (string & {});
+  snapshot: BasePositionSnapshotView | null;
+  positions: WalletPosition[];
+  identity_group: {
+    canonical_account_ref: string;
+    canonical_account_id: string;
+    account_ids: string[];
+    duplicate: boolean;
+  };
+  last_refresh: {
+    attempt_id: string;
+    attempted_at: string;
+    outcome: string;
+    reason_code: string;
+    provider_count: string;
+    available_provider_count: string;
+    agreeing_provider_count: string;
+    retained_head: {
+      snapshot_id: string;
+      state: "ACTIVE" | "FROZEN" | (string & {});
+      conflict_snapshot_id: string | null;
+      version: string;
+    } | null;
+    error_code: string | null;
+  } | null;
+  actions: { refresh: boolean };
+  refusal?: {
+    code: "base_account_identity_invalid" | (string & {});
+    message: string;
+  };
+}
+
+export interface WalletPositionsResponse {
+  schema_version: "cashloom.wallet-kernel-positions/3" | (string & {});
+  generated_at: string;
+  /** Flat compatibility projection retained for existing agent consumers. */
+  positions: WalletPosition[];
+  base_accounts: BaseAccountPositionView[];
+}
+
+export interface BasePositionRefreshResult {
+  schema_version: "cashloom.base-position-refresh/1" | (string & {});
+  outcome: "applied" | "replayed" | "stale" | "superseded" | "conflict" | "partial" | (string & {});
+  observation: {
+    state: "settled" | "partial" | (string & {});
+    reason?: "provider_unavailable" | "provider_disagreement" | (string & {});
+    observed_at: string;
+    available_providers: string;
+    unavailable_providers: string;
+  };
+  account: BaseAccountPositionView;
+}
+
 interface CreateAccountCommon {
   display_name: string;
   currency: string;

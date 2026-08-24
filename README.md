@@ -47,6 +47,12 @@ non-custodial wallet. That is the whole setup.
 - **Everyone pays everyone** — `pay()` moves money over open rails (Base L2
   ETH + USDC today; more coming), as a two-step rite: quote discloses the fee
   and signs nothing, confirm signs and broadcasts once. Never auto-retried.
+- **Evidence after broadcast** — Base payments can be reconciled to
+  two-provider finalized truth, and Base account cards can explicitly refresh
+  exact ETH + native USDC balances at one corroborated finalized block. These
+  observers have no signing or rebroadcast capability. Failed checks remain
+  honest saved attempts, never fabricated zeroes; duplicate CAIP-10 records are
+  marked to prevent double-counting.
 - **Read every rail** — sync balances and transactions from Stripe, banks
   (GoCardless), Bitcoin, Ethereum, and the agenttool agent economy. Strictly
   read-only: a connector can never move money.

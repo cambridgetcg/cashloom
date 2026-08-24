@@ -195,6 +195,50 @@ committed in one SQLite transaction. Repeated checks are idempotent. Competing
 finalized consensus is surfaced as `conflicted` and cannot rewrite the first
 posted economic event.
 
+### Background reconciliation and finalized positions
+
+The optional Base scheduler is a consumer of the reconciliation service, not
+an executor. It discovers only executions whose durable signed artifact and
+network transaction id match exactly, claims them under expiring SQLite
+leases, and performs bounded evidence checks with concurrency, deadlines, and
+backoff. It has no import or callback path to a sender, signer, vault, payment
+confirmation, recovery, or rebroadcast function. It is inert unless
+`CASHLOOM_BASE_RECONCILIATION_ENABLED=1` is set before the loopback node starts.
+
+Base account positions use a separate evidence-only adapter:
+
+1. The account must already name Base through CAIP-2, its address through
+   CAIP-10, and either Base ETH or native Circle USDC through CAIP-19. An EVM
+   address never implies a chain.
+2. Two fixed HTTPS providers with distinct origins must corroborate one exact
+   finalized block number, hash, and timestamp before balance reads begin.
+3. ETH `eth_getBalance` and the fixed USDC `balanceOf(address)` call execute at
+   that numbered block. Each provider re-reads the same header afterward so a
+   read that straddles a reorg is refused.
+4. Provider endpoints never enter storage. An opaque trust-domain hash lets
+   SQLite prove that the two sightings came from distinct configured origins.
+5. Applying a snapshot updates ETH and USDC atomically. Older evidence remains
+   auditable but cannot regress the current head; a same-height contradiction
+   freezes the account until a future explicit resolution protocol exists.
+6. Every completed explicit check appends a sanitized refresh-attempt fact: outcome,
+   stable reason/error code, provider counts, attempted time, and the exact
+   retained snapshot-head version. No URL, origin, raw response, or error text
+   can enter that ledger. A reload therefore distinguishes never checked from
+   checked-but-unavailable without inventing a balance.
+
+Ordinary `GET` routes and page refreshes read the saved projection only. A
+network check starts solely from the explicit account refresh `POST` or the
+owner-enabled transaction scheduler. Provider failure never means a zero
+balance, a dropped payment, or a reusable nonce.
+
+`GET /api/wallet/v2/positions` remains the strict flat `/2` contract for
+existing agents. The additive `/api/wallet/v3/positions` projection carries
+finalized evidence, the latest refresh attempt, explicit identity refusals,
+and a canonical CAIP-10 identity group so duplicate local records are never
+silently double-counted. `GET /api/wallet/v3` is the authenticated, local
+agent capability document for these resources and actions; it is deliberately
+not advertised as part of the public read-only XENIA Surface.
+
 ## Agents and `agent-wallet/0.1`
 
 CashLoom uses `@agenttool/wallet` signed descriptor, capability, transaction
@@ -315,7 +359,11 @@ gateway, bootstrap ceremony, and rate limiting rather than another allowlist.
 | `POST /api/pay/agent/authorize` | `agent:authorize` |
 | `POST /api/pay/agent/confirm` | bound delegated agent + `agent:authorize` |
 | `POST /api/pay/recover` | human `payments:confirm`; finish one already-authorized exact request, then exact signed bytes only |
-| `GET /api/wallet/v2/positions` | `accounts:read` |
+| `GET /api/wallet/v2/positions` | `accounts:read`; stable flat `cashloom.wallet-kernel-positions/2` compatibility view |
+| `GET /api/wallet/v3/positions` | `accounts:read`; finalized Base snapshot/provenance view plus the flat compatibility projection |
+| `GET /api/wallet/v3` | `accounts:read`; machine-readable private wallet resources, actions, scopes, refusal codes, and safety bounds |
+| `POST /api/wallet/v2/accounts/:id/base-positions/refresh` | `accounts:write`; explicit two-provider finalized ETH/USDC observation, never a send |
+| `GET /api/wallet/v2/reconciliation/status` | `accounts:read`; local scheduler/job status, no network read |
 | `GET /api/wallet/v2/intents/:id` | `accounts:read`; signed payload redacted |
 | `POST /api/wallet/v2/intents/:id/reconcile` | `accounts:write`; explicit Base evidence check, never a send/retry |
 
@@ -355,7 +403,7 @@ A new wallet or rail is not complete until it has all of these:
 - networkless unit tests for mutation, replay, concurrency, and crash recovery.
 
 Likely next modules are a hardware/external signer adapter, ERC-4337 smart
-accounts with passkeys, WalletConnect sessions, an opt-in bounded background
-Base check scheduler, Lightning, Solana, and one
+accounts with passkeys, WalletConnect sessions, broader finalized position
+adapters, Lightning, Solana, and one
 licensed fiat-provider executor. Each should reuse this kernel rather than add
 another symbol-routed payment path.

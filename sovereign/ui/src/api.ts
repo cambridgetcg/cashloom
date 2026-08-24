@@ -1,5 +1,6 @@
 import type {
   Account,
+  BasePositionRefreshResult,
   ConfirmResult,
   CreateAccountInput,
   Meta,
@@ -12,6 +13,7 @@ import type {
   Tx,
   VaultKey,
   WalletIntentAudit,
+  WalletPositionsResponse,
   ZeroneGuide,
   ZeroneStatus,
 } from "./types";
@@ -151,6 +153,13 @@ export const api = {
     request<ConfirmResult>("/api/pay/confirm", { paymentId }),
 
   payments: () => request<{ payments: PaymentListItem[] }>("/api/payments"),
+  walletPositions: () =>
+    request<WalletPositionsResponse>("/api/wallet/v3/positions"),
+  refreshBasePositions: (accountId: string) =>
+    request<BasePositionRefreshResult>(
+      `/api/wallet/v2/accounts/${encodeURIComponent(accountId)}/base-positions/refresh`,
+      {},
+    ),
   walletIntentAudit: (intentId: string) =>
     request<WalletIntentAudit>(
       `/api/wallet/v2/intents/${encodeURIComponent(intentId)}`,

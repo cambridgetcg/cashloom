@@ -27,6 +27,12 @@ export const WALLET_KERNEL_TABLES = [
   "wk_receipts",
   "wk_chain_sightings",
   "wk_chain_consensus",
+  "wk_base_reconciliation_jobs",
+  "wk_base_position_snapshot_sightings",
+  "wk_base_position_snapshots",
+  "wk_base_position_snapshot_items",
+  "wk_base_position_snapshot_heads",
+  "wk_base_position_refresh_attempts",
   "wk_reservation_resolutions",
   "wk_ledger_accounts",
   "wk_journal_entries",
@@ -496,6 +502,361 @@ CREATE UNIQUE INDEX IF NOT EXISTS wk_chain_consensus_fact_uq
     visibility, outcome, security_level, COALESCE(block_hash,''),
     COALESCE(block_number,'')
   );
+
+-- v7: a bounded, durable work queue for evidence-only Base reconciliation.
+-- The immutable execution/artifact/transaction binding is repeated on the job
+-- so a worker lease can never be redirected to another payment. A trigger
+-- below proves the denormalized tuple against the Wallet Kernel records.
+CREATE TABLE IF NOT EXISTS wk_base_reconciliation_jobs (
+  id                    TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
+  execution_id          TEXT NOT NULL UNIQUE REFERENCES wk_executions(id),
+  intent_id             TEXT NOT NULL REFERENCES wk_payment_intents(id),
+  signed_artifact_id    TEXT NOT NULL REFERENCES wk_signed_artifacts(id),
+  external_tx_id        TEXT NOT NULL CHECK (
+                          length(external_tx_id) = 66 AND
+                          substr(external_tx_id,1,2) = '0x' AND
+                          external_tx_id = lower(external_tx_id) AND
+                          substr(external_tx_id,3) NOT GLOB '*[^0-9a-f]*'
+                        ),
+  network_tx_id         TEXT NOT NULL CHECK (
+                          length(network_tx_id) = 66 AND
+                          substr(network_tx_id,1,2) = '0x' AND
+                          network_tx_id = lower(network_tx_id) AND
+                          substr(network_tx_id,3) NOT GLOB '*[^0-9a-f]*'
+                        ),
+  rail                  TEXT NOT NULL CHECK (rail = 'evm-base'),
+  chain_id              TEXT NOT NULL CHECK (chain_id = 'eip155:8453'),
+  asset_id              TEXT NOT NULL REFERENCES wk_assets(id) CHECK (asset_id IN (
+                          'eip155:8453/slip44:60',
+                          'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+                        )),
+  state                 TEXT NOT NULL CHECK (state IN (
+                          'READY','RUNNING','BACKOFF','SETTLED','PAUSED'
+                        )),
+  attempt_count         INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  failure_count         INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+  next_attempt_at       TEXT NOT NULL CHECK (
+                          length(next_attempt_at) = 24 AND
+                          strftime('%Y-%m-%dT%H:%M:%fZ', next_attempt_at) = next_attempt_at
+                        ),
+  lease_owner           TEXT CHECK (
+                          lease_owner IS NULL OR (
+                            length(lease_owner) BETWEEN 1 AND 128 AND
+                            lease_owner NOT GLOB '*[^A-Za-z0-9._:-]*'
+                          )
+                        ),
+  lease_token           TEXT CHECK (
+                          lease_token IS NULL OR length(trim(lease_token)) BETWEEN 1 AND 256
+                        ),
+  lease_until           TEXT CHECK (
+                          lease_until IS NULL OR (
+                            length(lease_until) = 24 AND
+                            strftime('%Y-%m-%dT%H:%M:%fZ', lease_until) = lease_until
+                          )
+                        ),
+  last_observation_json TEXT CHECK (
+                          last_observation_json IS NULL OR last_observation_json IN (
+                            '"pending"','"partial"','"settled"','"conflicted"'
+                          )
+                        ),
+  last_error_code       TEXT CHECK (
+                          last_error_code IS NULL OR
+                          (length(last_error_code) BETWEEN 1 AND 128 AND
+                           last_error_code NOT GLOB '*[^A-Z0-9_]*')
+                        ),
+  version               INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+  created_at            TEXT NOT NULL CHECK (
+                          length(created_at) = 24 AND
+                          strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at
+                        ),
+  updated_at            TEXT NOT NULL CHECK (
+                          length(updated_at) = 24 AND
+                          strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at
+                        ),
+  settled_at            TEXT CHECK (
+                          settled_at IS NULL OR (
+                            length(settled_at) = 24 AND
+                            strftime('%Y-%m-%dT%H:%M:%fZ', settled_at) = settled_at
+                          )
+                        ),
+  CHECK (external_tx_id = network_tx_id),
+  CHECK (
+    (state = 'RUNNING' AND lease_owner IS NOT NULL AND lease_token IS NOT NULL AND lease_until IS NOT NULL)
+    OR
+    (state <> 'RUNNING' AND lease_owner IS NULL AND lease_token IS NULL AND lease_until IS NULL)
+  ),
+  CHECK ((state = 'SETTLED' AND settled_at IS NOT NULL) OR (state <> 'SETTLED' AND settled_at IS NULL))
+);
+CREATE INDEX IF NOT EXISTS wk_base_reconciliation_jobs_due_idx
+  ON wk_base_reconciliation_jobs(state, next_attempt_at, created_at, id);
+CREATE INDEX IF NOT EXISTS wk_base_reconciliation_jobs_intent_idx
+  ON wk_base_reconciliation_jobs(intent_id, created_at, id);
+
+-- Provider observations are append-only and contain only an opaque trust
+-- domain hash; configured RPC URLs and origins must never enter the database.
+CREATE TABLE IF NOT EXISTS wk_base_position_snapshot_sightings (
+  id                    TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
+  account_id            TEXT NOT NULL REFERENCES wk_accounts(id),
+  chain_id              TEXT NOT NULL CHECK (chain_id = 'eip155:8453'),
+  provider_id           TEXT NOT NULL CHECK (
+                          length(provider_id) BETWEEN 1 AND 128 AND
+                          provider_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+                        ),
+  provider_trust_domain TEXT NOT NULL CHECK (
+                          length(provider_trust_domain) = 71 AND
+                          substr(provider_trust_domain,1,7) = 'sha256:' AND
+                          substr(provider_trust_domain,8) NOT GLOB '*[^0-9a-f]*'
+                        ),
+  evidence_hash         TEXT NOT NULL CHECK (
+                          length(evidence_hash) = 71 AND
+                          substr(evidence_hash,1,7) = 'sha256:' AND
+                          substr(evidence_hash,8) NOT GLOB '*[^0-9a-f]*'
+                        ),
+  block_number          TEXT NOT NULL CHECK (
+                          (block_number = '0' OR
+                           (block_number NOT GLOB '*[^0-9]*' AND
+                            substr(block_number,1,1) BETWEEN '1' AND '9')) AND
+                          (length(block_number) < 78 OR (
+                            length(block_number) = 78 AND block_number <=
+                            '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+                          ))
+                        ),
+  block_hash            TEXT NOT NULL CHECK (
+                          length(block_hash) = 66 AND substr(block_hash,1,2) = '0x' AND
+                          block_hash = lower(block_hash) AND
+                          substr(block_hash,3) NOT GLOB '*[^0-9a-f]*'
+                        ),
+  block_time            TEXT NOT NULL CHECK (
+                          length(block_time) = 24 AND
+                          strftime('%Y-%m-%dT%H:%M:%fZ', block_time) = block_time
+                        ),
+  eth_atomic            TEXT NOT NULL CHECK (
+                          (eth_atomic = '0' OR
+                           (eth_atomic NOT GLOB '*[^0-9]*' AND
+                            substr(eth_atomic,1,1) BETWEEN '1' AND '9')) AND
+                          (length(eth_atomic) < 78 OR (
+                            length(eth_atomic) = 78 AND eth_atomic <=
+                            '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+                          ))
+                        ),
+  usdc_atomic           TEXT NOT NULL CHECK (
+                          (usdc_atomic = '0' OR
+                           (usdc_atomic NOT GLOB '*[^0-9]*' AND
+                            substr(usdc_atomic,1,1) BETWEEN '1' AND '9')) AND
+                          (length(usdc_atomic) < 78 OR (
+                            length(usdc_atomic) = 78 AND usdc_atomic <=
+                            '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+                          ))
+                        ),
+  body_json             TEXT NOT NULL CHECK (json_valid(body_json)),
+  observed_at           TEXT NOT NULL CHECK (
+                          length(observed_at) = 24 AND
+                          strftime('%Y-%m-%dT%H:%M:%fZ', observed_at) = observed_at
+                        ),
+  fetched_at            TEXT NOT NULL CHECK (
+                          length(fetched_at) = 24 AND
+                          strftime('%Y-%m-%dT%H:%M:%fZ', fetched_at) = fetched_at
+                        ),
+  created_at            TEXT NOT NULL CHECK (
+                          length(created_at) = 24 AND
+                          strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at
+                        )
+);
+CREATE INDEX IF NOT EXISTS wk_base_position_sightings_account_idx
+  ON wk_base_position_snapshot_sightings(account_id, block_number, provider_id, fetched_at, id);
+CREATE UNIQUE INDEX IF NOT EXISTS wk_base_position_sightings_fact_uq
+  ON wk_base_position_snapshot_sightings(
+    account_id, chain_id, provider_id, provider_trust_domain, evidence_hash,
+    block_number, block_hash, block_time, eth_atomic, usdc_atomic,
+    observed_at, fetched_at
+  );
+
+-- Consensus is one atomic ETH+Circle-USDC fact at one finalized Base block.
+-- The redundant atomic columns let the insertion trigger prove the selected
+-- sightings before child items are appended in the same transaction.
+CREATE TABLE IF NOT EXISTS wk_base_position_snapshots (
+  id                 TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
+  snapshot_hash      TEXT NOT NULL UNIQUE CHECK (
+                       length(snapshot_hash) = 71 AND
+                       substr(snapshot_hash,1,7) = 'sha256:' AND
+                       substr(snapshot_hash,8) NOT GLOB '*[^0-9a-f]*'
+                     ),
+  account_id         TEXT NOT NULL REFERENCES wk_accounts(id),
+  chain_id           TEXT NOT NULL CHECK (chain_id = 'eip155:8453'),
+  block_number       TEXT NOT NULL CHECK (
+                       (block_number = '0' OR
+                        (block_number NOT GLOB '*[^0-9]*' AND
+                         substr(block_number,1,1) BETWEEN '1' AND '9')) AND
+                       (length(block_number) < 78 OR (
+                         length(block_number) = 78 AND block_number <=
+                         '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+                       ))
+                     ),
+  block_hash         TEXT NOT NULL CHECK (
+                       length(block_hash) = 66 AND substr(block_hash,1,2) = '0x' AND
+                       block_hash = lower(block_hash) AND
+                       substr(block_hash,3) NOT GLOB '*[^0-9a-f]*'
+                     ),
+  block_time         TEXT NOT NULL CHECK (
+                       length(block_time) = 24 AND
+                       strftime('%Y-%m-%dT%H:%M:%fZ', block_time) = block_time
+                     ),
+  evidence_hash      TEXT NOT NULL CHECK (
+                       length(evidence_hash) = 71 AND
+                       substr(evidence_hash,1,7) = 'sha256:' AND
+                       substr(evidence_hash,8) NOT GLOB '*[^0-9a-f]*'
+                     ),
+  eth_atomic         TEXT NOT NULL CHECK (
+                       (eth_atomic = '0' OR
+                        (eth_atomic NOT GLOB '*[^0-9]*' AND
+                         substr(eth_atomic,1,1) BETWEEN '1' AND '9')) AND
+                       (length(eth_atomic) < 78 OR (
+                         length(eth_atomic) = 78 AND eth_atomic <=
+                         '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+                       ))
+                     ),
+  usdc_atomic        TEXT NOT NULL CHECK (
+                       (usdc_atomic = '0' OR
+                        (usdc_atomic NOT GLOB '*[^0-9]*' AND
+                         substr(usdc_atomic,1,1) BETWEEN '1' AND '9')) AND
+                       (length(usdc_atomic) < 78 OR (
+                         length(usdc_atomic) = 78 AND usdc_atomic <=
+                         '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+                       ))
+                     ),
+  provider_ids_json  TEXT NOT NULL CHECK (
+                       json_valid(provider_ids_json) AND
+                       json_type(provider_ids_json) = 'array'
+                     ),
+  sighting_ids_json  TEXT NOT NULL CHECK (
+                       json_valid(sighting_ids_json) AND
+                       json_type(sighting_ids_json) = 'array'
+                     ),
+  quorum             INTEGER NOT NULL CHECK (
+                       quorum >= 2 AND quorum <= json_array_length(provider_ids_json) AND
+                       json_array_length(provider_ids_json) = json_array_length(sighting_ids_json)
+                     ),
+  decided_at         TEXT NOT NULL CHECK (
+                       length(decided_at) = 24 AND
+                       strftime('%Y-%m-%dT%H:%M:%fZ', decided_at) = decided_at
+                     ),
+  created_at         TEXT NOT NULL CHECK (
+                       length(created_at) = 24 AND
+                       strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at
+                     )
+);
+CREATE INDEX IF NOT EXISTS wk_base_position_snapshots_account_idx
+  ON wk_base_position_snapshots(account_id, block_number, decided_at, id);
+
+CREATE TABLE IF NOT EXISTS wk_base_position_snapshot_items (
+  snapshot_id     TEXT NOT NULL REFERENCES wk_base_position_snapshots(id),
+  asset_id        TEXT NOT NULL REFERENCES wk_assets(id) CHECK (asset_id IN (
+                    'eip155:8453/slip44:60',
+                    'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+                  )),
+  observed_atomic TEXT NOT NULL CHECK (
+                    (observed_atomic = '0' OR
+                     (observed_atomic NOT GLOB '*[^0-9]*' AND
+                      substr(observed_atomic,1,1) BETWEEN '1' AND '9')) AND
+                    (length(observed_atomic) < 78 OR (
+                      length(observed_atomic) = 78 AND observed_atomic <=
+                      '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+                    ))
+                  ),
+  created_at      TEXT NOT NULL CHECK (
+                    length(created_at) = 24 AND
+                    strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at
+                  ),
+  PRIMARY KEY (snapshot_id, asset_id)
+);
+
+-- This is the only mutable position-truth cursor. A conflict retains the last
+-- good head and positions while permanently freezing automatic transitions;
+-- only a future, separately audited resolution protocol may unfreeze it.
+CREATE TABLE IF NOT EXISTS wk_base_position_snapshot_heads (
+  account_id           TEXT PRIMARY KEY REFERENCES wk_accounts(id),
+  snapshot_id          TEXT NOT NULL REFERENCES wk_base_position_snapshots(id),
+  block_number         TEXT NOT NULL,
+  block_hash           TEXT NOT NULL,
+  state                TEXT NOT NULL CHECK (state IN ('ACTIVE','FROZEN')),
+  conflict_snapshot_id TEXT REFERENCES wk_base_position_snapshots(id),
+  version              INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+  updated_at           TEXT NOT NULL CHECK (
+                         length(updated_at) = 24 AND
+                         strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at
+                       ),
+  CHECK (
+    (state = 'ACTIVE' AND conflict_snapshot_id IS NULL)
+    OR (state = 'FROZEN' AND conflict_snapshot_id IS NOT NULL)
+  )
+);
+
+-- One row is appended after every explicit Base position refresh. The ledger
+-- deliberately stores only bounded codes/counts and an exact retained-head
+-- reference: provider endpoints, origins, response bodies and raw exception
+-- text have no representable column.
+CREATE TABLE IF NOT EXISTS wk_base_position_refresh_attempts (
+  id                            TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
+  account_id                    TEXT NOT NULL REFERENCES wk_accounts(id),
+  attempted_at                  TEXT NOT NULL CHECK (
+                                  length(attempted_at) = 24 AND
+                                  strftime('%Y-%m-%dT%H:%M:%fZ', attempted_at) = attempted_at
+                                ),
+  outcome                       TEXT NOT NULL CHECK (outcome IN (
+                                  'applied','replayed','stale','superseded',
+                                  'conflict','partial','rejected','cancelled'
+                                )),
+  reason_code                   TEXT NOT NULL CHECK (
+                                  length(reason_code) BETWEEN 1 AND 128 AND
+                                  reason_code = lower(reason_code) AND
+                                  substr(reason_code,1,1) BETWEEN 'a' AND 'z' AND
+                                  reason_code NOT GLOB '*[^a-z0-9_]*'
+                                ),
+  provider_count                INTEGER NOT NULL CHECK (
+                                  provider_count BETWEEN 0 AND 64
+                                ),
+  available_provider_count      INTEGER NOT NULL CHECK (
+                                  available_provider_count BETWEEN 0 AND provider_count
+                                ),
+  agreeing_provider_count       INTEGER NOT NULL CHECK (
+                                  agreeing_provider_count BETWEEN 0 AND available_provider_count
+                                ),
+  retained_snapshot_id          TEXT REFERENCES wk_base_position_snapshots(id),
+  retained_head_state           TEXT CHECK (
+                                  retained_head_state IS NULL OR
+                                  retained_head_state IN ('ACTIVE','FROZEN')
+                                ),
+  retained_conflict_snapshot_id TEXT REFERENCES wk_base_position_snapshots(id),
+  retained_head_version         INTEGER CHECK (
+                                  retained_head_version IS NULL OR retained_head_version >= 0
+                                ),
+  error_code                    TEXT CHECK (
+                                  error_code IS NULL OR (
+                                    length(error_code) BETWEEN 1 AND 128 AND
+                                    error_code = lower(error_code) AND
+                                    substr(error_code,1,1) BETWEEN 'a' AND 'z' AND
+                                    error_code NOT GLOB '*[^a-z0-9_]*'
+                                  )
+                                ),
+  created_at                    TEXT NOT NULL CHECK (
+                                  length(created_at) = 24 AND
+                                  strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at
+                                ),
+  CHECK (
+    (retained_snapshot_id IS NULL AND retained_head_state IS NULL
+      AND retained_conflict_snapshot_id IS NULL AND retained_head_version IS NULL)
+    OR
+    (retained_snapshot_id IS NOT NULL AND retained_head_state IS NOT NULL
+      AND retained_head_version IS NOT NULL
+      AND (
+        (retained_head_state = 'ACTIVE' AND retained_conflict_snapshot_id IS NULL)
+        OR
+        (retained_head_state = 'FROZEN' AND retained_conflict_snapshot_id IS NOT NULL)
+      ))
+  )
+);
+CREATE INDEX IF NOT EXISTS wk_base_position_refresh_attempts_account_idx
+  ON wk_base_position_refresh_attempts(account_id, attempted_at DESC, created_at DESC, id DESC);
 
 -- A consumed resource claim may be reopened only by the reconciliation path.
 -- The evidence row is retained permanently so resource reuse can be audited.
@@ -1034,6 +1395,355 @@ BEGIN
 END;
 `;
 
+const BASE_BACKGROUND_TRUTH_TRIGGERS = `
+-- A reconciliation job is not caller-authored work. Its immutable tuple must
+-- still be derivable from one exact Base execution, artifact, account, and
+-- supported asset whenever it is inserted or claimed/updated.
+CREATE TRIGGER wk_base_reconciliation_jobs_binding_insert
+BEFORE INSERT ON wk_base_reconciliation_jobs
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM wk_executions execution
+  JOIN wk_signed_artifacts artifact ON artifact.id = execution.signed_artifact_id
+  JOIN wk_payment_intents intent ON intent.id = execution.intent_id
+  JOIN wk_accounts account ON account.id = intent.source_account_id
+  WHERE execution.id = NEW.execution_id
+    AND execution.intent_id = NEW.intent_id
+    AND execution.signed_artifact_id = NEW.signed_artifact_id
+    AND execution.network_tx_id = NEW.network_tx_id
+    AND artifact.intent_id = NEW.intent_id
+    AND artifact.external_tx_id = NEW.external_tx_id
+    AND artifact.external_tx_id = execution.network_tx_id
+    AND execution.rail = NEW.rail
+    AND execution.rail = 'evm-base'
+    AND account.chain_id = NEW.chain_id
+    AND account.chain_id = 'eip155:8453'
+    AND intent.asset_id = NEW.asset_id
+    AND intent.asset_id IN (
+      'eip155:8453/slip44:60',
+      'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+    )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Base reconciliation job has no exact eligible execution binding');
+END;
+
+CREATE TRIGGER wk_base_reconciliation_jobs_binding_immutable
+BEFORE UPDATE ON wk_base_reconciliation_jobs
+WHEN OLD.id IS NOT NEW.id
+  OR OLD.execution_id IS NOT NEW.execution_id
+  OR OLD.intent_id IS NOT NEW.intent_id
+  OR OLD.signed_artifact_id IS NOT NEW.signed_artifact_id
+  OR OLD.external_tx_id IS NOT NEW.external_tx_id
+  OR OLD.network_tx_id IS NOT NEW.network_tx_id
+  OR OLD.rail IS NOT NEW.rail
+  OR OLD.chain_id IS NOT NEW.chain_id
+  OR OLD.asset_id IS NOT NEW.asset_id
+  OR OLD.created_at IS NOT NEW.created_at
+BEGIN
+  SELECT RAISE(ABORT, 'Base reconciliation job binding is immutable');
+END;
+
+CREATE TRIGGER wk_base_reconciliation_jobs_binding_update
+BEFORE UPDATE ON wk_base_reconciliation_jobs
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM wk_executions execution
+  JOIN wk_signed_artifacts artifact ON artifact.id = execution.signed_artifact_id
+  JOIN wk_payment_intents intent ON intent.id = execution.intent_id
+  JOIN wk_accounts account ON account.id = intent.source_account_id
+  WHERE execution.id = NEW.execution_id
+    AND execution.intent_id = NEW.intent_id
+    AND execution.signed_artifact_id = NEW.signed_artifact_id
+    AND execution.network_tx_id = NEW.network_tx_id
+    AND artifact.intent_id = NEW.intent_id
+    AND artifact.external_tx_id = NEW.external_tx_id
+    AND artifact.external_tx_id = execution.network_tx_id
+    AND execution.rail = NEW.rail
+    AND execution.rail = 'evm-base'
+    AND account.chain_id = NEW.chain_id
+    AND account.chain_id = 'eip155:8453'
+    AND intent.asset_id = NEW.asset_id
+    AND intent.asset_id IN (
+      'eip155:8453/slip44:60',
+      'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+    )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Base reconciliation job lost its exact execution binding');
+END;
+
+CREATE TRIGGER wk_base_reconciliation_jobs_transition_guard
+BEFORE UPDATE ON wk_base_reconciliation_jobs
+WHEN NEW.version <> OLD.version + 1
+  OR NEW.attempt_count < OLD.attempt_count
+  OR NEW.failure_count < OLD.failure_count
+  OR OLD.state = 'SETTLED'
+  OR (OLD.state = 'PAUSED' AND NEW.state NOT IN ('PAUSED','READY'))
+  OR (OLD.state IN ('READY','BACKOFF') AND NEW.state NOT IN ('RUNNING','PAUSED','SETTLED'))
+  OR (OLD.state = 'RUNNING' AND NEW.state NOT IN ('BACKOFF','PAUSED','SETTLED'))
+  OR (NEW.state = 'RUNNING' AND (
+    NEW.attempt_count <> OLD.attempt_count + 1
+    OR NEW.failure_count <> OLD.failure_count
+  ))
+  OR (NEW.state IN ('BACKOFF','PAUSED') AND (
+    NEW.attempt_count <> OLD.attempt_count
+    OR NEW.failure_count NOT IN (OLD.failure_count, OLD.failure_count + 1)
+  ))
+  OR (NEW.state = 'SETTLED' AND (
+    NEW.attempt_count <> OLD.attempt_count
+    OR NEW.failure_count <> OLD.failure_count
+  ))
+BEGIN
+  SELECT RAISE(ABORT, 'invalid Base reconciliation job transition');
+END;
+
+CREATE TRIGGER wk_base_reconciliation_jobs_no_delete
+BEFORE DELETE ON wk_base_reconciliation_jobs
+BEGIN
+  SELECT RAISE(ABORT, 'Base reconciliation jobs are durable audit records');
+END;
+
+CREATE TRIGGER wk_base_position_sightings_no_update
+BEFORE UPDATE ON wk_base_position_snapshot_sightings
+BEGIN
+  SELECT RAISE(ABORT, 'Base position sightings are append-only');
+END;
+CREATE TRIGGER wk_base_position_sightings_no_delete
+BEFORE DELETE ON wk_base_position_snapshot_sightings
+BEGIN
+  SELECT RAISE(ABORT, 'Base position sightings are append-only');
+END;
+
+-- Consensus names sorted, distinct providers and sorted, distinct sighting
+-- rows. Every selected sighting must state the exact same finalized header and
+-- both balances, and every provider must come from a distinct opaque trust
+-- domain. Raw provider URLs are intentionally not representable here.
+CREATE TRIGGER wk_base_position_snapshots_quorum_insert
+BEFORE INSERT ON wk_base_position_snapshots
+WHEN
+  EXISTS (
+    SELECT 1 FROM json_each(NEW.provider_ids_json)
+    WHERE type <> 'text' OR length(trim(CAST(value AS TEXT))) = 0
+      OR CAST(value AS TEXT) GLOB '*[^A-Za-z0-9._:-]*'
+  )
+  OR EXISTS (
+    SELECT 1 FROM json_each(NEW.sighting_ids_json)
+    WHERE type <> 'text' OR length(trim(CAST(value AS TEXT))) = 0
+  )
+  OR (SELECT COUNT(DISTINCT value) FROM json_each(NEW.provider_ids_json))
+       <> json_array_length(NEW.provider_ids_json)
+  OR (SELECT COUNT(DISTINCT value) FROM json_each(NEW.sighting_ids_json))
+       <> json_array_length(NEW.sighting_ids_json)
+  OR NEW.provider_ids_json IS NOT (
+    SELECT json_group_array(value)
+    FROM (SELECT value FROM json_each(NEW.provider_ids_json) ORDER BY value)
+  )
+  OR NEW.sighting_ids_json IS NOT (
+    SELECT json_group_array(value)
+    FROM (SELECT value FROM json_each(NEW.sighting_ids_json) ORDER BY value)
+  )
+  OR (
+    SELECT COUNT(*) FROM wk_base_position_snapshot_sightings
+    WHERE id IN (SELECT value FROM json_each(NEW.sighting_ids_json))
+  ) <> json_array_length(NEW.sighting_ids_json)
+  OR EXISTS (
+    SELECT 1 FROM wk_base_position_snapshot_sightings sighting
+    WHERE sighting.id IN (SELECT value FROM json_each(NEW.sighting_ids_json))
+      AND (
+        sighting.account_id <> NEW.account_id
+        OR sighting.chain_id <> NEW.chain_id
+        OR sighting.evidence_hash <> NEW.evidence_hash
+        OR sighting.block_number <> NEW.block_number
+        OR sighting.block_hash <> NEW.block_hash
+        OR sighting.block_time <> NEW.block_time
+        OR sighting.eth_atomic <> NEW.eth_atomic
+        OR sighting.usdc_atomic <> NEW.usdc_atomic
+        OR sighting.provider_id NOT IN (SELECT value FROM json_each(NEW.provider_ids_json))
+      )
+  )
+  OR EXISTS (
+    SELECT 1 FROM json_each(NEW.provider_ids_json) provider
+    WHERE NOT EXISTS (
+      SELECT 1 FROM wk_base_position_snapshot_sightings sighting
+      WHERE sighting.id IN (SELECT value FROM json_each(NEW.sighting_ids_json))
+        AND sighting.provider_id = provider.value
+    )
+  )
+  OR (
+    SELECT COUNT(DISTINCT provider_trust_domain)
+    FROM wk_base_position_snapshot_sightings
+    WHERE id IN (SELECT value FROM json_each(NEW.sighting_ids_json))
+  ) <> json_array_length(NEW.sighting_ids_json)
+BEGIN
+  SELECT RAISE(ABORT, 'Base position consensus requires exact distinct-provider sightings');
+END;
+
+CREATE TRIGGER wk_base_position_snapshots_no_update
+BEFORE UPDATE ON wk_base_position_snapshots
+BEGIN
+  SELECT RAISE(ABORT, 'Base position snapshots are append-only');
+END;
+CREATE TRIGGER wk_base_position_snapshots_no_delete
+BEFORE DELETE ON wk_base_position_snapshots
+BEGIN
+  SELECT RAISE(ABORT, 'Base position snapshots are append-only');
+END;
+
+CREATE TRIGGER wk_base_position_snapshot_items_binding_insert
+BEFORE INSERT ON wk_base_position_snapshot_items
+WHEN NOT EXISTS (
+  SELECT 1 FROM wk_base_position_snapshots snapshot
+  WHERE snapshot.id = NEW.snapshot_id
+    AND (
+      (NEW.asset_id = 'eip155:8453/slip44:60'
+       AND NEW.observed_atomic = snapshot.eth_atomic)
+      OR
+      (NEW.asset_id = 'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+       AND NEW.observed_atomic = snapshot.usdc_atomic)
+    )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Base position item does not match its atomic snapshot');
+END;
+CREATE TRIGGER wk_base_position_snapshot_items_no_update
+BEFORE UPDATE ON wk_base_position_snapshot_items
+BEGIN
+  SELECT RAISE(ABORT, 'Base position snapshot items are append-only');
+END;
+CREATE TRIGGER wk_base_position_snapshot_items_no_delete
+BEFORE DELETE ON wk_base_position_snapshot_items
+BEGIN
+  SELECT RAISE(ABORT, 'Base position snapshot items are append-only');
+END;
+
+CREATE TRIGGER wk_base_position_heads_snapshot_binding_insert
+BEFORE INSERT ON wk_base_position_snapshot_heads
+WHEN NOT EXISTS (
+  SELECT 1 FROM wk_base_position_snapshots snapshot
+  WHERE snapshot.id = NEW.snapshot_id
+    AND snapshot.account_id = NEW.account_id
+    AND snapshot.block_number = NEW.block_number
+    AND snapshot.block_hash = NEW.block_hash
+)
+OR (
+  SELECT COUNT(*) FROM wk_base_position_snapshot_items item
+  WHERE item.snapshot_id = NEW.snapshot_id
+) <> 2
+BEGIN
+  SELECT RAISE(ABORT, 'Base position head does not match its snapshot');
+END;
+
+CREATE TRIGGER wk_base_position_heads_transition_guard
+BEFORE UPDATE ON wk_base_position_snapshot_heads
+WHEN OLD.account_id IS NOT NEW.account_id
+  OR NEW.version <> OLD.version + 1
+  OR OLD.state = 'FROZEN'
+  OR (OLD.state = 'ACTIVE' AND NEW.state = 'ACTIVE' AND OLD.snapshot_id = NEW.snapshot_id)
+  OR NOT EXISTS (
+    SELECT 1 FROM wk_base_position_snapshots snapshot
+    WHERE snapshot.id = NEW.snapshot_id
+      AND snapshot.account_id = NEW.account_id
+      AND snapshot.block_number = NEW.block_number
+      AND snapshot.block_hash = NEW.block_hash
+  )
+  OR (
+    SELECT COUNT(*) FROM wk_base_position_snapshot_items item
+    WHERE item.snapshot_id = NEW.snapshot_id
+  ) <> 2
+  OR (
+    NEW.state = 'FROZEN' AND (
+      NEW.snapshot_id <> OLD.snapshot_id
+      OR NEW.block_number <> OLD.block_number
+      OR NEW.block_hash <> OLD.block_hash
+      OR NOT EXISTS (
+        SELECT 1 FROM wk_base_position_snapshots conflict
+        WHERE conflict.id = NEW.conflict_snapshot_id
+          AND conflict.account_id = NEW.account_id
+          AND conflict.block_number = OLD.block_number
+          AND (
+            conflict.block_hash <> OLD.block_hash
+            OR conflict.block_time <> (
+              SELECT block_time FROM wk_base_position_snapshots
+              WHERE id=OLD.snapshot_id
+            )
+            OR conflict.eth_atomic <> (
+              SELECT observed_atomic FROM wk_base_position_snapshot_items
+              WHERE snapshot_id=OLD.snapshot_id
+                AND asset_id='eip155:8453/slip44:60'
+            )
+            OR conflict.usdc_atomic <> (
+              SELECT observed_atomic FROM wk_base_position_snapshot_items
+              WHERE snapshot_id=OLD.snapshot_id
+                AND asset_id='eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+            )
+          )
+      )
+    )
+  )
+  OR (
+    NEW.state = 'ACTIVE' AND OLD.snapshot_id <> NEW.snapshot_id AND NOT (
+      length(NEW.block_number) > length(OLD.block_number)
+      OR (length(NEW.block_number) = length(OLD.block_number)
+          AND NEW.block_number > OLD.block_number)
+    )
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'invalid Base position head transition');
+END;
+
+CREATE TRIGGER wk_base_position_heads_no_delete
+BEFORE DELETE ON wk_base_position_snapshot_heads
+BEGIN
+  SELECT RAISE(ABORT, 'Base position heads cannot be deleted');
+END;
+
+-- Capture the exact head retained by this attempt at insertion time. Later
+-- head advances cannot rewrite what an agent or page reload was shown.
+CREATE TRIGGER wk_base_position_refresh_attempts_binding_insert
+BEFORE INSERT ON wk_base_position_refresh_attempts
+WHEN NOT EXISTS (
+  SELECT 1 FROM wk_accounts account
+  WHERE account.id = NEW.account_id AND account.chain_id = 'eip155:8453'
+)
+OR (
+  NEW.retained_snapshot_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM wk_base_position_snapshot_heads head
+    JOIN wk_base_position_snapshots snapshot
+      ON snapshot.id = head.snapshot_id AND snapshot.account_id = head.account_id
+    LEFT JOIN wk_base_position_snapshots conflict
+      ON conflict.id = head.conflict_snapshot_id AND conflict.account_id = head.account_id
+    WHERE head.account_id = NEW.account_id
+      AND head.snapshot_id = NEW.retained_snapshot_id
+      AND head.state = NEW.retained_head_state
+      AND head.conflict_snapshot_id IS NEW.retained_conflict_snapshot_id
+      AND head.version = NEW.retained_head_version
+      AND (head.conflict_snapshot_id IS NULL OR conflict.id IS NOT NULL)
+  )
+)
+OR (
+  NEW.retained_snapshot_id IS NULL AND EXISTS (
+    SELECT 1 FROM wk_base_position_snapshot_heads head
+    WHERE head.account_id = NEW.account_id
+  )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Base position refresh attempt does not match its retained head');
+END;
+
+CREATE TRIGGER wk_base_position_refresh_attempts_no_update
+BEFORE UPDATE ON wk_base_position_refresh_attempts
+BEGIN
+  SELECT RAISE(ABORT, 'Base position refresh attempts are append-only');
+END;
+
+CREATE TRIGGER wk_base_position_refresh_attempts_no_delete
+BEFORE DELETE ON wk_base_position_refresh_attempts
+BEGIN
+  SELECT RAISE(ABORT, 'Base position refresh attempts are append-only');
+END;
+`;
+
 const IDENTITY_TRIGGERS = `
 -- Stable ids cannot be rebound to a different economic or custody identity.
 -- Display names, symbols, status and metadata remain intentionally mutable.
@@ -1318,6 +2028,25 @@ export function installWalletKernelSchema(db: Database): void {
       "wk_chain_sightings_no_delete",
       "wk_chain_consensus_no_update",
       "wk_chain_consensus_no_delete",
+      "wk_base_reconciliation_jobs_binding_insert",
+      "wk_base_reconciliation_jobs_binding_immutable",
+      "wk_base_reconciliation_jobs_binding_update",
+      "wk_base_reconciliation_jobs_transition_guard",
+      "wk_base_reconciliation_jobs_no_delete",
+      "wk_base_position_sightings_no_update",
+      "wk_base_position_sightings_no_delete",
+      "wk_base_position_snapshots_quorum_insert",
+      "wk_base_position_snapshots_no_update",
+      "wk_base_position_snapshots_no_delete",
+      "wk_base_position_snapshot_items_binding_insert",
+      "wk_base_position_snapshot_items_no_update",
+      "wk_base_position_snapshot_items_no_delete",
+      "wk_base_position_heads_snapshot_binding_insert",
+      "wk_base_position_heads_transition_guard",
+      "wk_base_position_heads_no_delete",
+      "wk_base_position_refresh_attempts_binding_insert",
+      "wk_base_position_refresh_attempts_no_update",
+      "wk_base_position_refresh_attempts_no_delete",
     ] as const) {
       db.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
     }
@@ -1327,8 +2056,11 @@ export function installWalletKernelSchema(db: Database): void {
     db.exec(AGENT_AUTHORIZATION_TRIGGERS);
     db.exec(RESERVATION_TRANSITION_TRIGGERS);
     db.exec(CHAIN_TRUTH_TRIGGERS);
+    db.exec(BASE_BACKGROUND_TRUTH_TRIGGERS);
     db.query("INSERT OR IGNORE INTO wk_schema_meta (version) VALUES (5)").run();
     db.query("INSERT OR IGNORE INTO wk_schema_meta (version) VALUES (6)").run();
+    db.query("INSERT OR IGNORE INTO wk_schema_meta (version) VALUES (7)").run();
+    db.query("INSERT OR IGNORE INTO wk_schema_meta (version) VALUES (8)").run();
   });
   install.immediate();
 }

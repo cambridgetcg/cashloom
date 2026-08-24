@@ -45,6 +45,7 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 | `CASHLOOM_DATA_DIR` | Where the SQLite file + keys live (default `~/.cashloom`). |
 | `CASHLOOM_BASE_RPC_URL` | Primary Base RPC for quotes, sending, and evidence (default public `mainnet.base.org`). API-bearing URLs are accepted but never returned in receipts/errors. |
 | `CASHLOOM_BASE_CONFIRMATION_RPC_URL` | Independent Base evidence provider (default public `base-rpc.publicnode.com`). Must be a distinct endpoint; two-provider finalized agreement is required to settle. |
+| `CASHLOOM_BASE_RECONCILIATION_ENABLED` | Set to exactly `1` to start the bounded background checker for already-signed Base transactions. Off by default; it can observe/settle but cannot sign, submit, recover, or rebroadcast. |
 | `STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*` | Read-only connector keys, **only** if you connect those rails. Each is an env-var **pointer** named on an account; the value is never stored in the DB. |
 
 ## What works today
@@ -64,6 +65,19 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   require two-provider `finalized` consensus, verify native USDC effects, and
   post exact L2 + L1 data/security + operator fees. Missing evidence remains
   unknown and never releases the nonce.
+- **Finalized Base positions** — an explicit account refresh observes ETH and
+  native Circle USDC at one corroborated finalized block. Normal page/API reads
+  stay local to SQLite; outages never become zero balances, older snapshots
+  cannot regress the head, and same-height contradictions freeze the view.
+  Sanitized refresh attempts survive reloads, and duplicate local records for
+  one CAIP-10 identity are marked so agents do not sum the same wallet twice.
+- **Bounded reconciliation scheduler** — optional durable leases, concurrency
+  limits, deadlines, and backoff check only exact signed-artifact/transaction
+  joins. It is disabled unless the owner sets the opt-in variable above.
+- **Agent-local discovery** — `GET /api/wallet/v3` lists the private wallet
+  resources/actions, methods, required scopes, refusal codes, and read-only
+  network effects. The stable flat `/api/wallet/v2/positions` contract remains
+  available while richer finalized evidence lives at `/api/wallet/v3/positions`.
 - **Read rails** — sync balances + transactions from Stripe, GoCardless,
   Bitcoin (Esplora), Ethereum (Alchemy), and the agenttool agent economy.
   Strictly read-only: nothing behind a connector can move money.
@@ -73,7 +87,7 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 ## What's next (honest roadmap)
 
 - **Hardware/external signers**, passkey-backed smart accounts, WalletConnect,
-  and an opt-in bounded scheduler for the now-live Base reconciliation path.
+  and broader finalized position adapters beyond Base ETH/native USDC.
 - **Lightning**, **more rails** (SEPA, UPI, SOL), **payment pointers**
   (`you@cashloom`), **CSV/receipt import** without any cloud AI.
 - **Tauri desktop packaging** — double-click to run, zero terminal.

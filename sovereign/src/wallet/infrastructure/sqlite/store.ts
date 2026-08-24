@@ -90,6 +90,24 @@ export class ChainEvidenceConflictError extends WalletKernelStoreError {
   }
 }
 
+export class BaseReconciliationJobConflictError extends WalletKernelStoreError {
+  constructor(message: string) {
+    super("BASE_RECONCILIATION_JOB_CONFLICT", message);
+  }
+}
+
+export class BasePositionSnapshotConflictError extends WalletKernelStoreError {
+  constructor(message: string) {
+    super("BASE_POSITION_SNAPSHOT_CONFLICT", message);
+  }
+}
+
+export class BasePositionRefreshAttemptConflictError extends WalletKernelStoreError {
+  constructor(message: string) {
+    super("BASE_POSITION_REFRESH_ATTEMPT_CONFLICT", message);
+  }
+}
+
 export class JournalUnbalancedError extends WalletKernelStoreError {
   constructor(readonly differences: Readonly<Record<string, string>>) {
     super(
@@ -430,6 +448,168 @@ export interface ChainConsensusRecord {
   createdAt: string;
 }
 
+export const BASE_CHAIN_ID = "eip155:8453" as const;
+export const BASE_ETH_ASSET_ID = "eip155:8453/slip44:60" as const;
+export const BASE_USDC_ASSET_ID =
+  "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" as const;
+export type BasePositionAssetId = typeof BASE_ETH_ASSET_ID | typeof BASE_USDC_ASSET_ID;
+
+export type BaseReconciliationJobState =
+  | "READY"
+  | "RUNNING"
+  | "BACKOFF"
+  | "SETTLED"
+  | "PAUSED";
+export type BaseReconciliationObservation =
+  | "pending"
+  | "partial"
+  | "settled"
+  | "conflicted"
+  | null;
+
+export interface BaseReconciliationCandidate {
+  executionId: string;
+  intentId: string;
+  signedArtifactId: string;
+  externalTxId: string;
+  networkTxId: string;
+  rail: "evm-base";
+  chainId: typeof BASE_CHAIN_ID;
+  assetId: BasePositionAssetId;
+  executionState: string;
+}
+
+export interface BaseReconciliationJob extends BaseReconciliationCandidate {
+  id: string;
+  state: BaseReconciliationJobState;
+  attemptCount: number;
+  failureCount: number;
+  nextAttemptAt: string;
+  leaseOwner: string | null;
+  leaseToken: string | null;
+  leaseUntil: string | null;
+  lastObservation: BaseReconciliationObservation;
+  lastErrorCode: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  settledAt: string | null;
+}
+
+export interface BasePositionSnapshotItem {
+  assetId: BasePositionAssetId;
+  observedAtomic: string;
+}
+
+export interface BasePositionSightingRecord {
+  id: string;
+  accountId: string;
+  chainId: typeof BASE_CHAIN_ID;
+  providerId: string;
+  providerTrustDomain: `sha256:${string}`;
+  evidenceHash: `sha256:${string}`;
+  blockNumber: string;
+  blockHash: `0x${string}`;
+  blockTime: string;
+  items: readonly [BasePositionSnapshotItem, BasePositionSnapshotItem];
+  body: JsonValue;
+  observedAt: string;
+  fetchedAt: string;
+  createdAt: string;
+}
+
+export interface BasePositionSnapshotRecord {
+  id: string;
+  snapshotHash: `sha256:${string}`;
+  accountId: string;
+  chainId: typeof BASE_CHAIN_ID;
+  blockNumber: string;
+  blockHash: `0x${string}`;
+  blockTime: string;
+  evidenceHash: `sha256:${string}`;
+  providerIds: readonly string[];
+  sightingIds: readonly string[];
+  quorum: number;
+  items: readonly [BasePositionSnapshotItem, BasePositionSnapshotItem];
+  decidedAt: string;
+  createdAt: string;
+}
+
+export type BasePositionSnapshotHeadState = "ACTIVE" | "FROZEN";
+
+export interface BasePositionSnapshotHeadRecord {
+  accountId: string;
+  snapshotId: string;
+  blockNumber: string;
+  blockHash: `0x${string}`;
+  state: BasePositionSnapshotHeadState;
+  conflictSnapshotId: string | null;
+  version: number;
+  updatedAt: string;
+}
+
+export type BasePositionRefreshAttemptOutcome =
+  | "applied"
+  | "replayed"
+  | "stale"
+  | "superseded"
+  | "conflict"
+  | "partial"
+  | "rejected"
+  | "cancelled";
+
+export interface BasePositionRefreshAttemptRetainedHead {
+  snapshotId: string;
+  state: BasePositionSnapshotHeadState;
+  conflictSnapshotId: string | null;
+  version: number;
+}
+
+export interface BasePositionRefreshAttemptRecord {
+  id: string;
+  accountId: string;
+  attemptedAt: string;
+  outcome: BasePositionRefreshAttemptOutcome;
+  reasonCode: string;
+  providerCount: number;
+  availableProviderCount: number;
+  agreeingProviderCount: number;
+  retainedHead: BasePositionRefreshAttemptRetainedHead | null;
+  errorCode: string | null;
+  createdAt: string;
+}
+
+export type ApplyBasePositionSnapshotOutcome =
+  | "applied"
+  | "replayed"
+  | "stale"
+  | "superseded"
+  | "conflict";
+
+export interface ApplyBasePositionSnapshotResult {
+  outcome: ApplyBasePositionSnapshotOutcome;
+  snapshot: BasePositionSnapshotRecord;
+  head: BasePositionSnapshotHeadRecord;
+}
+
+export interface BasePositionRecord {
+  accountId: string;
+  assetId: BasePositionAssetId;
+  observedAtomic: string;
+  pendingAtomic: string;
+  source: string;
+  sourceCursor: string | null;
+  asOf: string;
+  version: number;
+  updatedAt: string;
+  snapshotId: string;
+  blockNumber: string;
+  blockHash: `0x${string}`;
+  headState: BasePositionSnapshotHeadState;
+  conflictSnapshotId: string | null;
+  headVersion: number;
+}
+
 export interface ObservationRecord {
   id: string;
   accountId: string;
@@ -627,6 +807,126 @@ type ChainConsensusRow = {
   body_json: string;
   decided_at: string;
   created_at: string;
+};
+
+type BaseReconciliationJobRow = {
+  id: string;
+  execution_id: string;
+  intent_id: string;
+  signed_artifact_id: string;
+  external_tx_id: string;
+  network_tx_id: string;
+  rail: BaseReconciliationCandidate["rail"];
+  chain_id: typeof BASE_CHAIN_ID;
+  asset_id: BasePositionAssetId;
+  state: BaseReconciliationJobState;
+  execution_state: string;
+  attempt_count: number;
+  failure_count: number;
+  next_attempt_at: string;
+  lease_owner: string | null;
+  lease_token: string | null;
+  lease_until: string | null;
+  last_observation_json: string | null;
+  last_error_code: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  settled_at: string | null;
+};
+
+type BaseReconciliationCandidateRow = {
+  execution_id: string;
+  intent_id: string;
+  signed_artifact_id: string;
+  external_tx_id: string;
+  network_tx_id: string;
+  rail: BaseReconciliationCandidate["rail"];
+  chain_id: typeof BASE_CHAIN_ID;
+  asset_id: BasePositionAssetId;
+  execution_state: string;
+};
+
+type BasePositionSightingRow = {
+  id: string;
+  account_id: string;
+  chain_id: typeof BASE_CHAIN_ID;
+  provider_id: string;
+  provider_trust_domain: `sha256:${string}`;
+  evidence_hash: `sha256:${string}`;
+  block_number: string;
+  block_hash: `0x${string}`;
+  block_time: string;
+  eth_atomic: string;
+  usdc_atomic: string;
+  body_json: string;
+  observed_at: string;
+  fetched_at: string;
+  created_at: string;
+};
+
+type BasePositionSnapshotRow = {
+  id: string;
+  snapshot_hash: `sha256:${string}`;
+  account_id: string;
+  chain_id: typeof BASE_CHAIN_ID;
+  block_number: string;
+  block_hash: `0x${string}`;
+  block_time: string;
+  evidence_hash: `sha256:${string}`;
+  eth_atomic: string;
+  usdc_atomic: string;
+  provider_ids_json: string;
+  sighting_ids_json: string;
+  quorum: number;
+  decided_at: string;
+  created_at: string;
+};
+
+type BasePositionHeadRow = {
+  account_id: string;
+  snapshot_id: string;
+  block_number: string;
+  block_hash: `0x${string}`;
+  state: BasePositionSnapshotHeadState;
+  conflict_snapshot_id: string | null;
+  version: number;
+  updated_at: string;
+};
+
+type BasePositionRefreshAttemptRow = {
+  id: string;
+  account_id: string;
+  attempted_at: string;
+  outcome: BasePositionRefreshAttemptOutcome;
+  reason_code: string;
+  provider_count: number;
+  available_provider_count: number;
+  agreeing_provider_count: number;
+  retained_snapshot_id: string | null;
+  retained_head_state: BasePositionSnapshotHeadState | null;
+  retained_conflict_snapshot_id: string | null;
+  retained_head_version: number | null;
+  error_code: string | null;
+  created_at: string;
+};
+
+type BasePositionRow = {
+  account_id: string;
+  asset_id: BasePositionAssetId;
+  observed_atomic: string;
+  pending_atomic: string;
+  source: string;
+  source_cursor: string | null;
+  as_of: string;
+  version: number;
+  updated_at: string;
+  snapshot_id: string;
+  block_number: string;
+  block_hash: `0x${string}`;
+  head_state: BasePositionSnapshotHeadState;
+  conflict_snapshot_id: string | null;
+  head_version: number;
 };
 
 type ObservationRow = {
@@ -863,6 +1163,142 @@ const mapChainConsensus = (row: ChainConsensusRow): ChainConsensusRecord => ({
   createdAt: row.created_at,
 });
 
+const baseItems = (
+  ethAtomic: string,
+  usdcAtomic: string,
+): readonly [BasePositionSnapshotItem, BasePositionSnapshotItem] => [
+  { assetId: BASE_ETH_ASSET_ID, observedAtomic: ethAtomic },
+  { assetId: BASE_USDC_ASSET_ID, observedAtomic: usdcAtomic },
+];
+
+const mapBaseReconciliationJob = (row: BaseReconciliationJobRow): BaseReconciliationJob => ({
+  id: row.id,
+  executionId: row.execution_id,
+  intentId: row.intent_id,
+  signedArtifactId: row.signed_artifact_id,
+  externalTxId: row.external_tx_id,
+  networkTxId: row.network_tx_id,
+  rail: row.rail,
+  chainId: row.chain_id,
+  assetId: row.asset_id,
+  executionState: row.execution_state,
+  state: row.state,
+  attemptCount: row.attempt_count,
+  failureCount: row.failure_count,
+  nextAttemptAt: row.next_attempt_at,
+  leaseOwner: row.lease_owner,
+  leaseToken: row.lease_token,
+  leaseUntil: row.lease_until,
+  lastObservation: row.last_observation_json === null
+    ? null
+    : (JSON.parse(row.last_observation_json) as Exclude<BaseReconciliationObservation, null>),
+  lastErrorCode: row.last_error_code,
+  version: row.version,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  settledAt: row.settled_at,
+});
+
+const mapBaseReconciliationCandidate = (
+  row: BaseReconciliationCandidateRow,
+): BaseReconciliationCandidate => ({
+  executionId: row.execution_id,
+  intentId: row.intent_id,
+  signedArtifactId: row.signed_artifact_id,
+  externalTxId: row.external_tx_id,
+  networkTxId: row.network_tx_id,
+  rail: row.rail,
+  chainId: row.chain_id,
+  assetId: row.asset_id,
+  executionState: row.execution_state,
+});
+
+const mapBasePositionSighting = (row: BasePositionSightingRow): BasePositionSightingRecord => ({
+  id: row.id,
+  accountId: row.account_id,
+  chainId: row.chain_id,
+  providerId: row.provider_id,
+  providerTrustDomain: row.provider_trust_domain,
+  evidenceHash: row.evidence_hash,
+  blockNumber: row.block_number,
+  blockHash: row.block_hash,
+  blockTime: row.block_time,
+  items: baseItems(row.eth_atomic, row.usdc_atomic),
+  body: JSON.parse(row.body_json) as JsonValue,
+  observedAt: row.observed_at,
+  fetchedAt: row.fetched_at,
+  createdAt: row.created_at,
+});
+
+const mapBasePositionSnapshot = (row: BasePositionSnapshotRow): BasePositionSnapshotRecord => ({
+  id: row.id,
+  snapshotHash: row.snapshot_hash,
+  accountId: row.account_id,
+  chainId: row.chain_id,
+  blockNumber: row.block_number,
+  blockHash: row.block_hash,
+  blockTime: row.block_time,
+  evidenceHash: row.evidence_hash,
+  providerIds: JSON.parse(row.provider_ids_json) as string[],
+  sightingIds: JSON.parse(row.sighting_ids_json) as string[],
+  quorum: row.quorum,
+  items: baseItems(row.eth_atomic, row.usdc_atomic),
+  decidedAt: row.decided_at,
+  createdAt: row.created_at,
+});
+
+const mapBasePositionHead = (row: BasePositionHeadRow): BasePositionSnapshotHeadRecord => ({
+  accountId: row.account_id,
+  snapshotId: row.snapshot_id,
+  blockNumber: row.block_number,
+  blockHash: row.block_hash,
+  state: row.state,
+  conflictSnapshotId: row.conflict_snapshot_id,
+  version: row.version,
+  updatedAt: row.updated_at,
+});
+
+const mapBasePositionRefreshAttempt = (
+  row: BasePositionRefreshAttemptRow,
+): BasePositionRefreshAttemptRecord => ({
+  id: row.id,
+  accountId: row.account_id,
+  attemptedAt: row.attempted_at,
+  outcome: row.outcome,
+  reasonCode: row.reason_code,
+  providerCount: row.provider_count,
+  availableProviderCount: row.available_provider_count,
+  agreeingProviderCount: row.agreeing_provider_count,
+  retainedHead: row.retained_snapshot_id === null
+    ? null
+    : {
+        snapshotId: row.retained_snapshot_id,
+        state: row.retained_head_state!,
+        conflictSnapshotId: row.retained_conflict_snapshot_id,
+        version: row.retained_head_version!,
+      },
+  errorCode: row.error_code,
+  createdAt: row.created_at,
+});
+
+const mapBasePosition = (row: BasePositionRow): BasePositionRecord => ({
+  accountId: row.account_id,
+  assetId: row.asset_id,
+  observedAtomic: row.observed_atomic,
+  pendingAtomic: row.pending_atomic,
+  source: row.source,
+  sourceCursor: row.source_cursor,
+  asOf: row.as_of,
+  version: row.version,
+  updatedAt: row.updated_at,
+  snapshotId: row.snapshot_id,
+  blockNumber: row.block_number,
+  blockHash: row.block_hash,
+  headState: row.head_state,
+  conflictSnapshotId: row.conflict_snapshot_id,
+  headVersion: row.head_version,
+});
+
 const mapObservation = (row: ObservationRow): ObservationRecord => ({
   id: row.id,
   accountId: row.account_id,
@@ -892,6 +1328,117 @@ const mapReconciliationLink = (row: ReconciliationLinkRow): ReconciliationLinkRe
 const CHAIN_VISIBILITIES = new Set<ChainVisibility>(["NOT_FOUND", "MEMPOOL", "INCLUDED"]);
 const CHAIN_OUTCOMES = new Set<ChainOutcome>(["UNKNOWN", "SUCCESS", "REVERTED"]);
 const CHAIN_SECURITY_LEVELS = new Set<ChainSecurityLevel>(["UNSAFE", "SAFE", "FINALIZED"]);
+
+const CANONICAL_SHA256 = /^sha256:[0-9a-f]{64}$/;
+const CANONICAL_BLOCK_HASH = /^0x[0-9a-f]{64}$/;
+const MAX_UINT256 = (1n << 256n) - 1n;
+const BASE_ASSETS = new Set<BasePositionAssetId>([BASE_ETH_ASSET_ID, BASE_USDC_ASSET_ID]);
+const BASE_RECONCILIATION_OBSERVATIONS = new Set<BaseReconciliationObservation>([
+  "pending",
+  "partial",
+  "settled",
+  "conflicted",
+  null,
+]);
+const BASE_POSITION_REFRESH_ATTEMPT_OUTCOMES = new Set<BasePositionRefreshAttemptOutcome>([
+  "applied",
+  "replayed",
+  "stale",
+  "superseded",
+  "conflict",
+  "partial",
+  "rejected",
+  "cancelled",
+]);
+
+const assertCanonicalTimestamp = (value: string, field: string): void => {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new TypeError(`${field} must be an ISO 8601 UTC timestamp with millisecond precision`);
+  }
+};
+
+const assertCanonicalSha256: (
+  value: string,
+  field: string,
+) => asserts value is `sha256:${string}` = (value, field) => {
+  if (!CANONICAL_SHA256.test(value)) {
+    throw new TypeError(`${field} must be a canonical lower-case sha256 digest`);
+  }
+};
+
+const assertCanonicalBlockHash: (
+  value: string,
+  field: string,
+) => asserts value is `0x${string}` = (value, field) => {
+  if (!CANONICAL_BLOCK_HASH.test(value)) {
+    throw new TypeError(`${field} must be a 32-byte lower-case hexadecimal hash`);
+  }
+};
+
+const assertStableErrorCode = (value: string | null, field: string): void => {
+  if (value !== null && !/^[A-Z0-9_]{1,128}$/.test(value)) {
+    throw new TypeError(`${field} must be a stable upper-case error code`);
+  }
+};
+
+const assertStableLowerCode = (value: string, field: string): void => {
+  if (!/^[a-z][a-z0-9_]{0,127}$/.test(value)) {
+    throw new TypeError(`${field} must be a stable lower-case code`);
+  }
+};
+
+const assertBaseReconciliationObservation = (
+  value: BaseReconciliationObservation | undefined,
+): void => {
+  if (value !== undefined && !BASE_RECONCILIATION_OBSERVATIONS.has(value)) {
+    throw new TypeError("baseReconciliation.observation is invalid");
+  }
+};
+
+const assertCanonicalUint256 = (value: string, field: string): void => {
+  assertCanonicalInteger(value, field, { unsigned: true });
+  if (value.length > 78 || BigInt(value) > MAX_UINT256) {
+    throw new TypeError(`${field} exceeds uint256`);
+  }
+};
+
+const normalizeBasePositionItems = (
+  items: readonly BasePositionSnapshotItem[],
+): readonly [BasePositionSnapshotItem, BasePositionSnapshotItem] => {
+  if (items.length !== 2) {
+    throw new TypeError("A Base position snapshot must contain exactly ETH and Circle USDC");
+  }
+  const byAsset = new Map<BasePositionAssetId, string>();
+  for (const item of items) {
+    if (!BASE_ASSETS.has(item.assetId)) {
+      throw new TypeError(`Unsupported Base position asset ${JSON.stringify(item.assetId)}`);
+    }
+    if (byAsset.has(item.assetId)) {
+      throw new TypeError(`Duplicate Base position asset ${item.assetId}`);
+    }
+    assertCanonicalUint256(item.observedAtomic, "basePosition.items[].observedAtomic");
+    byAsset.set(item.assetId, item.observedAtomic);
+  }
+  const ethAtomic = byAsset.get(BASE_ETH_ASSET_ID);
+  const usdcAtomic = byAsset.get(BASE_USDC_ASSET_ID);
+  if (ethAtomic === undefined || usdcAtomic === undefined) {
+    throw new TypeError("A Base position snapshot must contain both ETH and native Circle USDC");
+  }
+  return baseItems(ethAtomic, usdcAtomic);
+};
+
+const normalizeAsciiIds = (values: readonly string[], field: string): string[] => {
+  if (values.length === 0) throw new TypeError(`${field} must not be empty`);
+  for (const value of values) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)) {
+      throw new TypeError(`${field} contains an invalid stable identifier`);
+    }
+  }
+  const distinct = new Set(values);
+  if (distinct.size !== values.length) throw new TypeError(`${field} must be distinct`);
+  return [...distinct].sort();
+};
 
 const assertChainTruthShape = (input: {
   chainId: string;
@@ -2267,6 +2814,1208 @@ export class WalletKernelStore {
          ORDER BY decided_at, created_at, id`,
       )
       .all(...values) as ChainConsensusRow[]).map(mapChainConsensus);
+  }
+
+  #eligibleBaseReconciliation(executionId: string): BaseReconciliationCandidate | null {
+    const row = this.db.query(
+      `SELECT
+         execution.id AS execution_id,
+         execution.intent_id,
+         execution.signed_artifact_id,
+         artifact.external_tx_id,
+         execution.network_tx_id,
+         execution.rail,
+         account.chain_id,
+         intent.asset_id,
+         execution.state AS execution_state
+       FROM wk_executions execution
+       JOIN wk_signed_artifacts artifact
+         ON artifact.id=execution.signed_artifact_id
+       JOIN wk_payment_intents intent ON intent.id=execution.intent_id
+       JOIN wk_accounts account ON account.id=intent.source_account_id
+       WHERE execution.id=?
+         AND execution.state IN ('signed','submitted','ambiguous','failed')
+         AND execution.rail='evm-base'
+         AND account.chain_id='eip155:8453'
+         AND intent.asset_id IN (
+           'eip155:8453/slip44:60',
+           'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+         )
+         AND execution.network_tx_id IS NOT NULL
+         AND artifact.intent_id=execution.intent_id
+         AND artifact.external_tx_id=execution.network_tx_id
+         AND length(execution.network_tx_id)=66
+         AND substr(execution.network_tx_id,1,2)='0x'
+         AND execution.network_tx_id=lower(execution.network_tx_id)
+         AND substr(execution.network_tx_id,3) NOT GLOB '*[^0-9a-f]*'
+         AND NOT EXISTS (
+           SELECT 1 FROM wk_chain_consensus consensus
+           WHERE consensus.execution_id=execution.id
+             AND consensus.intent_id=execution.intent_id
+             AND consensus.chain_id='eip155:8453'
+             AND consensus.network_tx_id=execution.network_tx_id
+             AND consensus.security_level='FINALIZED'
+         )`,
+    ).get(executionId) as BaseReconciliationCandidateRow | null;
+    return row ? mapBaseReconciliationCandidate(row) : null;
+  }
+
+  discoverEligibleBaseReconciliations(
+    input: { limit?: number } = {},
+  ): BaseReconciliationCandidate[] {
+    const limit = input.limit ?? 32;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256) {
+      throw new TypeError("baseReconciliation.limit must be an integer between 1 and 256");
+    }
+    return (this.db.query(
+      `SELECT
+         execution.id AS execution_id,
+         execution.intent_id,
+         execution.signed_artifact_id,
+         artifact.external_tx_id,
+         execution.network_tx_id,
+         execution.rail,
+         account.chain_id,
+         intent.asset_id,
+         execution.state AS execution_state
+       FROM wk_executions execution
+       JOIN wk_signed_artifacts artifact
+         ON artifact.id=execution.signed_artifact_id
+       JOIN wk_payment_intents intent ON intent.id=execution.intent_id
+       JOIN wk_accounts account ON account.id=intent.source_account_id
+       WHERE execution.state IN ('signed','submitted','ambiguous','failed')
+         AND execution.rail='evm-base'
+         AND account.chain_id='eip155:8453'
+         AND intent.asset_id IN (
+           'eip155:8453/slip44:60',
+           'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+         )
+         AND execution.network_tx_id IS NOT NULL
+         AND artifact.intent_id=execution.intent_id
+         AND artifact.external_tx_id=execution.network_tx_id
+         AND length(execution.network_tx_id)=66
+         AND substr(execution.network_tx_id,1,2)='0x'
+         AND execution.network_tx_id=lower(execution.network_tx_id)
+         AND substr(execution.network_tx_id,3) NOT GLOB '*[^0-9a-f]*'
+         AND NOT EXISTS (
+           SELECT 1 FROM wk_chain_consensus consensus
+           WHERE consensus.execution_id=execution.id
+             AND consensus.intent_id=execution.intent_id
+             AND consensus.chain_id='eip155:8453'
+             AND consensus.network_tx_id=execution.network_tx_id
+             AND consensus.security_level='FINALIZED'
+         )
+       ORDER BY execution.updated_at, execution.id
+       LIMIT ?`,
+    ).all(limit) as BaseReconciliationCandidateRow[]).map(mapBaseReconciliationCandidate);
+  }
+
+  enqueueBaseReconciliationJobs(
+    candidates: readonly BaseReconciliationCandidate[],
+    options: { now?: string } = {},
+  ): BaseReconciliationJob[] {
+    if (candidates.length > 256) {
+      throw new TypeError("At most 256 Base reconciliation candidates may be enqueued at once");
+    }
+    const at = options.now ?? this.#timestamp();
+    assertCanonicalTimestamp(at, "baseReconciliation.now");
+    const run = this.db.transaction((): BaseReconciliationJob[] => {
+      const jobs: BaseReconciliationJob[] = [];
+      const seen = new Set<string>();
+      for (const supplied of candidates) {
+        assertNonEmpty(supplied.executionId, "baseReconciliation.executionId");
+        if (seen.has(supplied.executionId)) continue;
+        seen.add(supplied.executionId);
+        const eligible = this.#eligibleBaseReconciliation(supplied.executionId);
+        if (!eligible) {
+          throw new BaseReconciliationJobConflictError(
+            `Execution ${supplied.executionId} is not eligible for Base reconciliation`,
+          );
+        }
+        for (const field of [
+          "intentId",
+          "signedArtifactId",
+          "externalTxId",
+          "networkTxId",
+          "rail",
+          "chainId",
+          "assetId",
+        ] as const) {
+          if (supplied[field] !== eligible[field]) {
+            throw new BaseReconciliationJobConflictError(
+              `Execution ${supplied.executionId} changed its ${field} binding before enqueue`,
+            );
+          }
+        }
+        const prior = this.getBaseReconciliationJobByExecution(eligible.executionId);
+        if (prior) {
+          jobs.push(prior);
+          continue;
+        }
+        const id = `base-reconciliation:${fingerprintRequest({
+          schema: "cashloom.base-reconciliation-job/1",
+          executionId: eligible.executionId,
+        })}`;
+        this.db.query(
+          `INSERT INTO wk_base_reconciliation_jobs
+            (id, execution_id, intent_id, signed_artifact_id, external_tx_id,
+             network_tx_id, rail, chain_id, asset_id, state, attempt_count,
+             failure_count, next_attempt_at, version, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'READY', 0, 0, ?, 0, ?, ?)`,
+        ).run(
+          id,
+          eligible.executionId,
+          eligible.intentId,
+          eligible.signedArtifactId,
+          eligible.externalTxId,
+          eligible.networkTxId,
+          eligible.rail,
+          eligible.chainId,
+          eligible.assetId,
+          at,
+          at,
+          at,
+        );
+        const job = this.getBaseReconciliationJob(id);
+        if (!job) throw new Error(`Failed to read newly-enqueued Base reconciliation job ${id}`);
+        jobs.push(job);
+      }
+      return jobs;
+    });
+    return run.immediate();
+  }
+
+  getBaseReconciliationJob(id: string): BaseReconciliationJob | null {
+    assertNonEmpty(id, "baseReconciliation.jobId");
+    const row = this.db.query(
+      `SELECT job.*, execution.state AS execution_state
+       FROM wk_base_reconciliation_jobs job
+       JOIN wk_executions execution ON execution.id=job.execution_id
+       WHERE job.id=?`,
+    ).get(id) as BaseReconciliationJobRow | null;
+    return row ? mapBaseReconciliationJob(row) : null;
+  }
+
+  getBaseReconciliationJobByExecution(executionId: string): BaseReconciliationJob | null {
+    assertNonEmpty(executionId, "baseReconciliation.executionId");
+    const row = this.db.query(
+      `SELECT job.*, execution.state AS execution_state
+       FROM wk_base_reconciliation_jobs job
+       JOIN wk_executions execution ON execution.id=job.execution_id
+       WHERE job.execution_id=?`,
+    ).get(executionId) as BaseReconciliationJobRow | null;
+    return row ? mapBaseReconciliationJob(row) : null;
+  }
+
+  listBaseReconciliationJobs(
+    filter: {
+      state?: BaseReconciliationJobState;
+      intentId?: string;
+      executionId?: string;
+      limit?: number;
+    } = {},
+  ): BaseReconciliationJob[] {
+    const limit = filter.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512) {
+      throw new TypeError("baseReconciliation.limit must be an integer between 1 and 512");
+    }
+    const clauses: string[] = [];
+    const values: Array<string | number> = [];
+    for (const [column, value] of [
+      ["job.state", filter.state],
+      ["job.intent_id", filter.intentId],
+      ["job.execution_id", filter.executionId],
+    ] as const) {
+      if (value !== undefined) {
+        assertNonEmpty(value, `baseReconciliation.${column}`);
+        clauses.push(`${column}=?`);
+        values.push(value);
+      }
+    }
+    const where = clauses.length === 0 ? "" : `WHERE ${clauses.join(" AND ")}`;
+    values.push(limit);
+    return (this.db.query(
+      `SELECT job.*, execution.state AS execution_state
+       FROM wk_base_reconciliation_jobs job
+       JOIN wk_executions execution ON execution.id=job.execution_id
+       ${where}
+       ORDER BY job.created_at, job.id
+       LIMIT ?`,
+    ).all(...values) as BaseReconciliationJobRow[]).map(mapBaseReconciliationJob);
+  }
+
+  claimDueBaseReconciliationJobs(input: {
+    limit: number;
+    leaseOwner: string;
+    leaseUntil: string;
+    now?: string;
+  }): BaseReconciliationJob[] {
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 64) {
+      throw new TypeError("baseReconciliation.limit must be an integer between 1 and 64");
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.leaseOwner)) {
+      throw new TypeError("baseReconciliation.leaseOwner is invalid");
+    }
+    const at = input.now ?? this.#timestamp();
+    assertCanonicalTimestamp(at, "baseReconciliation.now");
+    assertCanonicalTimestamp(input.leaseUntil, "baseReconciliation.leaseUntil");
+    if (input.leaseUntil <= at) {
+      throw new TypeError("baseReconciliation.leaseUntil must be after now");
+    }
+    const run = this.db.transaction((): BaseReconciliationJob[] => {
+      const rows = this.db.query(
+        `SELECT job.id, job.version
+         FROM wk_base_reconciliation_jobs job
+         JOIN wk_executions execution ON execution.id=job.execution_id
+         JOIN wk_signed_artifacts artifact ON artifact.id=job.signed_artifact_id
+         JOIN wk_payment_intents intent ON intent.id=job.intent_id
+         JOIN wk_accounts account ON account.id=intent.source_account_id
+         WHERE job.state IN ('READY','BACKOFF')
+           AND job.next_attempt_at <= ?
+           AND execution.intent_id=job.intent_id
+           AND execution.signed_artifact_id=job.signed_artifact_id
+           AND execution.network_tx_id=job.network_tx_id
+           AND execution.rail=job.rail
+           AND execution.rail='evm-base'
+           AND artifact.intent_id=job.intent_id
+           AND artifact.external_tx_id=job.external_tx_id
+           AND artifact.external_tx_id=execution.network_tx_id
+           AND intent.asset_id=job.asset_id
+           AND intent.asset_id IN (
+             'eip155:8453/slip44:60',
+             'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+           )
+           AND account.chain_id=job.chain_id
+           AND account.chain_id='eip155:8453'
+         ORDER BY job.next_attempt_at, job.created_at, job.id
+         LIMIT ?`,
+      ).all(at, input.limit) as Array<{ id: string; version: number }>;
+      const claimed: BaseReconciliationJob[] = [];
+      for (const row of rows) {
+        const leaseToken = this.#newId();
+        assertNonEmpty(leaseToken, "baseReconciliation.leaseToken");
+        const result = this.db.query(
+          `UPDATE wk_base_reconciliation_jobs
+           SET state='RUNNING', attempt_count=attempt_count+1,
+               lease_owner=?, lease_token=?, lease_until=?,
+               version=version+1, updated_at=?
+           WHERE id=? AND version=? AND state IN ('READY','BACKOFF')
+             AND next_attempt_at <= ?`,
+        ).run(
+          input.leaseOwner,
+          leaseToken,
+          input.leaseUntil,
+          at,
+          row.id,
+          row.version,
+          at,
+        );
+        if (result.changes !== 1) continue;
+        const job = this.getBaseReconciliationJob(row.id);
+        if (!job) throw new Error(`Claimed Base reconciliation job ${row.id} disappeared`);
+        claimed.push(job);
+      }
+      return claimed;
+    });
+    return run.immediate();
+  }
+
+  #requireBaseReconciliationLease(
+    jobId: string,
+    leaseToken: string,
+    at: string,
+  ): BaseReconciliationJob {
+    assertNonEmpty(jobId, "baseReconciliation.jobId");
+    assertNonEmpty(leaseToken, "baseReconciliation.leaseToken");
+    const job = this.getBaseReconciliationJob(jobId);
+    if (
+      !job ||
+      job.state !== "RUNNING" ||
+      job.leaseToken !== leaseToken ||
+      job.leaseUntil === null ||
+      job.leaseUntil <= at
+    ) {
+      throw new BaseReconciliationJobConflictError(
+        `Base reconciliation job ${jobId} is not held by the supplied live lease`,
+      );
+    }
+    return job;
+  }
+
+  settleBaseReconciliationJob(input: {
+    jobId: string;
+    leaseToken: string;
+    observation?: BaseReconciliationObservation;
+    now?: string;
+  }): BaseReconciliationJob {
+    const at = input.now ?? this.#timestamp();
+    assertCanonicalTimestamp(at, "baseReconciliation.now");
+    assertBaseReconciliationObservation(input.observation);
+    const run = this.db.transaction((): BaseReconciliationJob => {
+      const current = this.#requireBaseReconciliationLease(input.jobId, input.leaseToken, at);
+      const observation = input.observation === undefined
+        ? current.lastObservation
+        : input.observation;
+      const result = this.db.query(
+        `UPDATE wk_base_reconciliation_jobs
+         SET state='SETTLED', lease_owner=NULL, lease_token=NULL, lease_until=NULL,
+             last_observation_json=?, last_error_code=NULL, settled_at=?,
+             version=version+1, updated_at=?
+         WHERE id=? AND version=? AND state='RUNNING' AND lease_token=?`,
+      ).run(
+        observation === null ? null : json(observation),
+        at,
+        at,
+        input.jobId,
+        current.version,
+        input.leaseToken,
+      );
+      if (result.changes !== 1) {
+        throw new BaseReconciliationJobConflictError(
+          `Base reconciliation job ${input.jobId} changed before settlement`,
+        );
+      }
+      const job = this.getBaseReconciliationJob(input.jobId);
+      if (!job) throw new Error(`Settled Base reconciliation job ${input.jobId} disappeared`);
+      return job;
+    });
+    return run.immediate();
+  }
+
+  rescheduleBaseReconciliationJob(input: {
+    jobId: string;
+    leaseToken: string;
+    nextAttemptAt: string;
+    errorCode?: string | null;
+    observation?: BaseReconciliationObservation;
+    incrementFailure?: boolean;
+    now?: string;
+  }): BaseReconciliationJob {
+    const at = input.now ?? this.#timestamp();
+    const errorCode = input.errorCode ?? null;
+    assertCanonicalTimestamp(at, "baseReconciliation.now");
+    assertCanonicalTimestamp(input.nextAttemptAt, "baseReconciliation.nextAttemptAt");
+    assertStableErrorCode(errorCode, "baseReconciliation.errorCode");
+    assertBaseReconciliationObservation(input.observation);
+    const run = this.db.transaction((): BaseReconciliationJob => {
+      const current = this.#requireBaseReconciliationLease(input.jobId, input.leaseToken, at);
+      const observation = input.observation === undefined
+        ? current.lastObservation
+        : input.observation;
+      const result = this.db.query(
+        `UPDATE wk_base_reconciliation_jobs
+         SET state='BACKOFF', lease_owner=NULL, lease_token=NULL, lease_until=NULL,
+             next_attempt_at=?, failure_count=failure_count+?,
+             last_observation_json=?, last_error_code=?,
+             version=version+1, updated_at=?
+         WHERE id=? AND version=? AND state='RUNNING' AND lease_token=?`,
+      ).run(
+        input.nextAttemptAt,
+        input.incrementFailure === false ? 0 : 1,
+        observation === null ? null : json(observation),
+        errorCode,
+        at,
+        input.jobId,
+        current.version,
+        input.leaseToken,
+      );
+      if (result.changes !== 1) {
+        throw new BaseReconciliationJobConflictError(
+          `Base reconciliation job ${input.jobId} changed before reschedule`,
+        );
+      }
+      const job = this.getBaseReconciliationJob(input.jobId);
+      if (!job) throw new Error(`Rescheduled Base reconciliation job ${input.jobId} disappeared`);
+      return job;
+    });
+    return run.immediate();
+  }
+
+  pauseBaseReconciliationJob(input: {
+    jobId: string;
+    leaseToken: string;
+    errorCode?: string | null;
+    observation?: BaseReconciliationObservation;
+    incrementFailure?: boolean;
+    now?: string;
+  }): BaseReconciliationJob {
+    const at = input.now ?? this.#timestamp();
+    const errorCode = input.errorCode ?? null;
+    assertCanonicalTimestamp(at, "baseReconciliation.now");
+    assertStableErrorCode(errorCode, "baseReconciliation.errorCode");
+    assertBaseReconciliationObservation(input.observation);
+    const run = this.db.transaction((): BaseReconciliationJob => {
+      const current = this.#requireBaseReconciliationLease(input.jobId, input.leaseToken, at);
+      const observation = input.observation === undefined
+        ? current.lastObservation
+        : input.observation;
+      const result = this.db.query(
+        `UPDATE wk_base_reconciliation_jobs
+         SET state='PAUSED', lease_owner=NULL, lease_token=NULL, lease_until=NULL,
+             failure_count=failure_count+?, last_observation_json=?, last_error_code=?,
+             version=version+1, updated_at=?
+         WHERE id=? AND version=? AND state='RUNNING' AND lease_token=?`,
+      ).run(
+        input.incrementFailure === false ? 0 : 1,
+        observation === null ? null : json(observation),
+        errorCode,
+        at,
+        input.jobId,
+        current.version,
+        input.leaseToken,
+      );
+      if (result.changes !== 1) {
+        throw new BaseReconciliationJobConflictError(
+          `Base reconciliation job ${input.jobId} changed before pause`,
+        );
+      }
+      const job = this.getBaseReconciliationJob(input.jobId);
+      if (!job) throw new Error(`Paused Base reconciliation job ${input.jobId} disappeared`);
+      return job;
+    });
+    return run.immediate();
+  }
+
+  reapExpiredBaseReconciliationLeases(input: { now?: string } = {}): number {
+    const at = input.now ?? this.#timestamp();
+    assertCanonicalTimestamp(at, "baseReconciliation.now");
+    const run = this.db.transaction((): number => this.db.query(
+      `UPDATE wk_base_reconciliation_jobs
+       SET state='BACKOFF', lease_owner=NULL, lease_token=NULL, lease_until=NULL,
+           next_attempt_at=?, failure_count=failure_count+1,
+           last_error_code='RECONCILIATION_LEASE_EXPIRED',
+           version=version+1, updated_at=?
+       WHERE state='RUNNING' AND lease_until <= ?`,
+    ).run(at, at, at).changes);
+    return run.immediate();
+  }
+
+  appendBasePositionRefreshAttempt(input: {
+    id?: string;
+    accountId: string;
+    attemptedAt: string;
+    outcome: BasePositionRefreshAttemptOutcome;
+    reasonCode: string;
+    providerCount: number;
+    availableProviderCount: number;
+    agreeingProviderCount: number;
+    retainedHead?: BasePositionRefreshAttemptRetainedHead | null;
+    errorCode?: string | null;
+  }): BasePositionRefreshAttemptRecord {
+    assertNonEmpty(input.accountId, "basePositionRefreshAttempt.accountId");
+    assertCanonicalTimestamp(
+      input.attemptedAt,
+      "basePositionRefreshAttempt.attemptedAt",
+    );
+    if (!BASE_POSITION_REFRESH_ATTEMPT_OUTCOMES.has(input.outcome)) {
+      throw new TypeError("basePositionRefreshAttempt.outcome is invalid");
+    }
+    assertStableLowerCode(input.reasonCode, "basePositionRefreshAttempt.reasonCode");
+    for (const [field, value] of [
+      ["providerCount", input.providerCount],
+      ["availableProviderCount", input.availableProviderCount],
+      ["agreeingProviderCount", input.agreeingProviderCount],
+    ] as const) {
+      if (!Number.isSafeInteger(value) || value < 0 || value > 64) {
+        throw new TypeError(
+          `basePositionRefreshAttempt.${field} must be an integer between 0 and 64`,
+        );
+      }
+    }
+    if (
+      input.agreeingProviderCount > input.availableProviderCount ||
+      input.availableProviderCount > input.providerCount
+    ) {
+      throw new TypeError(
+        "Base position refresh provider counts must satisfy agreeing <= available <= total",
+      );
+    }
+    const errorCode = input.errorCode ?? null;
+    if (errorCode !== null) {
+      assertStableLowerCode(errorCode, "basePositionRefreshAttempt.errorCode");
+    }
+    if (input.retainedHead) {
+      assertNonEmpty(
+        input.retainedHead.snapshotId,
+        "basePositionRefreshAttempt.retainedHead.snapshotId",
+      );
+      if (
+        (input.retainedHead.state !== "ACTIVE" && input.retainedHead.state !== "FROZEN") ||
+        !Number.isSafeInteger(input.retainedHead.version) ||
+        input.retainedHead.version < 0 ||
+        (input.retainedHead.state === "ACTIVE" &&
+          input.retainedHead.conflictSnapshotId !== null) ||
+        (input.retainedHead.state === "FROZEN" &&
+          input.retainedHead.conflictSnapshotId === null)
+      ) {
+        throw new TypeError("basePositionRefreshAttempt.retainedHead is invalid");
+      }
+      if (input.retainedHead.conflictSnapshotId !== null) {
+        assertNonEmpty(
+          input.retainedHead.conflictSnapshotId,
+          "basePositionRefreshAttempt.retainedHead.conflictSnapshotId",
+        );
+      }
+    }
+    const id = input.id ?? `base-position-refresh-attempt:${this.#newId()}`;
+    assertNonEmpty(id, "basePositionRefreshAttempt.id");
+    if (/(?:https?|wss?):\/\//i.test(id)) {
+      throw new TypeError("basePositionRefreshAttempt.id must not contain a URL");
+    }
+
+    const run = this.db.transaction((): BasePositionRefreshAttemptRecord => {
+      const account = this.db.query(
+        "SELECT chain_id FROM wk_accounts WHERE id=?",
+      ).get(input.accountId) as { chain_id: string | null } | null;
+      if (!account || account.chain_id !== BASE_CHAIN_ID) {
+        throw new BasePositionRefreshAttemptConflictError(
+          `Account ${input.accountId} is not a projected Base mainnet account`,
+        );
+      }
+      const currentHead = this.getBasePositionHead(input.accountId);
+      const retainedHead = input.retainedHead === undefined
+        ? currentHead === null
+          ? null
+          : {
+              snapshotId: currentHead.snapshotId,
+              state: currentHead.state,
+              conflictSnapshotId: currentHead.conflictSnapshotId,
+              version: currentHead.version,
+            }
+        : input.retainedHead;
+      const exactHead =
+        (retainedHead === null && currentHead === null) ||
+        (retainedHead !== null && currentHead !== null &&
+          retainedHead.snapshotId === currentHead.snapshotId &&
+          retainedHead.state === currentHead.state &&
+          retainedHead.conflictSnapshotId === currentHead.conflictSnapshotId &&
+          retainedHead.version === currentHead.version);
+      if (!exactHead) {
+        throw new BasePositionRefreshAttemptConflictError(
+          "Base position head changed before its refresh attempt could be recorded",
+        );
+      }
+      const createdAt = this.#timestamp();
+      this.db.query(
+        `INSERT INTO wk_base_position_refresh_attempts
+          (id, account_id, attempted_at, outcome, reason_code,
+           provider_count, available_provider_count, agreeing_provider_count,
+           retained_snapshot_id, retained_head_state,
+           retained_conflict_snapshot_id, retained_head_version,
+           error_code, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        input.accountId,
+        input.attemptedAt,
+        input.outcome,
+        input.reasonCode,
+        input.providerCount,
+        input.availableProviderCount,
+        input.agreeingProviderCount,
+        retainedHead?.snapshotId ?? null,
+        retainedHead?.state ?? null,
+        retainedHead?.conflictSnapshotId ?? null,
+        retainedHead?.version ?? null,
+        errorCode,
+        createdAt,
+      );
+      const attempt = this.getBasePositionRefreshAttempt(id);
+      if (!attempt) {
+        throw new Error(`Base position refresh attempt ${id} disappeared after insertion`);
+      }
+      return attempt;
+    });
+    return run.immediate();
+  }
+
+  getBasePositionRefreshAttempt(id: string): BasePositionRefreshAttemptRecord | null {
+    assertNonEmpty(id, "basePositionRefreshAttempt.id");
+    const row = this.db.query(
+      "SELECT * FROM wk_base_position_refresh_attempts WHERE id=?",
+    ).get(id) as BasePositionRefreshAttemptRow | null;
+    return row ? mapBasePositionRefreshAttempt(row) : null;
+  }
+
+  listBasePositionRefreshAttempts(
+    filter: {
+      accountId?: string;
+      outcome?: BasePositionRefreshAttemptOutcome;
+      limit?: number;
+    } = {},
+  ): BasePositionRefreshAttemptRecord[] {
+    const limit = filter.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512) {
+      throw new TypeError(
+        "basePositionRefreshAttempts.limit must be an integer between 1 and 512",
+      );
+    }
+    const clauses: string[] = [];
+    const values: Array<string | number> = [];
+    if (filter.accountId !== undefined) {
+      assertNonEmpty(filter.accountId, "basePositionRefreshAttempts.accountId");
+      clauses.push("account_id=?");
+      values.push(filter.accountId);
+    }
+    if (filter.outcome !== undefined) {
+      if (!BASE_POSITION_REFRESH_ATTEMPT_OUTCOMES.has(filter.outcome)) {
+        throw new TypeError("basePositionRefreshAttempts.outcome is invalid");
+      }
+      clauses.push("outcome=?");
+      values.push(filter.outcome);
+    }
+    const where = clauses.length === 0 ? "" : `WHERE ${clauses.join(" AND ")}`;
+    values.push(limit);
+    return (this.db.query(
+      `SELECT * FROM wk_base_position_refresh_attempts ${where}
+       ORDER BY attempted_at DESC, created_at DESC, rowid DESC
+       LIMIT ?`,
+    ).all(...values) as BasePositionRefreshAttemptRow[]).map(
+      mapBasePositionRefreshAttempt,
+    );
+  }
+
+  appendBasePositionSighting(input: {
+    id?: string;
+    accountId: string;
+    chainId?: typeof BASE_CHAIN_ID;
+    providerId: string;
+    providerTrustDomain: `sha256:${string}`;
+    evidenceHash: `sha256:${string}`;
+    blockNumber: string;
+    blockHash: `0x${string}`;
+    blockTime: string;
+    items: readonly BasePositionSnapshotItem[];
+    body: JsonValue;
+    observedAt: string;
+    fetchedAt: string;
+  }): { sighting: BasePositionSightingRecord; replayed: boolean } {
+    assertNonEmpty(input.accountId, "basePositionSighting.accountId");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.providerId)) {
+      throw new TypeError("basePositionSighting.providerId is invalid");
+    }
+    assertCanonicalSha256(
+      input.providerTrustDomain,
+      "basePositionSighting.providerTrustDomain",
+    );
+    assertCanonicalSha256(input.evidenceHash, "basePositionSighting.evidenceHash");
+    assertCanonicalUint256(input.blockNumber, "basePositionSighting.blockNumber");
+    assertCanonicalBlockHash(input.blockHash, "basePositionSighting.blockHash");
+    assertCanonicalTimestamp(input.blockTime, "basePositionSighting.blockTime");
+    assertCanonicalTimestamp(input.observedAt, "basePositionSighting.observedAt");
+    assertCanonicalTimestamp(input.fetchedAt, "basePositionSighting.fetchedAt");
+    const chainId = input.chainId ?? BASE_CHAIN_ID;
+    if (chainId !== BASE_CHAIN_ID) throw new TypeError("Only Base mainnet positions are supported");
+    const items = normalizeBasePositionItems(input.items);
+    const ethAtomic = items[0].observedAtomic;
+    const usdcAtomic = items[1].observedAtomic;
+    const bodyJson = json(input.body);
+    if (/(?:https?|wss?):\/\//i.test(bodyJson)) {
+      throw new TypeError("Base position evidence must not contain a provider URL or origin");
+    }
+    const semantic = {
+      schema: "cashloom.base-position-sighting/1",
+      accountId: input.accountId,
+      chainId,
+      providerId: input.providerId,
+      providerTrustDomain: input.providerTrustDomain,
+      evidenceHash: input.evidenceHash,
+      blockNumber: input.blockNumber,
+      blockHash: input.blockHash,
+      blockTime: input.blockTime,
+      ethAtomic,
+      usdcAtomic,
+      observedAt: input.observedAt,
+      fetchedAt: input.fetchedAt,
+    } as const;
+    const id = input.id ?? `base-position-sighting:${fingerprintRequest(semantic)}`;
+    assertNonEmpty(id, "basePositionSighting.id");
+    const run = this.db.transaction((): {
+      sighting: BasePositionSightingRecord;
+      replayed: boolean;
+    } => {
+      const account = this.db.query(
+        "SELECT chain_id FROM wk_accounts WHERE id=?",
+      ).get(input.accountId) as { chain_id: string | null } | null;
+      if (!account || account.chain_id !== BASE_CHAIN_ID) {
+        throw new BasePositionSnapshotConflictError(
+          `Account ${input.accountId} is not a projected Base mainnet account`,
+        );
+      }
+      const priorById = this.getBasePositionSighting(id);
+      const priorByFactRow = this.db.query(
+        `SELECT * FROM wk_base_position_snapshot_sightings
+         WHERE account_id=? AND chain_id=? AND provider_id=?
+           AND provider_trust_domain=? AND evidence_hash=?
+           AND block_number=? AND block_hash=? AND block_time=?
+           AND eth_atomic=? AND usdc_atomic=?
+           AND observed_at=? AND fetched_at=?`,
+      ).get(
+        input.accountId,
+        chainId,
+        input.providerId,
+        input.providerTrustDomain,
+        input.evidenceHash,
+        input.blockNumber,
+        input.blockHash,
+        input.blockTime,
+        ethAtomic,
+        usdcAtomic,
+        input.observedAt,
+        input.fetchedAt,
+      ) as BasePositionSightingRow | null;
+      const priorByFact = priorByFactRow ? mapBasePositionSighting(priorByFactRow) : null;
+      const prior = priorById ?? priorByFact;
+      if (prior) {
+        const same =
+          prior.accountId === input.accountId &&
+          prior.chainId === chainId &&
+          prior.providerId === input.providerId &&
+          prior.providerTrustDomain === input.providerTrustDomain &&
+          prior.evidenceHash === input.evidenceHash &&
+          prior.blockNumber === input.blockNumber &&
+          prior.blockHash === input.blockHash &&
+          prior.blockTime === input.blockTime &&
+          prior.items[0].observedAtomic === ethAtomic &&
+          prior.items[1].observedAtomic === usdcAtomic &&
+          prior.observedAt === input.observedAt &&
+          prior.fetchedAt === input.fetchedAt &&
+          canonicalJson(prior.body) === canonicalJson(input.body);
+        if (!same || (priorById && priorByFact && priorById.id !== priorByFact.id)) {
+          throw new BasePositionSnapshotConflictError(
+            "Base position sighting id or immutable fact was reused with different evidence",
+          );
+        }
+        return { sighting: prior, replayed: true };
+      }
+      const at = this.#timestamp();
+      this.db.query(
+        `INSERT INTO wk_base_position_snapshot_sightings
+          (id, account_id, chain_id, provider_id, provider_trust_domain,
+           evidence_hash, block_number, block_hash, block_time, eth_atomic,
+           usdc_atomic, body_json, observed_at, fetched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        input.accountId,
+        chainId,
+        input.providerId,
+        input.providerTrustDomain,
+        input.evidenceHash,
+        input.blockNumber,
+        input.blockHash,
+        input.blockTime,
+        ethAtomic,
+        usdcAtomic,
+        bodyJson,
+        input.observedAt,
+        input.fetchedAt,
+        at,
+      );
+      const sighting = this.getBasePositionSighting(id);
+      if (!sighting) throw new Error(`Base position sighting ${id} disappeared after insertion`);
+      return { sighting, replayed: false };
+    });
+    return run.immediate();
+  }
+
+  getBasePositionSighting(id: string): BasePositionSightingRecord | null {
+    assertNonEmpty(id, "basePositionSighting.id");
+    const row = this.db.query(
+      "SELECT * FROM wk_base_position_snapshot_sightings WHERE id=?",
+    ).get(id) as BasePositionSightingRow | null;
+    return row ? mapBasePositionSighting(row) : null;
+  }
+
+  listBasePositionSightings(
+    filter: { accountId?: string; providerId?: string; limit?: number } = {},
+  ): BasePositionSightingRecord[] {
+    const limit = filter.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512) {
+      throw new TypeError("basePositionSightings.limit must be an integer between 1 and 512");
+    }
+    const clauses: string[] = [];
+    const values: Array<string | number> = [];
+    for (const [column, value] of [
+      ["account_id", filter.accountId],
+      ["provider_id", filter.providerId],
+    ] as const) {
+      if (value !== undefined) {
+        assertNonEmpty(value, `basePositionSightings.${column}`);
+        clauses.push(`${column}=?`);
+        values.push(value);
+      }
+    }
+    const where = clauses.length === 0 ? "" : `WHERE ${clauses.join(" AND ")}`;
+    values.push(limit);
+    return (this.db.query(
+      `SELECT * FROM wk_base_position_snapshot_sightings ${where}
+       ORDER BY length(block_number), block_number, fetched_at, id
+       LIMIT ?`,
+    ).all(...values) as BasePositionSightingRow[]).map(mapBasePositionSighting);
+  }
+
+  getBasePositionSnapshot(id: string): BasePositionSnapshotRecord | null {
+    assertNonEmpty(id, "basePositionSnapshot.id");
+    const row = this.db.query(
+      "SELECT * FROM wk_base_position_snapshots WHERE id=?",
+    ).get(id) as BasePositionSnapshotRow | null;
+    return row ? mapBasePositionSnapshot(row) : null;
+  }
+
+  listBasePositionSnapshots(
+    filter: { accountId?: string; limit?: number } = {},
+  ): BasePositionSnapshotRecord[] {
+    const limit = filter.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512) {
+      throw new TypeError("basePositionSnapshots.limit must be an integer between 1 and 512");
+    }
+    const where = filter.accountId === undefined ? "" : "WHERE account_id=?";
+    const values: Array<string | number> = [];
+    if (filter.accountId !== undefined) {
+      assertNonEmpty(filter.accountId, "basePositionSnapshots.accountId");
+      values.push(filter.accountId);
+    }
+    values.push(limit);
+    return (this.db.query(
+      `SELECT * FROM wk_base_position_snapshots ${where}
+       ORDER BY length(block_number), block_number, decided_at, id
+       LIMIT ?`,
+    ).all(...values) as BasePositionSnapshotRow[]).map(mapBasePositionSnapshot);
+  }
+
+  getBasePositionHead(accountId: string): BasePositionSnapshotHeadRecord | null {
+    assertNonEmpty(accountId, "basePositionHead.accountId");
+    const row = this.db.query(
+      "SELECT * FROM wk_base_position_snapshot_heads WHERE account_id=?",
+    ).get(accountId) as BasePositionHeadRow | null;
+    return row ? mapBasePositionHead(row) : null;
+  }
+
+  listBasePositions(input: { accountId?: string } = {}): BasePositionRecord[] {
+    const accountPredicate = input.accountId === undefined ? "" : "AND position.account_id=?";
+    const values: string[] = [];
+    if (input.accountId !== undefined) {
+      assertNonEmpty(input.accountId, "basePositions.accountId");
+      values.push(input.accountId);
+    }
+    return (this.db.query(
+      `SELECT position.*,
+              head.snapshot_id, head.block_number, head.block_hash,
+              head.state AS head_state, head.conflict_snapshot_id,
+              head.version AS head_version
+       FROM wk_positions position
+       JOIN wk_base_position_snapshot_heads head ON head.account_id=position.account_id
+       WHERE position.asset_id IN (
+           'eip155:8453/slip44:60',
+           'eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+         )
+       ${accountPredicate}
+       ORDER BY position.account_id, position.asset_id`,
+    ).all(...values) as BasePositionRow[]).map(mapBasePosition);
+  }
+
+  #writeBasePositionProjection(snapshot: BasePositionSnapshotRecord, at: string): void {
+    for (const item of snapshot.items) {
+      this.db.query(
+        `INSERT INTO wk_positions
+          (account_id, asset_id, observed_atomic, pending_atomic, source,
+           source_cursor, as_of, version, updated_at)
+         VALUES (?, ?, ?, '0', 'BASE_FINALIZED_QUORUM', ?, ?, 0, ?)
+         ON CONFLICT(account_id, asset_id) DO UPDATE SET
+           observed_atomic=excluded.observed_atomic,
+           source=excluded.source,
+           source_cursor=excluded.source_cursor,
+           as_of=excluded.as_of,
+           version=wk_positions.version+1,
+           updated_at=excluded.updated_at`,
+      ).run(
+        snapshot.accountId,
+        item.assetId,
+        item.observedAtomic,
+        snapshot.id,
+        snapshot.blockTime,
+        at,
+      );
+    }
+  }
+
+  applyBasePositionSnapshot(input: {
+    id?: string;
+    accountId: string;
+    chainId?: typeof BASE_CHAIN_ID;
+    blockNumber: string;
+    blockHash: `0x${string}`;
+    blockTime: string;
+    evidenceHash: `sha256:${string}`;
+    providerIds: readonly string[];
+    sightingIds: readonly string[];
+    quorum: number;
+    items: readonly BasePositionSnapshotItem[];
+    decidedAt: string;
+  }): ApplyBasePositionSnapshotResult {
+    assertNonEmpty(input.accountId, "basePositionSnapshot.accountId");
+    const chainId = input.chainId ?? BASE_CHAIN_ID;
+    if (chainId !== BASE_CHAIN_ID) throw new TypeError("Only Base mainnet positions are supported");
+    assertCanonicalUint256(input.blockNumber, "basePositionSnapshot.blockNumber");
+    assertCanonicalBlockHash(input.blockHash, "basePositionSnapshot.blockHash");
+    assertCanonicalTimestamp(input.blockTime, "basePositionSnapshot.blockTime");
+    assertCanonicalSha256(input.evidenceHash, "basePositionSnapshot.evidenceHash");
+    assertCanonicalTimestamp(input.decidedAt, "basePositionSnapshot.decidedAt");
+    const items = normalizeBasePositionItems(input.items);
+    for (const providerId of input.providerIds) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(providerId)) {
+        throw new TypeError("basePositionSnapshot.providerIds contains an invalid provider id");
+      }
+    }
+    const providerIds = normalizeAsciiIds(input.providerIds, "basePositionSnapshot.providerIds");
+    const sightingIds = normalizeAsciiIds(input.sightingIds, "basePositionSnapshot.sightingIds");
+    if (providerIds.length !== sightingIds.length) {
+      throw new TypeError("Base position consensus requires one sighting per provider");
+    }
+    if (
+      !Number.isSafeInteger(input.quorum) ||
+      input.quorum < 2 ||
+      input.quorum > providerIds.length
+    ) {
+      throw new TypeError("Base position consensus requires a quorum of at least two providers");
+    }
+    const ethAtomic = items[0].observedAtomic;
+    const usdcAtomic = items[1].observedAtomic;
+    const snapshotHash = `sha256:${fingerprintRequest({
+      schema: "cashloom.base-position-snapshot/1",
+      accountId: input.accountId,
+      chainId,
+      blockNumber: input.blockNumber,
+      blockHash: input.blockHash,
+      blockTime: input.blockTime,
+      evidenceHash: input.evidenceHash,
+      ethAtomic,
+      usdcAtomic,
+      providerIds,
+      sightingIds,
+      quorum: input.quorum,
+    })}` as const;
+    const id = input.id ?? `base-position-snapshot:${snapshotHash.slice(7)}`;
+    assertNonEmpty(id, "basePositionSnapshot.id");
+    const run = this.db.transaction((): ApplyBasePositionSnapshotResult => {
+      const account = this.db.query(
+        "SELECT chain_id FROM wk_accounts WHERE id=?",
+      ).get(input.accountId) as { chain_id: string | null } | null;
+      if (!account || account.chain_id !== BASE_CHAIN_ID) {
+        throw new BasePositionSnapshotConflictError(
+          `Account ${input.accountId} is not a projected Base mainnet account`,
+        );
+      }
+      for (const assetId of [BASE_ETH_ASSET_ID, BASE_USDC_ASSET_ID] as const) {
+        const asset = this.db.query(
+          "SELECT chain_id FROM wk_assets WHERE id=?",
+        ).get(assetId) as { chain_id: string | null } | null;
+        if (!asset || asset.chain_id !== BASE_CHAIN_ID) {
+          throw new BasePositionSnapshotConflictError(
+            `Required Base asset projection ${assetId} does not exist`,
+          );
+        }
+      }
+      const selectedSightings = sightingIds.map((sightingId) => {
+        const sighting = this.getBasePositionSighting(sightingId);
+        if (!sighting) {
+          throw new BasePositionSnapshotConflictError(
+            `Base position consensus sighting ${sightingId} does not exist`,
+          );
+        }
+        return sighting;
+      });
+      const trustDomains = new Set<string>();
+      for (const sighting of selectedSightings) {
+        trustDomains.add(sighting.providerTrustDomain);
+        const matches =
+          sighting.accountId === input.accountId &&
+          sighting.chainId === chainId &&
+          sighting.evidenceHash === input.evidenceHash &&
+          sighting.blockNumber === input.blockNumber &&
+          sighting.blockHash === input.blockHash &&
+          sighting.blockTime === input.blockTime &&
+          sighting.items[0].observedAtomic === ethAtomic &&
+          sighting.items[1].observedAtomic === usdcAtomic &&
+          providerIds.includes(sighting.providerId);
+        if (!matches) {
+          throw new BasePositionSnapshotConflictError(
+            `Base position consensus sighting ${sighting.id} does not match the atomic snapshot`,
+          );
+        }
+      }
+      if (trustDomains.size !== selectedSightings.length) {
+        throw new BasePositionSnapshotConflictError(
+          "Base position consensus providers do not have distinct trust domains",
+        );
+      }
+      for (const providerId of providerIds) {
+        if (selectedSightings.filter((sighting) => sighting.providerId === providerId).length !== 1) {
+          throw new BasePositionSnapshotConflictError(
+            `Base position consensus does not contain exactly one sighting for ${providerId}`,
+          );
+        }
+      }
+
+      const priorById = this.getBasePositionSnapshot(id);
+      const priorByHashRow = this.db.query(
+        "SELECT * FROM wk_base_position_snapshots WHERE snapshot_hash=?",
+      ).get(snapshotHash) as BasePositionSnapshotRow | null;
+      const priorByHash = priorByHashRow ? mapBasePositionSnapshot(priorByHashRow) : null;
+      const prior = priorById ?? priorByHash;
+      if (prior) {
+        const same =
+          prior.snapshotHash === snapshotHash &&
+          prior.accountId === input.accountId &&
+          prior.chainId === chainId &&
+          prior.blockNumber === input.blockNumber &&
+          prior.blockHash === input.blockHash &&
+          prior.blockTime === input.blockTime &&
+          prior.evidenceHash === input.evidenceHash &&
+          canonicalJson(prior.providerIds) === canonicalJson(providerIds) &&
+          canonicalJson(prior.sightingIds) === canonicalJson(sightingIds) &&
+          prior.quorum === input.quorum &&
+          prior.items[0].observedAtomic === ethAtomic &&
+          prior.items[1].observedAtomic === usdcAtomic;
+        if (!same || (priorById && priorByHash && priorById.id !== priorByHash.id)) {
+          throw new BasePositionSnapshotConflictError(
+            "Base position snapshot id or hash was reused for another consensus fact",
+          );
+        }
+        const head = this.getBasePositionHead(input.accountId);
+        if (!head) {
+          throw new BasePositionSnapshotConflictError(
+            `Replayed Base position snapshot ${prior.id} has no durable applied head`,
+          );
+        }
+        return { outcome: "replayed", snapshot: prior, head };
+      }
+
+      const at = this.#timestamp();
+      this.db.query(
+        `INSERT INTO wk_base_position_snapshots
+          (id, snapshot_hash, account_id, chain_id, block_number, block_hash,
+           block_time, evidence_hash, eth_atomic, usdc_atomic,
+           provider_ids_json, sighting_ids_json, quorum, decided_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        snapshotHash,
+        input.accountId,
+        chainId,
+        input.blockNumber,
+        input.blockHash,
+        input.blockTime,
+        input.evidenceHash,
+        ethAtomic,
+        usdcAtomic,
+        json(providerIds),
+        json(sightingIds),
+        input.quorum,
+        input.decidedAt,
+        at,
+      );
+      for (const item of items) {
+        this.db.query(
+          `INSERT INTO wk_base_position_snapshot_items
+            (snapshot_id, asset_id, observed_atomic, created_at)
+           VALUES (?, ?, ?, ?)`,
+        ).run(id, item.assetId, item.observedAtomic, at);
+      }
+      const snapshot = this.getBasePositionSnapshot(id);
+      if (!snapshot) throw new Error(`Base position snapshot ${id} disappeared after insertion`);
+      let head = this.getBasePositionHead(input.accountId);
+      if (!head) {
+        this.db.query(
+          `INSERT INTO wk_base_position_snapshot_heads
+            (account_id, snapshot_id, block_number, block_hash, state,
+             conflict_snapshot_id, version, updated_at)
+           VALUES (?, ?, ?, ?, 'ACTIVE', NULL, 0, ?)`,
+        ).run(input.accountId, id, input.blockNumber, input.blockHash, at);
+        this.#writeBasePositionProjection(snapshot, at);
+        head = this.getBasePositionHead(input.accountId);
+        if (!head) throw new Error(`Base position head for ${input.accountId} disappeared`);
+        return { outcome: "applied", snapshot, head };
+      }
+
+      const current = this.getBasePositionSnapshot(head.snapshotId);
+      if (!current) {
+        throw new BasePositionSnapshotConflictError(
+          `Base position head ${head.snapshotId} has no immutable snapshot`,
+        );
+      }
+      const candidateHeight = BigInt(input.blockNumber);
+      const currentHeight = BigInt(head.blockNumber);
+      const sameCurrentFact =
+        snapshot.blockHash === current.blockHash &&
+        snapshot.blockTime === current.blockTime &&
+        snapshot.items[0].observedAtomic === current.items[0].observedAtomic &&
+        snapshot.items[1].observedAtomic === current.items[1].observedAtomic;
+      const conflictSnapshot = head.conflictSnapshotId
+        ? this.getBasePositionSnapshot(head.conflictSnapshotId)
+        : null;
+      const sameKnownConflict = conflictSnapshot !== null &&
+        snapshot.blockHash === conflictSnapshot.blockHash &&
+        snapshot.blockTime === conflictSnapshot.blockTime &&
+        snapshot.items[0].observedAtomic === conflictSnapshot.items[0].observedAtomic &&
+        snapshot.items[1].observedAtomic === conflictSnapshot.items[1].observedAtomic;
+      if (head.state === "FROZEN") {
+        return {
+          outcome: sameCurrentFact || sameKnownConflict ? "replayed" : "conflict",
+          snapshot,
+          head,
+        };
+      }
+      if (candidateHeight < currentHeight) {
+        return { outcome: "stale", snapshot, head };
+      }
+      if (candidateHeight === currentHeight) {
+        if (sameCurrentFact || sameKnownConflict) {
+          return { outcome: "replayed", snapshot, head };
+        }
+        if (head.state === "ACTIVE") {
+          const updated = this.db.query(
+            `UPDATE wk_base_position_snapshot_heads
+             SET state='FROZEN', conflict_snapshot_id=?,
+                 version=version+1, updated_at=?
+             WHERE account_id=? AND version=? AND state='ACTIVE'`,
+          ).run(snapshot.id, at, input.accountId, head.version);
+          if (updated.changes !== 1) {
+            throw new BasePositionSnapshotConflictError(
+              `Base position head for ${input.accountId} changed concurrently`,
+            );
+          }
+          head = this.getBasePositionHead(input.accountId);
+          if (!head) throw new Error(`Base position head for ${input.accountId} disappeared`);
+        }
+        return { outcome: "conflict", snapshot, head };
+      }
+
+      const updated = this.db.query(
+        `UPDATE wk_base_position_snapshot_heads
+         SET snapshot_id=?, block_number=?, block_hash=?, state='ACTIVE',
+             conflict_snapshot_id=NULL, version=version+1, updated_at=?
+         WHERE account_id=? AND version=?`,
+      ).run(
+        snapshot.id,
+        snapshot.blockNumber,
+        snapshot.blockHash,
+        at,
+        input.accountId,
+        head.version,
+      );
+      if (updated.changes !== 1) {
+        throw new BasePositionSnapshotConflictError(
+          `Base position head for ${input.accountId} changed concurrently`,
+        );
+      }
+      this.#writeBasePositionProjection(snapshot, at);
+      head = this.getBasePositionHead(input.accountId);
+      if (!head) throw new Error(`Base position head for ${input.accountId} disappeared`);
+      return { outcome: "superseded", snapshot, head };
+    });
+    return run.immediate();
   }
 
   appendObservation(input: {

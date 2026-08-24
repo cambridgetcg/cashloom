@@ -1196,6 +1196,78 @@ input[type="date"] { color-scheme: dark; }
   padding-top: 14px;
   border-top: 1px solid var(--line-soft);
 }
+.base-position-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(14, 11, 8, 0.28);
+}
+.base-position-heading,
+.base-position-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.base-position-heading strong { font-size: 13px; }
+.base-position-heading p,
+.base-position-actions small,
+.base-position-values small {
+  color: var(--faint);
+  font-size: 11.5px;
+  margin: 4px 0 0;
+}
+.base-position-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.base-position-values > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+}
+.base-position-values > div > span:first-child {
+  color: var(--parch-dim);
+  font-size: 11px;
+}
+.base-position-proof {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.base-position-proof div { min-width: 0; }
+.base-position-proof dt {
+  color: var(--faint);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.base-position-proof dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--parch-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.base-position-message,
+.base-position-error {
+  margin: 10px 0;
+  font-size: 12px;
+}
+.base-position-message { color: var(--gold-hi); }
+.base-position-error { color: var(--danger); }
+.base-position-actions {
+  align-items: baseline;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
 .create-form { max-width: 760px; }
 .crypto-identity-card {
   border: 1px solid var(--line-soft);
@@ -1218,6 +1290,10 @@ input[type="date"] { color-scheme: dark; }
 @media (max-width: 620px) {
   .crypto-id-grid { grid-template-columns: minmax(0, 1fr); }
   .crypto-id-grid .field:last-child { grid-column: auto; }
+  .base-position-heading,
+  .base-position-actions { align-items: flex-start; flex-direction: column; }
+  .base-position-values,
+  .base-position-proof { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── keys ─────────────────────────────────────────────────────────── */

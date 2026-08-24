@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   AuthorizationConflictError,
+  BASE_CHAIN_ID,
+  BASE_ETH_ASSET_ID,
+  BASE_USDC_ASSET_ID,
+  BasePositionRefreshAttemptConflictError,
+  BasePositionSnapshotConflictError,
+  BaseReconciliationJobConflictError,
   ChainEvidenceConflictError,
   ExecutionConflictError,
   IdempotencyConflictError,
@@ -15,9 +24,14 @@ import {
 } from "./index.ts";
 
 const openDatabases: Database[] = [];
+const temporaryDirectories: string[] = [];
 
 afterEach(() => {
   while (openDatabases.length > 0) openDatabases.pop()?.close();
+  while (temporaryDirectories.length > 0) {
+    const directory = temporaryDirectories.pop();
+    if (directory) rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 const database = (): Database => {
@@ -147,6 +161,185 @@ const createSubmittedExecution = (store: WalletKernelStore, suffix: string) => {
   return { intent, reservation, authorization, artifact, execution, networkTxId };
 };
 
+const makeBaseTruthStore = (db: Database = database()) => {
+  let clock = "2026-08-23T10:00:00.000Z";
+  let nextId = 0;
+  const store = new WalletKernelStore(db, {
+    now: () => new Date(clock),
+    newId: () => `base-generated-${++nextId}`,
+  });
+  store.putWallet({ id: "base-wallet", label: "Base wallet" });
+  store.putAsset({
+    id: BASE_ETH_ASSET_ID,
+    instrumentId: "native:ETH",
+    kind: "CRYPTO",
+    symbol: "ETH",
+    name: "Ether on Base",
+    decimals: 18,
+    chainId: BASE_CHAIN_ID,
+  });
+  store.putAsset({
+    id: BASE_USDC_ASSET_ID,
+    instrumentId: "native:USDC",
+    kind: "CRYPTO",
+    symbol: "USDC",
+    name: "Circle USDC on Base",
+    decimals: 6,
+    chainId: BASE_CHAIN_ID,
+    contractAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+  });
+  store.putAccount({
+    id: "base-account",
+    walletId: "base-wallet",
+    label: "Base account",
+    kind: "CRYPTO",
+    rail: "evm-base",
+    chainId: BASE_CHAIN_ID,
+    accountRef: `${BASE_CHAIN_ID}:0x1111111111111111111111111111111111111111`,
+    address: "0x1111111111111111111111111111111111111111",
+    custodyMode: "local_self_custody",
+  });
+  store.setPosition({
+    accountId: "base-account",
+    assetId: BASE_ETH_ASSET_ID,
+    observedAtomic: "1",
+    pendingAtomic: "5",
+    source: "TEST",
+  });
+  store.setPosition({
+    accountId: "base-account",
+    assetId: BASE_USDC_ASSET_ID,
+    observedAtomic: "2",
+    pendingAtomic: "7",
+    source: "TEST",
+  });
+  return {
+    store,
+    setClock: (value: string) => {
+      clock = value;
+    },
+  };
+};
+
+const createBaseExecution = (store: WalletKernelStore, suffix: string) => {
+  const intent = store.createPaymentIntent({
+    id: `base-intent-${suffix}`,
+    kind: "TRANSFER",
+    sourceAccountId: "base-account",
+    assetId: BASE_ETH_ASSET_ID,
+    amountAtomic: "1",
+    destination: { kind: "EVM_ADDRESS", address: "0x2222222222222222222222222222222222222222" },
+    intentHash: `base-intent-hash-${suffix}`,
+    createdBy: { type: "HUMAN", ref: "base-test" },
+  }).intent;
+  store.acquireReservation({
+    id: `base-reservation-${suffix}`,
+    intentId: intent.id,
+    accountId: "base-account",
+    assetId: BASE_ETH_ASSET_ID,
+    kind: "NONCE",
+    resourceKey: `base-nonce-${suffix}`,
+    amountAtomic: "1",
+  });
+  const authorization = store.createSigningAuthorization({
+    id: `base-auth-${suffix}`,
+    intentId: intent.id,
+    intentHash: intent.intentHash,
+    keyId: `base-key-${suffix}`,
+    requestHash: `base-request-${suffix}`,
+    actor: { type: "HUMAN", ref: "base-test" },
+    method: "TEST",
+    grantHash: `base-grant-${suffix}`,
+  }).authorization;
+  const nibble = /^[0-9a-f]$/.test(suffix) ? suffix : "a";
+  const networkTxId = `0x${nibble.repeat(64)}`;
+  const artifact = store.persistSignedArtifact({
+    id: `base-artifact-${suffix}`,
+    authorizationId: authorization.id,
+    intentId: intent.id,
+    intentHash: intent.intentHash,
+    keyId: authorization.keyId,
+    requestHash: authorization.requestHash,
+    encoding: "hex",
+    payload: "0x0102",
+    externalTxId: networkTxId,
+  }).artifact;
+  const prepared = store.createExecution({
+    id: `base-execution-${suffix}`,
+    intentId: intent.id,
+    rail: "evm-base",
+    preparedRef: authorization.id,
+    requestHash: authorization.requestHash,
+  }).execution;
+  const signed = store.transitionExecution({
+    id: prepared.id,
+    expectedState: "prepared",
+    expectedVersion: prepared.version,
+    toState: "signed",
+    networkTxId,
+    signedArtifactId: artifact.id,
+  });
+  const execution = store.transitionExecution({
+    id: signed.id,
+    expectedState: "signed",
+    expectedVersion: signed.version,
+    toState: "submitted",
+    submissionRef: `base:${networkTxId}`,
+    submittedAt: "2026-08-23T10:00:00.000Z",
+  });
+  return { intent, artifact, execution, networkTxId };
+};
+
+const hash = (nibble: string): `0x${string}` => `0x${nibble.repeat(64)}`;
+const digest = (nibble: string): `sha256:${string}` => `sha256:${nibble.repeat(64)}`;
+
+const appendBasePositionEvidence = (
+  store: WalletKernelStore,
+  input: {
+    blockNumber: string;
+    blockHash: `0x${string}`;
+    blockTime: string;
+    evidenceHash: `sha256:${string}`;
+    ethAtomic: string;
+    usdcAtomic: string;
+    observedAt: string;
+    trustDomains?: readonly [`sha256:${string}`, `sha256:${string}`];
+  },
+) => {
+  const items = [
+    { assetId: BASE_ETH_ASSET_ID, observedAtomic: input.ethAtomic },
+    { assetId: BASE_USDC_ASSET_ID, observedAtomic: input.usdcAtomic },
+  ] as const;
+  const trustDomains = input.trustDomains ?? [digest("a"), digest("b")];
+  const sightings = (["base-position-a", "base-position-b"] as const).map(
+    (providerId, index) => store.appendBasePositionSighting({
+      accountId: "base-account",
+      providerId,
+      providerTrustDomain: trustDomains[index]!,
+      evidenceHash: input.evidenceHash,
+      blockNumber: input.blockNumber,
+      blockHash: input.blockHash,
+      blockTime: input.blockTime,
+      items,
+      body: { header: input.blockHash, balances: items },
+      observedAt: input.observedAt,
+      fetchedAt: input.observedAt,
+    }).sighting,
+  );
+  return {
+    accountId: "base-account",
+    blockNumber: input.blockNumber,
+    blockHash: input.blockHash,
+    blockTime: input.blockTime,
+    evidenceHash: input.evidenceHash,
+    providerIds: sightings.map(({ providerId }) => providerId),
+    sightingIds: sightings.map(({ id }) => id),
+    quorum: 2,
+    items,
+    decidedAt: input.observedAt,
+  } as const;
+};
+
 describe("Wallet Kernel v2 schema", () => {
   it("installs idempotently without replacing the sovereign v1 accounts table", () => {
     const db = database();
@@ -179,6 +372,8 @@ describe("Wallet Kernel v2 schema", () => {
     expect(db.query("SELECT version FROM wk_schema_meta ORDER BY version").all()).toEqual([
       { version: 5 },
       { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ]);
     expect(
       db.query("SELECT name FROM sqlite_master WHERE type='index' AND name='wk_accounts_external_identity_uq'").get(),
@@ -246,6 +441,8 @@ describe("Wallet Kernel v2 schema", () => {
     expect(db.query("SELECT version FROM wk_schema_meta ORDER BY version").all()).toEqual([
       { version: 5 },
       { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ]);
     expect(db.query(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='wk_chain_sightings'",
@@ -253,6 +450,67 @@ describe("Wallet Kernel v2 schema", () => {
     expect(db.query(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='wk_chain_consensus'",
     ).get()).toEqual({ name: "wk_chain_consensus" });
+  });
+
+  it("installs the additive v7 queue and Base position evidence tables idempotently", () => {
+    const db = database();
+    installWalletKernelSchema(db);
+    db.exec(`
+      DROP TABLE wk_base_position_snapshot_heads;
+      DROP TABLE wk_base_position_snapshot_items;
+      DROP TABLE wk_base_position_snapshots;
+      DROP TABLE wk_base_position_snapshot_sightings;
+      DROP TABLE wk_base_reconciliation_jobs;
+      DELETE FROM wk_schema_meta WHERE version=7;
+    `);
+
+    installWalletKernelSchema(db);
+    installWalletKernelSchema(db);
+
+    const tables = new Set(
+      (db.query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'wk_base_%'",
+      ).all() as Array<{ name: string }>).map(({ name }) => name),
+    );
+    expect([
+      "wk_base_reconciliation_jobs",
+      "wk_base_position_snapshot_sightings",
+      "wk_base_position_snapshots",
+      "wk_base_position_snapshot_items",
+      "wk_base_position_snapshot_heads",
+    ].every((name) => tables.has(name))).toBe(true);
+    expect(db.query("SELECT COUNT(*) AS count FROM wk_schema_meta WHERE version=7").get()).toEqual({
+      count: 1,
+    });
+  });
+
+  it("upgrades v7 with the append-only Base refresh-attempt ledger exactly once", () => {
+    const db = database();
+    installWalletKernelSchema(db);
+    db.exec(`
+      DROP TABLE wk_base_position_refresh_attempts;
+      DELETE FROM wk_schema_meta WHERE version=8;
+    `);
+
+    installWalletKernelSchema(db);
+    installWalletKernelSchema(db);
+
+    expect(db.query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='wk_base_position_refresh_attempts'",
+    ).get()).toEqual({ name: "wk_base_position_refresh_attempts" });
+    expect(db.query(
+      "SELECT COUNT(*) AS count FROM wk_schema_meta WHERE version=8",
+    ).get()).toEqual({ count: 1 });
+    const managedObjects = new Set((db.query(
+      `SELECT name FROM sqlite_master
+       WHERE name LIKE 'wk_base_position_refresh_attempts_%'`,
+    ).all() as Array<{ name: string }>).map(({ name }) => name));
+    expect([
+      "wk_base_position_refresh_attempts_account_idx",
+      "wk_base_position_refresh_attempts_binding_insert",
+      "wk_base_position_refresh_attempts_no_update",
+      "wk_base_position_refresh_attempts_no_delete",
+    ].every((name) => managedObjects.has(name))).toBe(true);
   });
 
   it("fails an old duplicate-consumed resource migration with an actionable quarantine error", () => {
@@ -1270,6 +1528,650 @@ describe("Base chain truth", () => {
       "2026-08-23T00:00:00.000Z",
       "2026-08-23T00:00:00.000Z",
     )).toThrow(/does not match execution transaction identity/);
+  });
+});
+
+describe("durable Base reconciliation jobs", () => {
+  it("discovers exact bindings, leases once, reschedules without false failures, and settles by lease CAS", () => {
+    const { store } = makeBaseTruthStore();
+    const { execution, artifact, networkTxId } = createBaseExecution(store, "a");
+    const candidates = store.discoverEligibleBaseReconciliations();
+    expect(candidates).toEqual([{
+      executionId: execution.id,
+      intentId: execution.intentId,
+      signedArtifactId: artifact.id,
+      externalTxId: networkTxId,
+      networkTxId,
+      rail: "evm-base",
+      chainId: BASE_CHAIN_ID,
+      assetId: BASE_ETH_ASSET_ID,
+      executionState: "submitted",
+    }]);
+
+    const [enqueued] = store.enqueueBaseReconciliationJobs(candidates, {
+      now: "2026-08-23T10:00:00.000Z",
+    });
+    expect(enqueued).toMatchObject({
+      state: "READY",
+      attemptCount: 0,
+      failureCount: 0,
+      nextAttemptAt: "2026-08-23T10:00:00.000Z",
+    });
+    expect(store.enqueueBaseReconciliationJobs(candidates)[0]?.id).toBe(enqueued!.id);
+
+    const [claimed] = store.claimDueBaseReconciliationJobs({
+      limit: 8,
+      leaseOwner: "worker-a",
+      leaseUntil: "2026-08-23T10:01:00.000Z",
+      now: "2026-08-23T10:00:01.000Z",
+    });
+    expect(claimed).toMatchObject({ state: "RUNNING", attemptCount: 1, leaseOwner: "worker-a" });
+    expect(store.claimDueBaseReconciliationJobs({
+      limit: 8,
+      leaseOwner: "worker-b",
+      leaseUntil: "2026-08-23T10:01:00.000Z",
+      now: "2026-08-23T10:00:01.000Z",
+    })).toEqual([]);
+
+    const backoff = store.rescheduleBaseReconciliationJob({
+      jobId: claimed!.id,
+      leaseToken: claimed!.leaseToken!,
+      nextAttemptAt: "2026-08-23T10:02:00.000Z",
+      observation: "pending",
+      errorCode: null,
+      incrementFailure: false,
+      now: "2026-08-23T10:00:30.000Z",
+    });
+    expect(backoff).toMatchObject({
+      state: "BACKOFF",
+      attemptCount: 1,
+      failureCount: 0,
+      lastObservation: "pending",
+      lastErrorCode: null,
+    });
+    expect(store.claimDueBaseReconciliationJobs({
+      limit: 8,
+      leaseOwner: "worker-b",
+      leaseUntil: "2026-08-23T10:03:00.000Z",
+      now: "2026-08-23T10:01:59.999Z",
+    })).toEqual([]);
+    const [claimedAgain] = store.claimDueBaseReconciliationJobs({
+      limit: 8,
+      leaseOwner: "worker-b",
+      leaseUntil: "2026-08-23T10:03:00.000Z",
+      now: "2026-08-23T10:02:00.000Z",
+    });
+    expect(claimedAgain).toMatchObject({ state: "RUNNING", attemptCount: 2 });
+    expect(() => store.settleBaseReconciliationJob({
+      jobId: claimedAgain!.id,
+      leaseToken: claimed!.leaseToken!,
+      now: "2026-08-23T10:02:01.000Z",
+    })).toThrow(BaseReconciliationJobConflictError);
+    expect(store.settleBaseReconciliationJob({
+      jobId: claimedAgain!.id,
+      leaseToken: claimedAgain!.leaseToken!,
+      observation: "settled",
+      now: "2026-08-23T10:02:01.000Z",
+    })).toMatchObject({
+      state: "SETTLED",
+      lastObservation: "settled",
+      settledAt: "2026-08-23T10:02:01.000Z",
+    });
+  });
+
+  it("allows only one claimant across independent SQLite connections", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cashloom-wk-v7-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "wallet.db");
+    const firstDb = new Database(path, { create: true });
+    openDatabases.push(firstDb);
+    const { store: first } = makeBaseTruthStore(firstDb);
+    createBaseExecution(first, "d");
+    first.enqueueBaseReconciliationJobs(first.discoverEligibleBaseReconciliations(), {
+      now: "2026-08-23T10:00:00.000Z",
+    });
+    const secondDb = new Database(path);
+    openDatabases.push(secondDb);
+    const second = new WalletKernelStore(secondDb);
+
+    expect(first.claimDueBaseReconciliationJobs({
+      limit: 1,
+      leaseOwner: "connection-a",
+      leaseUntil: "2026-08-23T10:01:00.000Z",
+      now: "2026-08-23T10:00:01.000Z",
+    })).toHaveLength(1);
+    expect(second.claimDueBaseReconciliationJobs({
+      limit: 1,
+      leaseOwner: "connection-b",
+      leaseUntil: "2026-08-23T10:01:00.000Z",
+      now: "2026-08-23T10:00:01.000Z",
+    })).toEqual([]);
+    expect(second.listBaseReconciliationJobs({ state: "RUNNING" })).toHaveLength(1);
+  });
+
+  it("reaps dead leases and still claims terminal truth that arrived during backoff", () => {
+    const { store } = makeBaseTruthStore();
+    const { intent, execution, networkTxId } = createBaseExecution(store, "b");
+    const [job] = store.enqueueBaseReconciliationJobs(
+      store.discoverEligibleBaseReconciliations(),
+      { now: "2026-08-23T10:00:00.000Z" },
+    );
+    const [expired] = store.claimDueBaseReconciliationJobs({
+      limit: 1,
+      leaseOwner: "crashed-worker",
+      leaseUntil: "2026-08-23T10:00:10.000Z",
+      now: "2026-08-23T10:00:01.000Z",
+    });
+    expect(store.reapExpiredBaseReconciliationLeases({
+      now: "2026-08-23T10:00:10.000Z",
+    })).toBe(1);
+    expect(store.getBaseReconciliationJob(job!.id)).toMatchObject({
+      state: "BACKOFF",
+      failureCount: 1,
+      lastErrorCode: "RECONCILIATION_LEASE_EXPIRED",
+    });
+    expect(() => store.pauseBaseReconciliationJob({
+      jobId: job!.id,
+      leaseToken: expired!.leaseToken!,
+      errorCode: "STALE_WORKER",
+      now: "2026-08-23T10:00:11.000Z",
+    })).toThrow(BaseReconciliationJobConflictError);
+
+    const common = {
+      intentId: intent.id,
+      executionId: execution.id,
+      chainId: BASE_CHAIN_ID,
+      networkTxId,
+      evidenceHash: "sha256:manual-finalized",
+      visibility: "INCLUDED" as const,
+      outcome: "SUCCESS" as const,
+      securityLevel: "FINALIZED" as const,
+      blockHash: hash("b"),
+      blockNumber: "123",
+      body: { status: "0x1" },
+      observedAt: "2026-08-23T10:00:11.000Z",
+    };
+    for (const providerId of ["manual-a", "manual-b"] as const) {
+      store.appendChainSighting({ id: `manual-${providerId}`, providerId, ...common });
+    }
+    store.appendChainConsensus({
+      id: "manual-consensus",
+      intentId: intent.id,
+      executionId: execution.id,
+      chainId: BASE_CHAIN_ID,
+      networkTxId,
+      evidenceHash: common.evidenceHash,
+      visibility: "INCLUDED",
+      outcome: "SUCCESS",
+      securityLevel: "FINALIZED",
+      blockHash: common.blockHash,
+      blockNumber: common.blockNumber,
+      providerIds: ["manual-a", "manual-b"],
+      quorum: 2,
+      body: { decision: "manual-finalized" },
+      decidedAt: "2026-08-23T10:00:12.000Z",
+    });
+    store.transitionExecution({
+      id: execution.id,
+      expectedState: "submitted",
+      expectedVersion: execution.version,
+      toState: "succeeded",
+      settledAt: "2026-08-23T10:00:12.000Z",
+    });
+    expect(store.discoverEligibleBaseReconciliations()).toEqual([]);
+    const [terminalClaim] = store.claimDueBaseReconciliationJobs({
+      limit: 1,
+      leaseOwner: "truth-only-worker",
+      leaseUntil: "2026-08-23T10:01:00.000Z",
+      now: "2026-08-23T10:00:12.000Z",
+    });
+    expect(terminalClaim).toMatchObject({ state: "RUNNING", executionState: "succeeded" });
+  });
+
+  it("rejects a directly forged job binding and keeps jobs undeletable", () => {
+    const { store } = makeBaseTruthStore();
+    const { intent, execution, artifact } = createBaseExecution(store, "c");
+    expect(() => store.db.query(
+      `INSERT INTO wk_base_reconciliation_jobs
+        (id, execution_id, intent_id, signed_artifact_id, external_tx_id,
+         network_tx_id, rail, chain_id, asset_id, state, next_attempt_at,
+         created_at, updated_at)
+       VALUES ('forged-job', ?, ?, ?, ?, ?, 'evm-base', 'eip155:8453', ?,
+               'READY', ?, ?, ?)`,
+    ).run(
+      execution.id,
+      intent.id,
+      artifact.id,
+      hash("d"),
+      hash("d"),
+      BASE_ETH_ASSET_ID,
+      "2026-08-23T10:00:00.000Z",
+      "2026-08-23T10:00:00.000Z",
+      "2026-08-23T10:00:00.000Z",
+    )).toThrow(/no exact eligible execution binding/);
+    const [job] = store.enqueueBaseReconciliationJobs(store.discoverEligibleBaseReconciliations());
+    expect(() => store.db.query(
+      "DELETE FROM wk_base_reconciliation_jobs WHERE id=?",
+    ).run(job!.id)).toThrow(/durable audit records/);
+  });
+});
+
+describe("Base position refresh attempt provenance", () => {
+  it("retains sanitized outcomes, provider counts, and the exact durable head", () => {
+    const { store, setClock } = makeBaseTruthStore();
+    const partial = store.appendBasePositionRefreshAttempt({
+      id: "base-refresh-partial",
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:00.000Z",
+      outcome: "partial",
+      reasonCode: "provider_unavailable",
+      providerCount: 2,
+      availableProviderCount: 1,
+      agreeingProviderCount: 1,
+    });
+    expect(partial).toEqual({
+      id: "base-refresh-partial",
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:00.000Z",
+      outcome: "partial",
+      reasonCode: "provider_unavailable",
+      providerCount: 2,
+      availableProviderCount: 1,
+      agreeingProviderCount: 1,
+      retainedHead: null,
+      errorCode: null,
+      createdAt: "2026-08-23T10:00:00.000Z",
+    });
+
+    const evidence = appendBasePositionEvidence(store, {
+      blockNumber: "300",
+      blockHash: hash("9"),
+      blockTime: "2026-08-23T10:00:00.000Z",
+      evidenceHash: digest("9"),
+      ethAtomic: "3000",
+      usdcAtomic: "4000",
+      observedAt: "2026-08-23T10:00:01.000Z",
+    });
+    setClock("2026-08-23T10:00:02.000Z");
+    const applied = store.applyBasePositionSnapshot(evidence);
+    setClock("2026-08-23T10:00:03.000Z");
+    const recorded = store.appendBasePositionRefreshAttempt({
+      id: "base-refresh-applied",
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:01.000Z",
+      outcome: "applied",
+      reasonCode: "finalized_consensus",
+      providerCount: 2,
+      availableProviderCount: 2,
+      agreeingProviderCount: 2,
+      retainedHead: applied.head,
+    });
+    expect(recorded).toMatchObject({
+      outcome: "applied",
+      reasonCode: "finalized_consensus",
+      retainedHead: {
+        snapshotId: applied.snapshot.id,
+        state: "ACTIVE",
+        conflictSnapshotId: null,
+        version: 0,
+      },
+      errorCode: null,
+      createdAt: "2026-08-23T10:00:03.000Z",
+    });
+
+    setClock("2026-08-23T10:00:04.000Z");
+    store.appendBasePositionRefreshAttempt({
+      id: "base-refresh-rejected",
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:04.000Z",
+      outcome: "rejected",
+      reasonCode: "evidence_rejected",
+      providerCount: 2,
+      availableProviderCount: 0,
+      agreeingProviderCount: 0,
+      errorCode: "base_position_evidence_rejected",
+    });
+    expect(store.getBasePositionRefreshAttempt("base-refresh-rejected")).toMatchObject({
+      retainedHead: recorded.retainedHead,
+      errorCode: "base_position_evidence_rejected",
+    });
+    expect(store.listBasePositionRefreshAttempts({
+      accountId: "base-account",
+      limit: 2,
+    }).map(({ id }) => id)).toEqual([
+      "base-refresh-rejected",
+      "base-refresh-applied",
+    ]);
+    expect(store.listBasePositionRefreshAttempts({ outcome: "partial" })).toEqual([partial]);
+
+    expect(() => store.db.query(
+      "UPDATE wk_base_position_refresh_attempts SET outcome='stale' WHERE id=?",
+    ).run(recorded.id)).toThrow(/append-only/);
+    expect(() => store.db.query(
+      "DELETE FROM wk_base_position_refresh_attempts WHERE id=?",
+    ).run(recorded.id)).toThrow(/append-only/);
+  });
+
+  it("rejects raw text, impossible counts, and a forged or stale head binding", () => {
+    const { store, setClock } = makeBaseTruthStore();
+    const common = {
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:00.000Z",
+      outcome: "rejected" as const,
+      reasonCode: "evidence_rejected",
+      providerCount: 2,
+      availableProviderCount: 0,
+      agreeingProviderCount: 0,
+      errorCode: "base_position_evidence_rejected",
+    };
+    expect(() => store.appendBasePositionRefreshAttempt({
+      ...common,
+      reasonCode: "https://rpc.example/internal",
+    })).toThrow(/stable lower-case code/);
+    expect(() => store.appendBasePositionRefreshAttempt({
+      ...common,
+      errorCode: "upstream said ECONNREFUSED at https://rpc.example",
+    })).toThrow(/stable lower-case code/);
+    expect(() => store.appendBasePositionRefreshAttempt({
+      ...common,
+      availableProviderCount: 3,
+    })).toThrow(/agreeing <= available <= total/);
+
+    const evidence = appendBasePositionEvidence(store, {
+      blockNumber: "400",
+      blockHash: hash("c"),
+      blockTime: "2026-08-23T10:00:00.000Z",
+      evidenceHash: digest("c"),
+      ethAtomic: "1",
+      usdcAtomic: "2",
+      observedAt: "2026-08-23T10:00:01.000Z",
+    });
+    setClock("2026-08-23T10:00:02.000Z");
+    const { head } = store.applyBasePositionSnapshot(evidence);
+    expect(() => store.appendBasePositionRefreshAttempt({
+      ...common,
+      retainedHead: { ...head, version: head.version + 1 },
+    })).toThrow(BasePositionRefreshAttemptConflictError);
+    expect(() => store.db.query(
+      `INSERT INTO wk_base_position_refresh_attempts
+        (id, account_id, attempted_at, outcome, reason_code,
+         provider_count, available_provider_count, agreeing_provider_count,
+         created_at)
+       VALUES ('forged-refresh', 'base-account', ?, 'partial',
+               'provider_unavailable', 2, 1, 1, ?)`,
+    ).run(common.attemptedAt, common.attemptedAt)).toThrow(/does not match its retained head/);
+
+    const columnNames = (store.db.query(
+      "PRAGMA table_info(wk_base_position_refresh_attempts)",
+    ).all() as Array<{ name: string }>).map(({ name }) => name);
+    expect(columnNames.some((name) => /(?:url|origin|body|message|raw)/i.test(name))).toBe(false);
+  });
+
+  it("survives a store reload without replaying network work", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cashloom-base-refresh-attempt-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "wallet.db");
+    const firstDb = new Database(path);
+    openDatabases.push(firstDb);
+    const { store: first } = makeBaseTruthStore(firstDb);
+    first.appendBasePositionRefreshAttempt({
+      id: "persisted-base-refresh",
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:00.000Z",
+      outcome: "partial",
+      reasonCode: "provider_unavailable",
+      providerCount: 2,
+      availableProviderCount: 1,
+      agreeingProviderCount: 1,
+    });
+
+    const secondDb = new Database(path);
+    openDatabases.push(secondDb);
+    const reloaded = new WalletKernelStore(secondDb);
+    expect(reloaded.listBasePositionRefreshAttempts({ accountId: "base-account" })).toEqual([
+      {
+        id: "persisted-base-refresh",
+        accountId: "base-account",
+        attemptedAt: "2026-08-23T10:00:00.000Z",
+        outcome: "partial",
+        reasonCode: "provider_unavailable",
+        providerCount: 2,
+        availableProviderCount: 1,
+        agreeingProviderCount: 1,
+        retainedHead: null,
+        errorCode: null,
+        createdAt: "2026-08-23T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("returns the latest appended refresh attempt when timestamps are identical", () => {
+    const { store } = makeBaseTruthStore();
+    store.appendBasePositionRefreshAttempt({
+      id: "attempt-same-clock-first",
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:00.000Z",
+      outcome: "partial",
+      reasonCode: "provider_unavailable",
+      providerCount: 2,
+      availableProviderCount: 0,
+      agreeingProviderCount: 0,
+    });
+    store.appendBasePositionRefreshAttempt({
+      id: "attempt-same-clock-second",
+      accountId: "base-account",
+      attemptedAt: "2026-08-23T10:00:00.000Z",
+      outcome: "rejected",
+      reasonCode: "evidence_rejected",
+      providerCount: 2,
+      availableProviderCount: 0,
+      agreeingProviderCount: 0,
+      errorCode: "base_position_evidence_rejected",
+    });
+    expect(store.listBasePositionRefreshAttempts({ accountId: "base-account", limit: 1 })[0])
+      .toMatchObject({ id: "attempt-same-clock-second", outcome: "rejected" });
+  });
+});
+
+describe("finalized Base position snapshots", () => {
+  it("retains evidence while applying, replaying, rejecting stale rollback, freezing conflict, and superseding", () => {
+    const { store, setClock } = makeBaseTruthStore();
+    const first = appendBasePositionEvidence(store, {
+      blockNumber: "100",
+      blockHash: hash("1"),
+      blockTime: "2026-08-23T09:59:00.000Z",
+      evidenceHash: digest("1"),
+      ethAtomic: "100",
+      usdcAtomic: "200",
+      observedAt: "2026-08-23T10:00:00.000Z",
+    });
+    setClock("2026-08-23T10:00:01.000Z");
+    expect(store.applyBasePositionSnapshot(first)).toMatchObject({
+      outcome: "applied",
+      head: { blockNumber: "100", state: "ACTIVE", version: 0 },
+    });
+    const appliedPositions = store.listBasePositions({ accountId: "base-account" });
+    expect(appliedPositions.find(({ assetId }) => assetId === BASE_ETH_ASSET_ID)).toMatchObject({
+      observedAtomic: "100",
+      pendingAtomic: "5",
+      asOf: "2026-08-23T09:59:00.000Z",
+      updatedAt: "2026-08-23T10:00:01.000Z",
+    });
+    expect(appliedPositions.find(({ assetId }) => assetId === BASE_USDC_ASSET_ID)).toMatchObject({
+      observedAtomic: "200",
+      pendingAtomic: "7",
+    });
+    expect(store.applyBasePositionSnapshot(first).outcome).toBe("replayed");
+    expect(store.listBasePositionSnapshots({ accountId: "base-account" })).toHaveLength(1);
+
+    const stale = appendBasePositionEvidence(store, {
+      blockNumber: "99",
+      blockHash: hash("2"),
+      blockTime: "2026-08-23T09:58:00.000Z",
+      evidenceHash: digest("2"),
+      ethAtomic: "90",
+      usdcAtomic: "190",
+      observedAt: "2026-08-23T10:00:02.000Z",
+    });
+    setClock("2026-08-23T10:00:03.000Z");
+    expect(store.applyBasePositionSnapshot(stale).outcome).toBe("stale");
+    expect(store.getBasePositionHead("base-account")?.blockNumber).toBe("100");
+    expect(store.listBasePositions({ accountId: "base-account" }).find(
+      ({ assetId }) => assetId === BASE_ETH_ASSET_ID,
+    )?.observedAtomic).toBe("100");
+
+    const newer = appendBasePositionEvidence(store, {
+      blockNumber: "101",
+      blockHash: hash("4"),
+      blockTime: "2026-08-23T10:00:00.000Z",
+      evidenceHash: digest("4"),
+      ethAtomic: "300",
+      usdcAtomic: "400",
+      observedAt: "2026-08-23T10:00:06.000Z",
+    });
+    setClock("2026-08-23T10:00:07.000Z");
+    expect(store.applyBasePositionSnapshot(newer)).toMatchObject({
+      outcome: "superseded",
+      head: { blockNumber: "101", state: "ACTIVE", conflictSnapshotId: null, version: 1 },
+    });
+    expect(store.listBasePositions()).toHaveLength(2);
+
+    const conflict = appendBasePositionEvidence(store, {
+      blockNumber: "101",
+      blockHash: hash("3"),
+      blockTime: "2026-08-23T10:00:01.000Z",
+      evidenceHash: digest("3"),
+      ethAtomic: "999",
+      usdcAtomic: "999",
+      observedAt: "2026-08-23T10:00:08.000Z",
+    });
+    setClock("2026-08-23T10:00:09.000Z");
+    expect(store.applyBasePositionSnapshot(conflict)).toMatchObject({
+      outcome: "conflict",
+      head: { blockNumber: "101", state: "FROZEN", version: 2 },
+    });
+    expect(store.listBasePositions({ accountId: "base-account" }).find(
+      ({ assetId }) => assetId === BASE_ETH_ASSET_ID,
+    )).toMatchObject({ observedAtomic: "300", headState: "FROZEN" });
+
+    const higherAfterConflict = appendBasePositionEvidence(store, {
+      blockNumber: "102",
+      blockHash: hash("8"),
+      blockTime: "2026-08-23T10:01:00.000Z",
+      evidenceHash: digest("8"),
+      ethAtomic: "500",
+      usdcAtomic: "600",
+      observedAt: "2026-08-23T10:00:10.000Z",
+    });
+    setClock("2026-08-23T10:00:11.000Z");
+    expect(store.applyBasePositionSnapshot(higherAfterConflict)).toMatchObject({
+      outcome: "conflict",
+      head: { blockNumber: "101", state: "FROZEN", version: 2 },
+    });
+    expect(store.listBasePositions({ accountId: "base-account" }).map((position) => ({
+      assetId: position.assetId,
+      observedAtomic: position.observedAtomic,
+      pendingAtomic: position.pendingAtomic,
+      asOf: position.asOf,
+    }))).toEqual([
+      {
+        assetId: BASE_USDC_ASSET_ID,
+        observedAtomic: "400",
+        pendingAtomic: "7",
+        asOf: "2026-08-23T10:00:00.000Z",
+      },
+      {
+        assetId: BASE_ETH_ASSET_ID,
+        observedAtomic: "300",
+        pendingAtomic: "5",
+        asOf: "2026-08-23T10:00:00.000Z",
+      },
+    ]);
+    expect(store.listBasePositionSnapshots({ accountId: "base-account" })).toHaveLength(5);
+    expect(store.listBasePositionSightings({ accountId: "base-account" })).toHaveLength(10);
+    expect(() => store.db.query(
+      "UPDATE wk_base_position_snapshots SET quorum=1 WHERE id=?",
+    ).run(store.getBasePositionHead("base-account")!.snapshotId)).toThrow(/append-only/);
+    expect(() => store.db.query(
+      "DELETE FROM wk_base_position_snapshot_sightings WHERE account_id='base-account'",
+    ).run()).toThrow(/append-only/);
+  });
+
+  it("requires canonical two-origin evidence and rolls the entire newer CAS back on projection failure", () => {
+    const { store, setClock } = makeBaseTruthStore();
+    expect(() => store.appendBasePositionSighting({
+      accountId: "base-account",
+      providerId: "bad-provider",
+      providerTrustDomain: digest("a"),
+      evidenceHash: digest("a"),
+      blockNumber: "01",
+      blockHash: hash("a"),
+      blockTime: "2026-08-23T10:00:00Z",
+      items: [
+        { assetId: BASE_ETH_ASSET_ID, observedAtomic: "1" },
+        { assetId: BASE_USDC_ASSET_ID, observedAtomic: "1" },
+      ],
+      body: {},
+      observedAt: "2026-08-23T10:00:00.000Z",
+      fetchedAt: "2026-08-23T10:00:00.000Z",
+    })).toThrow(/canonical unsigned integer|millisecond precision/);
+
+    const first = appendBasePositionEvidence(store, {
+      blockNumber: "200",
+      blockHash: hash("5"),
+      blockTime: "2026-08-23T10:00:00.000Z",
+      evidenceHash: digest("5"),
+      ethAtomic: "500",
+      usdcAtomic: "600",
+      observedAt: "2026-08-23T10:01:00.000Z",
+    });
+    setClock("2026-08-23T10:01:01.000Z");
+    store.applyBasePositionSnapshot(first);
+
+    const duplicateTrust = appendBasePositionEvidence(store, {
+      blockNumber: "201",
+      blockHash: hash("6"),
+      blockTime: "2026-08-23T10:01:00.000Z",
+      evidenceHash: digest("6"),
+      ethAtomic: "700",
+      usdcAtomic: "800",
+      observedAt: "2026-08-23T10:02:00.000Z",
+      trustDomains: [digest("c"), digest("c")],
+    });
+    expect(() => store.applyBasePositionSnapshot(duplicateTrust)).toThrow(
+      BasePositionSnapshotConflictError,
+    );
+    expect(store.listBasePositionSnapshots({ accountId: "base-account" })).toHaveLength(1);
+
+    const newer = appendBasePositionEvidence(store, {
+      blockNumber: "202",
+      blockHash: hash("7"),
+      blockTime: "2026-08-23T10:02:00.000Z",
+      evidenceHash: digest("7"),
+      ethAtomic: "900",
+      usdcAtomic: "1000",
+      observedAt: "2026-08-23T10:03:00.000Z",
+    });
+    store.db.exec(`
+      CREATE TRIGGER test_base_projection_abort
+      BEFORE UPDATE OF observed_atomic ON wk_positions
+      WHEN NEW.account_id='base-account'
+        AND NEW.asset_id='${BASE_USDC_ASSET_ID}'
+      BEGIN
+        SELECT RAISE(ABORT, 'simulated projection failure');
+      END;
+    `);
+    setClock("2026-08-23T10:03:01.000Z");
+    expect(() => store.applyBasePositionSnapshot(newer)).toThrow(/simulated projection failure/);
+    expect(store.listBasePositionSnapshots({ accountId: "base-account" })).toHaveLength(1);
+    expect(store.getBasePositionHead("base-account")).toMatchObject({
+      blockNumber: "200",
+      state: "ACTIVE",
+      version: 0,
+    });
+    expect(store.listBasePositions({ accountId: "base-account" }).map(
+      ({ observedAtomic }) => observedAtomic,
+    ).sort()).toEqual(["500", "600"]);
   });
 });
 

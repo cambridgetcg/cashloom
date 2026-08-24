@@ -42,6 +42,7 @@ import {
   createBaseReconciliationService,
   type PaymentTruthV1,
 } from "./wallet/base-reconciler.ts";
+import { stableBaseKernelIdentity } from "./wallet/base-account-projection.ts";
 
 const SENDERS: PaymentSender[] = [evmSender, btcSender];
 const QUOTE_TTL_MS = 5 * 60 * 1000;
@@ -54,7 +55,10 @@ const BASE_ETH_ASSET = `${BASE_CHAIN}/slip44:60`;
 const BASE_USDC_ADDRESS = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const BASE_USDC_ASSET = `${BASE_CHAIN}/erc20:${BASE_USDC_ADDRESS}`;
 const store = new WalletKernelStore(db);
-const baseReconciliation = createBaseReconciliationService({
+/** Evidence-only service exported for the opt-in local scheduler. Its public
+ * interface contains no quote, authorization, signing, recovery, or broadcast
+ * operation. */
+export const baseReconciliationService = createBaseReconciliationService({
   db,
   store,
   observer: createBaseEvidenceObserver(),
@@ -246,6 +250,14 @@ const ensureKernelProjection = (context: ResolvedPaymentContext): void => {
       chainId: BASE_CHAIN,
     });
   }
+  const baseIdentity = context.chainId === BASE_CHAIN
+    ? stableBaseKernelIdentity(
+        db,
+        context.account.id,
+        context.publicAddress,
+        context.accountId,
+      )
+    : null;
   store.putAccount({
     id: context.account.id,
     walletId: LOCAL_WALLET_ID,
@@ -253,8 +265,8 @@ const ensureKernelProjection = (context: ResolvedPaymentContext): void => {
     kind: "CHAIN_ACCOUNT",
     rail: context.sender.type,
     chainId: context.chainId,
-    accountRef: context.accountId,
-    address: context.publicAddress,
+    accountRef: baseIdentity?.accountRef ?? context.accountId,
+    address: baseIdentity?.address ?? context.publicAddress,
     custodyMode: "local_self_custody",
     metadata: { legacy_account_id: context.account.id, migration_status: "mapped_exactly" },
   });
@@ -1576,10 +1588,10 @@ export const resumePaymentBroadcast = (paymentId: string): Promise<ConfirmResult
 };
 
 export const getPaymentTruth = (paymentId: string): PaymentTruthV1 | null =>
-  baseReconciliation.getPaymentTruth(paymentId);
+  baseReconciliationService.getPaymentTruth(paymentId);
 
 export const reconcileBasePayment = (paymentId: string, signal?: AbortSignal) =>
-  baseReconciliation.reconcilePayment(paymentId, signal);
+  baseReconciliationService.reconcilePayment(paymentId, signal);
 
 export const listPayments = (limit = 50) => (db.query(
   `SELECT p.id, p.account_id, p.rail, p.to_addr, p.asset, p.amount_minor,
