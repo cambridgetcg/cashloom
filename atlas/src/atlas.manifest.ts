@@ -104,6 +104,29 @@ export const MODULES: Module[] = [
     weave: { x: 0.22, y: 0.4 },
   },
   {
+    id: "the-connection-boundary",
+    title: "The Connection Boundary",
+    subtitle: "Many wallets. One durable decision.",
+    sources: [
+      "../../sovereign/src/wallet/integration-catalog.ts?raw",
+      "../../sovereign/src/wallet/integrations/requests.ts?raw",
+      "../../sovereign/src/wallet/adapters/webauthn-verifier.ts?raw",
+    ],
+    idea: "Passkeys, hardware wallets, WalletConnect, smart accounts, and banks may interact differently, but none may change the intent that the owner approved.",
+    doctrine: [
+      "An SDK is not an authority. Every external journey begins from the same canonical intent, exact prepared request, one-use authorization, and expiry. The browser, device, relay, bundler, or bank is treated as a hostile transport until CashLoom independently verifies its bounded output.",
+      "Some integrations return signed wire bytes; others only accept a provider operation. Those are separate execution lanes. Exact bytes must be durably committed before broadcast, while provider operations are prepared and idempotency-claimed before I/O, then settled only by an independent observer.",
+      "The catalogue is deliberately honest about readiness. A parser, verifier, or configured credential does not make an integration executable. Passkey, hardware EVM, WalletConnect, ERC-4337, and pay-by-bank remain policy-blocked until verification and core artifact consumption share one atomic coordinator transaction.",
+    ],
+    loadBearing: [
+      { marker: "atomic_verified_persistence_enabled: false", note: "The readiness API refuses to call adapter code ‘live’ before verified output, one-use authority, and resource claims can commit atomically." },
+      { marker: "authorization must bind the exact unsigned ERC-4337 operation", note: "A smart-account signature may be added later; every economic and gas field was already frozen by the owner’s request hash." },
+      { marker: "Enterprise attestation is a separate policy product and is intentionally refused here.", note: "Attestation-none proves a valid passkey ceremony, not a device brand or hardware assurance the evidence cannot support." },
+    ],
+    relatesTo: ["the-node", "the-vault", "the-outbound-seam", "the-read-seam"],
+    weave: { x: 0.5, y: 0.34 },
+  },
+  {
     id: "pay",
     title: "pay()",
     subtitle: "Quote, then confirm. Never twice.",

@@ -21,10 +21,6 @@ sovereign/src/*
 sovereign/src/config/*
 !sovereign/src/config/http.config.ts
 
-!sovereign/src/connectors/
-sovereign/src/connectors/*
-!sovereign/src/connectors/esplora.connector.ts
-
 !sovereign/src/enums/
 sovereign/src/enums/*
 !sovereign/src/enums/error-code.enum.ts

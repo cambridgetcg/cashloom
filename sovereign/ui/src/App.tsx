@@ -4,6 +4,7 @@ import { Toasts, WeaveMark } from "./components";
 import { toast } from "./toast";
 import type { Meta } from "./types";
 import { Accounts } from "./views/Accounts";
+import { Connections } from "./views/Connections";
 import { Dashboard } from "./views/Dashboard";
 import { Gate } from "./views/Gate";
 import { Keys } from "./views/Keys";
@@ -18,6 +19,7 @@ const VIEWS = [
   { id: "receive", label: "Receive" },
   { id: "ledger", label: "Ledger" },
   { id: "accounts", label: "Accounts" },
+  { id: "connections", label: "Connections" },
   { id: "keys", label: "Keys" },
   { id: "zerone", label: "zerone" },
 ] as const;
@@ -151,6 +153,7 @@ export default function App() {
         {view === "receive" && <Receive />}
         {view === "ledger" && <Ledger />}
         {view === "accounts" && <Accounts />}
+        {view === "connections" && <Connections />}
         {view === "keys" && <Keys />}
         {view === "zerone" && <Zerone />}
       </main>

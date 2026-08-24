@@ -4,14 +4,13 @@
  * more entry (eip155:1 → an alchemy reader). Adding a chain is adding a row; the
  * route, the MoneyFact format, and the Xenia door never change.
  *
- * Today: the two SECRETLESS sources — BTC (esplora, keyless) and zerone (public
+ * Today: the two SECRETLESS sources — BTC (a fixed public Esplora read) and zerone (public
  * cosmos REST). Zero secrets across the whole surface = non-custodial by
  * CONSTRUCTION, demonstrated, not asserted. Every read is a public chain read,
  * so every fact is proof_state:tested (a stranger re-derives it) and
  * redistribution:onchain-rederivable (public data — no license firewall).
  */
 
-import { esploraConnector } from "../connectors/esplora.connector.ts";
 import { getAddressBalance, isZrnAddress, ZERONE_NETWORKS, ZRN } from "../zerone.ts";
 import type { Method, ProofState, Redistribution, Source } from "./money-fact.ts";
 
@@ -40,6 +39,124 @@ export interface ChainEntry {
 const BTC_GENESIS = "000000000019d6689c085ae165831e93";
 const BTC_CAIP2 = `bip122:${BTC_GENESIS}`;
 const BTC_ASSET = `${BTC_CAIP2}/slip44:0`;
+const PUBLIC_ESPLORA_BASE = "https://blockstream.info/api";
+const PUBLIC_ESPLORA_TIMEOUT_MS = 10_000;
+const PUBLIC_ESPLORA_MAX_BYTES = 64 * 1024;
+const PUBLIC_ESPLORA_FAILURE = "Bitcoin public balance evidence is temporarily unavailable.";
+
+export type PublicEsploraFetch = (
+  input: string,
+  init: RequestInit,
+) => Promise<Response>;
+
+/**
+ * INFO owns this deliberately tiny public reader instead of importing the
+ * local account connector. That keeps Axios, credential/config plumbing,
+ * transaction sync, and every custody-adjacent connector out of the hosted
+ * bundle. The origin is fixed and keyless; no configured URL can smuggle a
+ * token into a request, receipt, or error.
+ */
+export async function readPublicBitcoinBalance(
+  address: string,
+  options: {
+    readonly fetch?: PublicEsploraFetch;
+    readonly now?: () => Date;
+    readonly timeoutMs?: number;
+  } = {},
+): Promise<ChainRead> {
+  const fetcher = options.fetch ?? ((input, init) => fetch(input, init));
+  const timeoutMs = options.timeoutMs ?? PUBLIC_ESPLORA_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(PUBLIC_ESPLORA_FAILURE));
+    }, timeoutMs);
+  });
+
+  try {
+    const url = `${PUBLIC_ESPLORA_BASE}/address/${encodeURIComponent(address)}`;
+    const response = await Promise.race([
+      fetcher(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        redirect: "error",
+        signal: controller.signal,
+      }),
+      deadline,
+    ]);
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (
+      !response.ok ||
+      (Number.isFinite(declaredLength) && declaredLength > PUBLIC_ESPLORA_MAX_BYTES)
+    ) {
+      throw new Error(PUBLIC_ESPLORA_FAILURE);
+    }
+    if (!response.body) throw new Error(PUBLIC_ESPLORA_FAILURE);
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let receivedBytes = 0;
+    try {
+      for (;;) {
+        const chunk = await Promise.race([reader.read(), deadline]);
+        if (chunk.done) break;
+        receivedBytes += chunk.value.byteLength;
+        if (receivedBytes > PUBLIC_ESPLORA_MAX_BYTES) {
+          controller.abort();
+          void reader.cancel().catch(() => undefined);
+          throw new Error(PUBLIC_ESPLORA_FAILURE);
+        }
+        chunks.push(chunk.value);
+      }
+      reader.releaseLock();
+    } catch (error) {
+      controller.abort();
+      void reader.cancel().catch(() => undefined);
+      throw error;
+    }
+    const bytes = new Uint8Array(receivedBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const body = JSON.parse(text) as {
+      chain_stats?: { funded_txo_sum?: unknown; spent_txo_sum?: unknown };
+    };
+    const funded = body?.chain_stats?.funded_txo_sum;
+    const spent = body?.chain_stats?.spent_txo_sum;
+    if (
+      typeof funded !== "number" || !Number.isSafeInteger(funded) || funded < 0 ||
+      typeof spent !== "number" || !Number.isSafeInteger(spent) || spent < 0 ||
+      spent > funded
+    ) {
+      throw new Error(PUBLIC_ESPLORA_FAILURE);
+    }
+    const fetchedAt = (options.now ?? (() => new Date()))().toISOString();
+    return {
+      valueMinor: (BigInt(funded) - BigInt(spent)).toString(),
+      decimals: 8,
+      unit: BTC_ASSET,
+      symbol: "BTC",
+      sources: [{
+        name: "esplora (public Bitcoin indexer)",
+        url,
+        fetched_at: fetchedAt,
+      }],
+      method: "observed",
+      proof_state: "tested",
+      redistribution: "onchain-rederivable",
+      stale_after_s: 60,
+      recompute: { how: "GET /address/{addr} → chain_stats.funded_txo_sum − spent_txo_sum" },
+    };
+  } catch {
+    throw new Error(PUBLIC_ESPLORA_FAILURE);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 const BTC: ChainEntry = {
   caip2: BTC_CAIP2,
@@ -47,27 +164,7 @@ const BTC: ChainEntry = {
   native: { symbol: "BTC", assetRef: BTC_ASSET },
   aliases: ["btc", "bitcoin"],
   validate: (a) => /^(bc1[a-z0-9]{20,90}|[13][a-km-zA-HJ-NP-Z1-9]{25,39})$/.test(a),
-  async read(address) {
-    const b = await esploraConnector.fetchBalance({ externalAccountId: address, credentialRef: null });
-    return {
-      valueMinor: b.balanceMinor,
-      decimals: b.decimals,
-      unit: BTC_ASSET,
-      symbol: b.currency,
-      sources: [
-        {
-          name: "esplora (public Bitcoin indexer)",
-          url: `https://blockstream.info/api/address/${address}`,
-          fetched_at: b.asOf.toISOString(),
-        },
-      ],
-      method: "observed",
-      proof_state: "tested",
-      redistribution: "onchain-rederivable",
-      stale_after_s: 60,
-      recompute: { how: "GET /address/{addr} → chain_stats.funded_txo_sum − spent_txo_sum" },
-    };
-  },
+  read: readPublicBitcoinBalance,
 };
 
 const ZERONE: ChainEntry = {

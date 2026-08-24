@@ -17,6 +17,9 @@ import s_conn_types from "../../sovereign/src/connectors/types.ts?raw";
 import s_agenttool from "../../sovereign/src/connectors/agenttool.connector.ts?raw";
 import s_sync from "../../sovereign/src/sync.ts?raw";
 import s_db from "../../sovereign/src/db.ts?raw";
+import s_integration_catalog from "../../sovereign/src/wallet/integration-catalog.ts?raw";
+import s_integration_requests from "../../sovereign/src/wallet/integrations/requests.ts?raw";
+import s_webauthn_verifier from "../../sovereign/src/wallet/adapters/webauthn-verifier.ts?raw";
 
 export const SOURCES: Record<string, string> = {
   "../../sovereign/src/index.ts?raw": s_index,
@@ -29,6 +32,9 @@ export const SOURCES: Record<string, string> = {
   "../../sovereign/src/connectors/agenttool.connector.ts?raw": s_agenttool,
   "../../sovereign/src/sync.ts?raw": s_sync,
   "../../sovereign/src/db.ts?raw": s_db,
+  "../../sovereign/src/wallet/integration-catalog.ts?raw": s_integration_catalog,
+  "../../sovereign/src/wallet/integrations/requests.ts?raw": s_integration_requests,
+  "../../sovereign/src/wallet/adapters/webauthn-verifier.ts?raw": s_webauthn_verifier,
 };
 
 /** A short, human file label derived from a raw-import specifier. */

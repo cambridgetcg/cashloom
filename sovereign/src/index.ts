@@ -52,13 +52,17 @@ import {
   caip19AssetIdSchema,
   chainIdSchema,
 } from "./wallet/domain/identities.ts";
-import { WalletKernelStore } from "./wallet/infrastructure/sqlite/index.ts";
+import {
+  WalletIntegrationStore,
+  WalletKernelStore,
+} from "./wallet/infrastructure/sqlite/index.ts";
 import { createBasePositionObserver } from "./wallet/adapters/base-position-observer.ts";
 import {
   BasePositionServiceError,
   createBasePositionService,
 } from "./wallet/base-position-service.ts";
 import { createBaseReconciliationScheduler } from "./wallet/base-reconciliation-scheduler.ts";
+import { buildWalletIntegrationCatalog } from "./wallet/integration-catalog.ts";
 
 export const app = new Hono();
 
@@ -153,6 +157,9 @@ const agentSessionTrust = new Map<string, AgentTrustBinding>();
 // position observer runs only behind the explicit refresh POST, and the
 // reconciliation scheduler remains inert unless the owner opts in.
 const localWalletStore = new WalletKernelStore(db);
+// Additive integration tables contain public bindings/hashes only. Merely
+// constructing the store is networkless and never unlocks a signer/provider.
+new WalletIntegrationStore(db);
 const basePositionService = createBasePositionService({
   db,
   store: localWalletStore,
@@ -754,6 +761,13 @@ app.get("/api/wallet/v3", (c) => c.json({
       scope: "accounts:read",
       schema_version: "cashloom.base-reconciliation-status/1",
     },
+    {
+      rel: "wallet-integrations",
+      href: "/api/wallet/v3/integrations",
+      method: "GET",
+      scope: "accounts:read",
+      schema_version: "cashloom.wallet-integrations/1",
+    },
   ],
   actions: [
     {
@@ -786,6 +800,19 @@ app.get("/api/wallet/v3", (c) => c.json({
     absent_evidence_is_not_zero_or_dropped: true,
   },
 }));
+
+app.get("/api/wallet/v3/integrations", (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const counts = db.query(
+    `SELECT kind, COUNT(*) AS count
+     FROM wk_integration_connections
+     GROUP BY kind`,
+  ).all() as Array<{
+    kind: "WEBAUTHN" | "HARDWARE" | "WALLETCONNECT" | "ERC4337" | "FIAT";
+    count: number;
+  }>;
+  return c.json(buildWalletIntegrationCatalog({ connection_counts: counts }));
+});
 app.get("/api/wallet/v3/positions", (c) => c.json(basePositionService.listPositions()));
 
 app.post("/api/wallet/v2/accounts/:id/base-positions/refresh", async (c) => {

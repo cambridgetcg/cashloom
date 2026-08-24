@@ -60,6 +60,7 @@ describe("local API vault-session authority", () => {
     expect(requiredScopeForLocalRoute("GET", "/api/wallet/v2/positions")).toBe("accounts:read");
     expect(requiredScopeForLocalRoute("GET", "/api/wallet/v3/positions")).toBe("accounts:read");
     expect(requiredScopeForLocalRoute("GET", "/api/wallet/v3")).toBe("accounts:read");
+    expect(requiredScopeForLocalRoute("GET", "/api/wallet/v3/integrations")).toBe("accounts:read");
     expect(requiredScopeForLocalRoute("GET", "/api/wallet/v2/intents/example")).toBe("accounts:read");
     expect(
       requiredScopeForLocalRoute("POST", "/api/wallet/v2/intents/example/reconcile"),
@@ -116,6 +117,12 @@ describe("local API vault-session authority", () => {
           schema_version: "cashloom.wallet-kernel-positions/2",
         }),
         expect.objectContaining({
+          href: "/api/wallet/v3/integrations",
+          method: "GET",
+          scope: "accounts:read",
+          schema_version: "cashloom.wallet-integrations/1",
+        }),
+        expect.objectContaining({
           href: "/api/wallet/v3/positions",
           method: "GET",
           scope: "accounts:read",
@@ -138,6 +145,26 @@ describe("local API vault-session authority", () => {
         getters_are_local_only: true,
         observation_never_signs_or_broadcasts: true,
       },
+    });
+
+    const integrations = await app.request(
+      "/api/wallet/v3/integrations",
+      authorized(readToken),
+    );
+    expect(integrations.status).toBe(200);
+    expect(integrations.headers.get("cache-control")).toBe("private, no-store");
+    expect(await integrations.json()).toMatchObject({
+      schema_version: "cashloom.wallet-integrations/1",
+      runtime: "local_loopback_custody",
+      network_on_get: false,
+      integrations: expect.arrayContaining([
+        expect.objectContaining({ id: "webauthn-passkey", execution_enabled: false }),
+        expect.objectContaining({ id: "walletconnect-v2", execution_enabled: false }),
+        expect.objectContaining({ id: "erc4337-base-v07", execution_enabled: false }),
+        expect.objectContaining({ id: "gocardless-bank-data", execution_enabled: false }),
+        expect.objectContaining({ id: "yapily-pay-by-bank", execution_enabled: false }),
+      ]),
+      safety: { agent_interactive_completion_allowed: false },
     });
 
     const v2Positions = await app.request(

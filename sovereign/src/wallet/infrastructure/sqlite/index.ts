@@ -1,5 +1,16 @@
 export { installWalletKernelSchema, WALLET_KERNEL_TABLES } from "./schema.ts";
 export {
+  installWalletIntegrationSchema,
+  WALLET_INTEGRATION_SCHEMA_VERSION,
+  WALLET_INTEGRATION_TABLES,
+} from "./integration-schema.ts";
+export { WalletIntegrationStore, WalletIntegrationStoreError } from "./integration-store.ts";
+export type {
+  StoredWebAuthnCredential,
+  VerifiedWebAuthnRegistration,
+  WebAuthnStorePolicy,
+} from "./integration-store.ts";
+export {
   WalletKernelStore,
   WalletKernelStoreError,
   IdempotencyConflictError,

@@ -112,6 +112,12 @@ The custody vocabulary also describes `watch_only`, `external_signer`,
 contracts. They do not imply that CashLoom currently operates an MPC service,
 bank, card processor, or remote custodian.
 
+The verified external-connectivity foundation—WebAuthn, hardware EVM,
+WalletConnect, ERC-4337, bank data, and pay-by-bank—is mapped in
+[`WALLET-CONNECTIVITY.md`](WALLET-CONNECTIVITY.md). Every external execution
+mode remains disabled until its independent verifier can be joined atomically
+to the core authorization, artifact, and resource-claim transaction.
+
 Signer contracts are in [`sovereign/src/wallet/ports/signer.ts`](sovereign/src/wallet/ports/signer.ts).
 Every `ApprovalProof` binds:
 
@@ -295,9 +301,14 @@ The kernel models fiat without pretending CashLoom is a bank or transmitter:
 - card reversals, chargebacks, refunds, bank pending states, and webhook
   idempotency fit the existing lifecycle and inbox/outbox tables.
 
-No fiat execution adapter is live in v2. A future adapter must integrate a
-licensed provider and preserve the non-custodial/legal boundary described in
-[`FIAT-ROUTE.md`](FIAT-ROUTE.md).
+The repository now contains a fixed-origin, bounded GoCardless Bank Account
+Data adapter and a separate Yapily Connect one-off domestic GBP preparation,
+submission, and status-observer foundation. Bank data is read-only. Payment
+execution remains policy-blocked until provider consent is durably bound to
+the exact source account and the applicable provider/legal deployment is
+approved. These adapters do not make CashLoom a bank or payment institution.
+See [`FIAT-ROUTE.md`](FIAT-ROUTE.md) and
+[`WALLET-CONNECTIVITY.md`](WALLET-CONNECTIVITY.md).
 
 ## Ports
 
@@ -386,6 +397,10 @@ New private routes fail closed until added to the explicit scope map.
 | SHA-256 | Domain-separated intent/request/evidence fingerprints |
 | `agent-wallet/0.1` | Signed agent descriptor/capability/intent/simulation records |
 | SQLite transactions + CAS | Atomic claims, idempotency, lifecycle, audit evidence |
+| WebAuthn Level 3 / CTAP 2.1 | Passkey ceremony, RP/origin, UV and authenticator counter verification |
+| WalletConnect v2 namespaces | Remote session chain/account/method/event binding |
+| ERC-4337 v0.7 / EIP-7769 | Smart-account UserOperation and bounded bundler transport contracts |
+| OAuth Security BCP / FAPI 2 / DPoP / mTLS | Activation controls for a future direct high-value OAuth/FAPI provider deployment; not claims about the current policy-blocked adapters |
 
 ## Extension checklist
 
@@ -402,8 +417,10 @@ A new wallet or rail is not complete until it has all of these:
 - credential-safe errors and receipts;
 - networkless unit tests for mutation, replay, concurrency, and crash recovery.
 
-Likely next modules are a hardware/external signer adapter, ERC-4337 smart
-accounts with passkeys, WalletConnect sessions, broader finalized position
-adapters, Lightning, Solana, and one
-licensed fiat-provider executor. Each should reuse this kernel rather than add
-another symbol-routed payment path.
+The hardware, passkey, WalletConnect, ERC-4337, bank-data, and pay-by-bank
+verification foundations now exist but are deliberately not live execution
+routes. Their next step is an owner-facing coordinator that atomically joins
+verified output to the core artifact transaction, followed by chain/provider
+observers and deployment-specific recovery policy. Broader position adapters,
+Lightning, Solana, and additional licensed fiat providers remain future work.
+Each must reuse this kernel rather than add another symbol-routed payment path.
