@@ -27,11 +27,13 @@ export default function Hero() {
       </div>
 
       <div className="hero__inner">
-        <p className="hero__kicker">The Atlas · the human door</p>
+        <p className="hero__kicker">Wallet code atlas · advanced</p>
 
-        <h1 className="hero__title">{PHILOSOPHY.name}</h1>
+        <h1 className="hero__title">CashLoom Atlas</h1>
 
-        <p className="hero__line">{PHILOSOPHY.line}</p>
+        <p className="hero__line">A guide to the local wallet and its code.</p>
+
+        <p className="hero__invitation">The design ideas below describe the local-wallet project, not the hosted information service. For public money observations, <a className="inline-link" href="/world">return to CashLoom World</a>.</p>
 
         <ul className="creed">
           {PHILOSOPHY.creed.map((c, i) => {
@@ -46,8 +48,6 @@ export default function Hero() {
             );
           })}
         </ul>
-
-        <p className="hero__invitation">{PHILOSOPHY.invitation}</p>
 
         <div className="hero__cta">
           <a className="btn btn--ember" href="#weave">

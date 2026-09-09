@@ -1090,7 +1090,7 @@ function Footer({ generatedAt }: { generatedAt?: string }) {
       <div aria-hidden="true"><span /><i /><span /></div>
       <p>State moves. Receipts hold the reference.</p>
       <span>{dateTimeText(generatedAt, true) ? `Onchain snapshot assembled ${dateTimeText(generatedAt, true)}` : "Snapshot assembly time unavailable"}</span>
-      <nav aria-label="Onchain footer"><a href="#pulse">Back to pulse ↑</a><a href="/world">CashLoom World ↗</a><a href="/atlas">Read the Atlas ↗</a></nav>
+      <nav aria-label="Onchain footer"><a href="#pulse">Back to pulse ↑</a><a href="/world">CashLoom World ↗</a><a href="/atlas">Wallet code atlas — advanced</a></nav>
     </footer>
   );
 }

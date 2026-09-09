@@ -42,7 +42,7 @@ export interface WorldFetchOptions {
   etag?: string;
 }
 
-function endpoint(path: string): string {
+export function endpoint(path: string): string {
   if (!configuredBase) return path;
   return `${configuredBase.replace(/\/$/, "")}${path}`;
 }

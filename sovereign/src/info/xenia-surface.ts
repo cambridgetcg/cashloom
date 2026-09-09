@@ -27,12 +27,16 @@ import {
   type SurfaceResource,
 } from "@agenttool/xenia/surface-0.1";
 import { MONEYFACT_MEDIA_TYPE } from "./money-fact.ts";
-import { WORLD_MEDIA_TYPE } from "./world-door.ts";
+import { WORLD_BASE_CURRENCIES, WORLD_MEDIA_TYPE } from "./world-door.ts";
 import { ONCHAIN_MEDIA_TYPE, ONCHAIN_SECTION_MEDIA_TYPE } from "./blockchain/model.ts";
 
 export const CASHLOOM_API_ORIGIN = "https://cashloom-api.fly.dev";
 export const CASHLOOM_WEBSITE_ORIGIN = "https://cashloom.io";
 export const CASHLOOM_PUBLIC_ORIGIN_HEADER = "X-CashLoom-Public-Origin";
+
+// Published World release source and guide, not an attestation of the deployed commit.
+export const CASHLOOM_WORLD_SOURCE_URL = "https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823";
+export const CASHLOOM_WORLD_DOCUMENTATION_URL = "https://github.com/cambridgetcg/cashloom/blob/release/moneyworld-wallet-kernel-v2-20260823/MONEYWORLD.md";
 
 export type CashLoomSurfaceRuntime = "hosted_info" | "local_sovereign";
 
@@ -108,7 +112,7 @@ export function defineCashLoomSurfaceManifest(
   const origin = resolveCashLoomPublicOrigin(request);
   return defineSurfaceManifest({
     service: {
-      name: "CashLoom Moneyworld",
+      name: "CashLoom World",
       canonicalUrl: `${origin}/`,
       description:
         "A public, read-only, cited view of monetary policy, rates, sovereign yields, FX, crypto, fees, and selected onchain state.",
@@ -206,14 +210,15 @@ export function cashLoomOrientation(
     schema_version: "cashloom.orientation/1",
     service: {
       id: "cashloom.moneyworld",
-      name: "CashLoom Moneyworld",
+      name: "CashLoom World",
       canonical_url: `${origin}/`,
       manifest: url(SURFACE_MANIFEST_PATH),
       mode: runtime === "hosted_info"
         ? "public_read_only_information_process"
         : "local_sovereign_public_read_floor",
       runtime,
-      source_code: "https://github.com/cambridgetcg/cashloom",
+      source_code: CASHLOOM_WORLD_SOURCE_URL,
+      documentation: CASHLOOM_WORLD_DOCUMENTATION_URL,
     },
     surface: {
       profile: SURFACE_PROFILE,
@@ -242,7 +247,7 @@ export function cashLoomOrientation(
         href_template: `${url("/v1/world")}{?base}`,
         input: {
           location: "query",
-          parameters: [{ name: "base", type: "string", required: false, default: "USD", enum: ["USD", "EUR", "GBP", "JPY"] }],
+          parameters: [{ name: "base", type: "string", required: false, default: "USD", enum: WORLD_BASE_CURRENCIES }],
         },
         response: {
           media_type: WORLD_MEDIA_TYPE,

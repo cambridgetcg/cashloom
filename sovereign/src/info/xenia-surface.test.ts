@@ -16,6 +16,7 @@ import {
   surfaceRouteNotFoundResponse,
 } from "./xenia-surface.ts";
 import { mountInfoDoors } from "./doors.ts";
+import { WORLD_BASE_CURRENCIES, WORLD_MEDIA_TYPE } from "./world-door.ts";
 
 const LOCAL_ORIGIN = "http://127.0.0.1:4899";
 
@@ -52,7 +53,7 @@ describe("CashLoom XENIA Surface manifest", () => {
       profile: "xenia-surface/0.1",
       problem_schema: SURFACE_PROBLEM_SCHEMA_URL,
       documentation: `${LOCAL_ORIGIN}/v1/orientation`,
-      service: { canonical_url: `${LOCAL_ORIGIN}/` },
+      service: { name: "CashLoom World", canonical_url: `${LOCAL_ORIGIN}/` },
       claims: [],
     });
     expect(body.resources.map((resource: any) => resource.id)).toEqual([
@@ -194,6 +195,53 @@ describe("CashLoom agent recovery and disclosures", () => {
     }
   });
 
+  it.each(["hosted_info", "local_sovereign"] as const)("publishes World release links and every supported base for %s", async (runtime) => {
+    const app = new Hono();
+    mountXeniaSurface(app, { runtime });
+    const manifest = await json(await app.request(`${LOCAL_ORIGIN}/.well-known/agent.json`));
+    expect(manifest.service.name).toBe("CashLoom World");
+    expect(manifest.documentation).toBe(`${LOCAL_ORIGIN}/v1/orientation`);
+    expect(manifest.resources.map((resource: any) => resource.id)).toEqual([
+      "orientation", "rights", "data-practices",
+    ]);
+
+    const response = await app.request(`${LOCAL_ORIGIN}/v1/orientation`, {
+      headers: { Accept: "application/json" },
+    });
+    const body = await json(response);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      schema_version: "cashloom.orientation/1",
+      service: {
+        id: "cashloom.moneyworld",
+        name: "CashLoom World",
+        canonical_url: `${LOCAL_ORIGIN}/`,
+        manifest: `${LOCAL_ORIGIN}/.well-known/agent.json`,
+        mode: runtime === "hosted_info"
+          ? "public_read_only_information_process"
+          : "local_sovereign_public_read_floor",
+        runtime,
+        source_code: "https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823",
+        documentation: "https://github.com/cambridgetcg/cashloom/blob/release/moneyworld-wallet-kernel-v2-20260823/MONEYWORLD.md",
+      },
+    });
+    expect(body.surface.declared_scope).toEqual(manifest.resources.map((resource: any) => resource.href));
+    const world = body.actions.find((action: any) => action.id === "world.snapshot");
+    expect(world).toMatchObject({
+      href: `${LOCAL_ORIGIN}/v1/world`,
+      href_template: `${LOCAL_ORIGIN}/v1/world{?base}`,
+      response: {
+        media_type: WORLD_MEDIA_TYPE,
+        schema: { id: "cashloom.world/1", version_field: "schema" },
+      },
+    });
+    expect(world.input).toEqual({
+      location: "query",
+      parameters: [{ name: "base", type: "string", required: false, default: "USD", enum: WORLD_BASE_CURRENCIES }],
+    });
+    expect(world.input.parameters[0].enum).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "CNY"]);
+  });
+
   it("orients agents with typed, zero-cost, non-custodial read actions", async () => {
     const response = await testApp().request(`${LOCAL_ORIGIN}/v1/orientation`, {
       headers: { Accept: "application/json" },
@@ -201,14 +249,17 @@ describe("CashLoom agent recovery and disclosures", () => {
     const body = await json(response);
     const ids = body.actions.map((action: any) => action.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(expect.arrayContaining([
+    expect(ids).toEqual([
       "world.snapshot",
       "onchain.snapshot",
       "onchain.section",
       "fx.rate",
       "cash.rates",
       "fed.announcements",
-    ]));
+    ]);
+    expect(body.operating_contract.custody).toMatchObject({
+      funds: "none", signing_keys: "none", transaction_construction: "none", broadcast: "none",
+    });
     for (const action of body.actions) {
       expect(new URL(action.href).origin).toBe(LOCAL_ORIGIN);
       expect(action).toMatchObject({
@@ -217,7 +268,7 @@ describe("CashLoom agent recovery and disclosures", () => {
         side_effects: "none_in_cashloom_application_handler",
         idempotent: true,
         cost: { amount_minor: "0", asset: "fiat:iso4217/USD" },
-        custody: { funds: "none", signing_keys: "none", broadcast: "none" },
+        custody: { funds: "none", signing_keys: "none", transaction_construction: "none", broadcast: "none" },
         response: { media_type: expect.any(String), schema: expect.any(Object), partial: expect.any(String) },
       });
       expect(action.input.parameters).toBeInstanceOf(Array);
@@ -311,6 +362,16 @@ describe("CashLoom agent recovery and disclosures", () => {
       headers: { Accept: "application/json" },
     }));
     expect(orientation.service.runtime).toBe("local_sovereign");
+    expect(orientation.operating_contract.custody).toMatchObject({
+      funds: "none_in_declared_public_read_handlers",
+      signing_keys: "the local process may contain owner-controlled vault material, but declared public reads neither accept nor access it",
+      transaction_construction: "none_in_declared_or_orientation_listed_get_actions",
+      broadcast: "none_in_declared_or_orientation_listed_get_actions",
+    });
+    for (const action of orientation.actions) {
+      expect(action.custody).toEqual(orientation.operating_contract.custody);
+      expect(action.method).toBe("GET");
+    }
     expect(orientation.operating_contract.custody.boundary).toContain("local sovereign process");
     expect(orientation.operating_contract.custody.boundary).toContain("not a process-wide no-custody claim");
   });

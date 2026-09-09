@@ -1,99 +1,74 @@
-# CashLoom
+# CashLoom World — understand money, with source receipts
 
-> **Money you can read. Everyone pays everyone.**
-> A non-custodial, local-first money manager. Your keys, your data, your machine.
+**[Open CashLoom World at cashloom.io](https://cashloom.io/)** — public,
+read-only money information. No account or wallet required.
 
-CashLoom is an open payment protocol and its reference implementation: a
-sovereign money manager anyone can run on their own machine to hold, read, and
-move money across every rail — fiat and crypto — holding nothing, collecting
-nothing, taking no fee. It replaces the traditional-finance middleman with
-software you run yourself.
+Read policy and cash rates, available sovereign yields, currency and crypto
+references, fee observations, and scheduled policy meetings. Open a **Receipt**
+to inspect a source, its timestamps, method, and limitations. Coverage is partial:
+stale observations keep their labels and timestamps; unavailable and rights-withheld
+data remain explicit gaps, not estimates.
 
-**Non-custodial. Local-first. Zero infrastructure. Open source (MIT).**
+- **[Product guide](https://github.com/cambridgetcg/cashloom/blob/release/moneyworld-wallet-kernel-v2-20260823/MONEYWORLD.md)** — what World shows, currency references, and local Watching filters.
+- **[Machine orientation](https://cashloom-api.fly.dev/v1/orientation)** — existing public read-only API doors and their boundaries.
+- **[Onchain](https://cashloom.io/onchain)** — a secondary view of selected network, stablecoin, credit, pool, and bridge observations; no wallet connection or execution.
 
-## Start here
+## Run World locally
 
-- **[`sovereign/`](sovereign/)** — the node. One Bun process, one SQLite file,
-  runs on your machine with no database server, no cloud, no accounts. This is
-  the live implementation: vault, `pay()`, read every rail. → [`sovereign/README.md`](sovereign/README.md)
-- **[`atlas/`](atlas/)** — the interactive way to understand the codebase.
-  Follow the *ideas* and the real code comes with you — the anti-GitHub. Build
-  it with `cd atlas && bun install && bun run build`, or visit the hosted copy.
-- **[`PROTOCOL.md`](PROTOCOL.md)** — the spec. The promise the code keeps.
-- **[`WALLET-KERNEL-V2.md`](WALLET-KERNEL-V2.md)** — the implemented wallet
-  architecture: identities, custody, authorization, signing, recovery,
-  reconciliation, and extension contracts for crypto and fiat.
-- **[`WALLET-CONNECTIVITY.md`](WALLET-CONNECTIVITY.md)** — the verified
-  passkey, hardware EVM, WalletConnect, ERC-4337, bank-data, and pay-by-bank
-  integration foundation, with explicit activation and trust boundaries.
-- **[`FIAT-ROUTE.md`](FIAT-ROUTE.md)** — the plan for touching fiat *legally*:
-  never custody, never the transmitter, connect to licensed on-ramps, per-country
-  compliance map, ZRN kept out of scope, and the honest line we won't cross.
+Prerequisites: Git, a current [Bun](https://bun.sh/) release, a browser, and
+internet access. Clone the named World release, **not the older default `main`**:
 
-## Run your own node
+```bash
+git clone --branch release/moneyworld-wallet-kernel-v2-20260823 https://github.com/cambridgetcg/cashloom.git cashloom
+cd cashloom
+(cd sovereign && bun install --frozen-lockfile)
+(cd atlas && bun install --frozen-lockfile)
+```
+
+Start each terminal from the `cashloom` checkout root.
+
+**Terminal 1 — read-only INFO service:**
 
 ```bash
 cd sovereign
-bun install
-bun run build:ui
-bun start          # → http://127.0.0.1:4747
+CASHLOOM_BIND=127.0.0.1 CASHLOOM_PORT=4747 bun run src/info-server.ts
 ```
 
-No `.env` required to boot. Forge a passphrase, and you have a running
-non-custodial wallet. That is the whole setup.
+**Terminal 2 — World frontend:**
 
-## What it is
+```bash
+cd atlas
+VITE_CASHLOOM_API_BASE=http://127.0.0.1:4747 bun run dev --host 127.0.0.1
+```
 
-- **Non-custodial by architecture** — private keys are sealed locally
-  (Argon2id → AES-256-GCM), decrypted only in memory, only to sign, and never
-  leave your machine. The passphrase is custody; there is no recovery.
-- **Everyone pays everyone** — `pay()` moves money over open rails (Base L2
-  ETH + USDC today; more coming), as a two-step rite: quote discloses the fee
-  and signs nothing, confirm signs and broadcasts once. Never auto-retried.
-- **Evidence after broadcast** — Base payments can be reconciled to
-  two-provider finalized truth, and Base account cards can explicitly refresh
-  exact ETH + native USDC balances at one corroborated finalized block. These
-  observers have no signing or rebroadcast capability. Failed checks remain
-  honest saved attempts, never fabricated zeroes; duplicate CAIP-10 records are
-  marked to prevent double-counting.
-- **Read every rail** — sync balances and transactions from Stripe, banks
-  (GoCardless), Bitcoin, Ethereum, and the agenttool agent economy. Strictly
-  read-only: a connector can never move money.
-- **Pass-through fees only** — the network's fee, nothing added. No CashLoom
-  fee, ever, because there is no intermediary to take one.
+Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). Both
+processes bind to loopback; stop each with Ctrl+C. No wallet setup or provider
+credentials are required for this World path. Do **not** use `bun start` here:
+it starts the separate local wallet, not the read-only INFO service.
 
-## Layout
+Local hosting is not offline operation. INFO still reads upstream public data
+services and RPC endpoints; their availability and usage terms still apply.
+Provider failures can leave partial coverage. For local machine discovery, read
+`http://127.0.0.1:4747/v1/orientation`.
 
-| Dir | What |
-|---|---|
-| `sovereign/` | **The node** — Bun · Hono · bun:sqlite · viem. Non-custodial, local-first. Start here. |
-| `atlas/` | **The interactive codebase atlas** — Vite + React. The open-source human door. |
+## Source and advanced paths
 
-## The front of zerone 🌗
+[Published World source](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823)
+is on `release/moneyworld-wallet-kernel-v2-20260823`. Release links identify
+published source, not the exact revision running on the hosted service.
 
-Your CashLoom node is also the human- and agent-friendly **front door to
-zerone**, the truth chain for agents. A public gateway (`/api/zerone`, no vault,
-no auth) reads the live chain and serves a participation guide; a `zerone` tab
-in the node UI shows it to people — that gateway is the genuine, out-of-the-box
-zerone participation. Reading an agent-economy wallet is a **separate, opt-in
-step**: add an `agenttool` account with an API key and CashLoom's read-only
-`agenttool` connector can sync that balance too — distinct from the chain
-gateway, and not itself a read of zerone. Full guide + honest status:
-[`ZERONE.md`](ZERONE.md).
+- **[Advanced: local wallet](sovereign/README.md)** — separate owner-controlled custody, signing, and connector setup, with activation boundaries.
+- **[Wallet code atlas — advanced](https://cashloom.io/atlas)** — the interactive local-wallet/code explainer in `atlas/`, which also contains the World frontend.
+- **Protocol and wallet design:** [Protocol](PROTOCOL.md), [Wallet Kernel v2](WALLET-KERNEL-V2.md), [Connectivity](WALLET-CONNECTIVITY.md), [Fiat route](FIAT-ROUTE.md), and [zerone](ZERONE.md).
 
-## Contributing
+## Privacy, license, and rights
 
-CashLoom is a **protocol** with a reference implementation. Read it, run it,
-fork it, or write your own — and interoperate over the same open rails. There
-is no central server anyone depends on. See [`PROTOCOL.md`](PROTOCOL.md) for
-the spec and the open decisions still on the table.
+See the existing [public-service data practices](https://cashloom-api.fly.dev/v1/data-practices)
+for application scope and hosting, network, browser, operator, and upstream
+caveats. Read-only access and local preferences are **not an anonymity claim**;
+external layers may see request metadata or retain logs.
 
-## License
-
-[MIT](LICENSE) — free to use, run, modify, and distribute.
-
-## Rights
-
-CashLoom adopts [`xenia.rights/0.1`](RIGHTS.md) — every guest at every door,
-human or agent, is met as a subject. Reading without registration is a right;
-refusals teach; nothing is collected. Pinned + byte-vendored in [RIGHTS.md](RIGHTS.md).
+[MIT](LICENSE) — free to use, run, modify, and distribute. CashLoom adopts
+[`xenia.rights/0.1`](RIGHTS.md): guests, human or agent, are subjects; reading
+without registration is a right. The rights text is pinned and vendored in
+[RIGHTS.md](RIGHTS.md).

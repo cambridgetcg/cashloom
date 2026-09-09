@@ -3,11 +3,22 @@
 > Non-custodial. Local-first. Everyone pays everyone.
 > Your keys, your data, your machine.
 
-A sovereign money manager that runs entirely on **one machine** with **zero
-external services** — no database server, no cloud, no accounts, no telemetry,
-no fees taken by anyone. It is the reference implementation of the
-[CashLoom Protocol](../PROTOCOL.md): read every rail (crypto + fiat), pay over
-open rails, hold nothing, collect nothing.
+The local wallet implementation of the [CashLoom Protocol](../PROTOCOL.md).
+Its Bun process and SQLite database run on your machine; **no separate database
+server is required**. Public data reads, RPC reads/broadcasts, and enabled
+connectors still use external providers, subject to their terms and availability.
+Local-first does not mean offline or anonymous; the public information surface's
+[data-practices disclosure](https://cashloom-api.fly.dev/v1/data-practices) explains
+its application scope and external-layer caveats, not a wallet-wide privacy guarantee.
+
+## Choose an entrypoint
+
+- **World — read-only information:** `src/info-server.ts` runs without the wallet
+  vault, ledger, or signers. Follow [Run World locally](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally)
+  in the root README for the loopback INFO + World frontend setup.
+- **Local wallet — advanced:** `bun start` runs `src/index.ts`, with local custody
+  and owner-controlled signing capabilities. The instructions below are for this
+  wallet, not the hosted World service; integration activation limits still apply.
 
 ## What it is (and isn't)
 

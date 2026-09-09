@@ -345,10 +345,10 @@
 
 .world-hero h1 {
   font-family: var(--font-display);
-  font-size: clamp(4rem, 9.4vw, 9.4rem);
+  font-size: clamp(3rem, 6.5vw, 6.4rem);
   font-weight: 390;
   letter-spacing: -0.055em;
-  line-height: 0.82;
+  line-height: 0.98;
   color: #f5ecdf;
   text-wrap: balance;
 }
@@ -369,12 +369,38 @@
   line-height: 1.55;
 }
 
+.world-hero__help {
+  max-width: 68ch;
+  margin-top: 0.75rem;
+  color: var(--fg-2);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.world-hero__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.world-hero__links a {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--gold);
+  color: var(--gold-2);
+  font-size: 0.95rem;
+}
+
+.world-hero__links a:hover {
+  color: var(--fg);
+}
+
 .world-hero__controls {
   display: flex;
   align-items: stretch;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 2.4rem;
+  margin-top: 1.5rem;
 }
 
 .currency-control {
@@ -1362,6 +1388,24 @@
     rgba(15, 13, 21, 0.32);
 }
 
+.world-research {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+}
+
+.world-research > summary {
+  padding: 1rem 0;
+  color: var(--gold-2);
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2.4vw, 1.8rem);
+  cursor: pointer;
+}
+
+.world-research__content {
+  padding: 2rem 0;
+}
+
 .thread-list {
   display: grid;
   gap: 1rem;
@@ -1993,7 +2037,10 @@
 
 .world-footer > div:last-child {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 960px;
+  gap: 0.8rem 1.5rem;
   margin-top: 1rem;
 }
 
@@ -2063,10 +2110,6 @@
 }
 
 @media (max-width: 1200px) {
-  .world-nav__sections a:nth-child(n + 7) {
-    display: none;
-  }
-
   .world-hero {
     grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.7fr);
     gap: 2.5rem;
@@ -2160,7 +2203,6 @@
     min-height: 58px;
   }
 
-  .world-brand__place,
   .world-nav__pulse {
     display: none;
   }
@@ -2174,7 +2216,7 @@
   }
 
   .world-hero h1 {
-    font-size: clamp(3.15rem, 15vw, 5.7rem);
+    font-size: clamp(2.6rem, 11vw, 4.6rem);
   }
 
   .world-hero__lede {
@@ -2306,6 +2348,15 @@
 }
 
 @media (max-width: 440px) {
+  .world-brand {
+    gap: 0.4rem;
+  }
+
+  .world-brand__place {
+    padding-left: 0.4rem;
+    letter-spacing: 0.12em;
+  }
+
   .world-brand__mark {
     width: 24px;
     height: 24px;

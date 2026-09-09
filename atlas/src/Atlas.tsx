@@ -19,12 +19,12 @@ export default function Atlas() {
   const close = useCallback(() => setOpenId(null), []);
 
   useEffect(() => {
-    document.title = "The Atlas — CashLoom";
+    document.title = "Wallet code atlas — CashLoom · advanced";
     document
       .querySelector<HTMLMetaElement>('meta[name="description"]')
       ?.setAttribute(
         "content",
-        "The Atlas — CashLoom's open-source human door. Follow an idea, and the real code that enacts it comes with you.",
+        "An advanced guide to CashLoom's local-wallet design and code. For public, read-only money observations with source receipts, visit CashLoom World.",
       );
   }, []);
 

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useBodyLock } from "../lib/hooks";
 import {
+  endpoint,
   fetchWorld,
   loadPersistedWorldSnapshot,
   persistWorldSnapshot,
@@ -35,11 +36,7 @@ const RESUME_REVALIDATE_AFTER = 60 * 1000;
 const SECTION_LINKS = [
   ["today", "Today"],
   ["rates", "Rates"],
-  ["sovereigns", "Sovereigns"],
   ["currencies", "Currencies"],
-  ["energy", "Energy"],
-  ["crypto", "Crypto + rails"],
-  ["threads", "Threads"],
   ["calendar", "Calendar"],
   ["coverage", "Sources"],
 ] as const;
@@ -825,7 +822,7 @@ function PolicyNotices({ policy }: { policy: WorldFact[] }) {
 
 function ThreadsSection({ items, phase, onReceipt }: { items: WorldFact[]; phase: LoadState; onReceipt: (item: WorldRecord, kind: string) => void }) {
   return (
-    <section className="world-section threads-section" id="threads">
+    <div className="world-research__content">
       <SectionHeading
         kicker="Relationships, carefully held"
         title="Threads"
@@ -859,7 +856,7 @@ function ThreadsSection({ items, phase, onReceipt }: { items: WorldFact[]; phase
           })}
         </div>
       ) : <EmptyField watchOnly={false} noun="relationship threads" />}
-    </section>
+    </div>
   );
 }
 
@@ -1128,7 +1125,6 @@ function WorldNav({ sourceState }: { sourceState: string }) {
       <div className="world-nav__right">
         <span className={`world-nav__pulse is-${sourceState}`}><i />{sourceState}</span>
         <a className="world-nav__atlas" href="/onchain">Onchain <span aria-hidden="true">↗</span></a>
-        <a className="world-nav__atlas" href="/atlas">The Atlas <span aria-hidden="true">↗</span></a>
       </div>
     </nav>
   );
@@ -1138,9 +1134,16 @@ function WorldFooter({ generatedAt }: { generatedAt?: string }) {
   return (
     <footer className="world-footer">
       <div className="world-footer__mark" aria-hidden="true"><span /><i /><span /></div>
-      <p>Money moves in threads. CashLoom keeps the receipts.</p>
+      <p>CashLoom World · observations with receipts.</p>
       <span>{generatedAt ? `World assembled ${dateTimeText(generatedAt, "full")}` : "World assembly time unavailable"}</span>
-      <div><a href="#today">Back to today ↑</a><a href="/onchain">Open Onchain ↗</a><a href="/atlas">Read the Atlas ↗</a></div>
+      <div>
+        <a href="#today">Back to today ↑</a>
+        <a href="https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823">Current release source</a>
+        <a href="https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally">Run World locally</a>
+        <a href={endpoint("/v1/data-practices")}>Privacy &amp; data practices</a>
+        <a href={endpoint("/v1/orientation")}>Machine orientation</a>
+        <a href="/atlas">Wallet code atlas — advanced</a>
+      </div>
     </footer>
   );
 }
@@ -1172,9 +1175,9 @@ export default function World() {
   activeBaseHasSnapshot.current = data?.base_currency?.toLocaleUpperCase() === preferences.baseCurrency;
 
   useEffect(() => {
-    document.title = "World — CashLoom";
+    document.title = "CashLoom World — Understand money, with source receipts";
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    description?.setAttribute("content", "CashLoom World follows policy rates, sovereign yields, currencies, disclosed energy coverage, crypto rails, and the threads between them—with source receipts.");
+    description?.setAttribute("content", "Read policy rates, sovereign yields, currency and crypto references, and policy meeting dates with source receipts and coverage gaps. Read-only. No account or wallet required.");
   }, []);
 
   useEffect(() => {
@@ -1416,13 +1419,18 @@ export default function World() {
             </svg>
           </div>
           <div className="world-hero__content">
-            <p className="world-hero__kicker"><span /> The money world, with receipts</p>
-            <h1>Money moves<br />in <em>threads.</em></h1>
-            <p className="world-hero__lede">Policy decisions can reach borrowing costs. Conflict can reach barrels, barrels can touch currencies, and currencies touch daily life. See what is reported—and how carefully it is sourced.</p>
+            <p className="world-hero__kicker"><span /> CashLoom World</p>
+            <h1>Understand money,<br />with <em>source receipts.</em></h1>
+            <p className="world-hero__lede">Read policy rates, sovereign yields, currency and crypto references, and policy meeting dates. Each observation has a Receipt button for its source, timestamps, method, and limits where supplied.</p>
+            <p className="world-hero__help">Read-only. No account or wallet required.</p>
+            <div className="world-hero__links">
+              <a href="#today">Read observations</a>
+              <a href="#coverage">Sources &amp; coverage</a>
+            </div>
             <div className="world-hero__controls">
               <label className="currency-control">
                 <span>Your currency lens</span>
-                <select value={preferences.baseCurrency} onChange={(event) => preferences.setBaseCurrency(event.target.value as BaseCurrency)}>
+                <select aria-describedby="world-currency-help" value={preferences.baseCurrency} onChange={(event) => preferences.setBaseCurrency(event.target.value as BaseCurrency)}>
                   {BASE_CURRENCIES.map((currency) => <option value={currency} key={currency}>{currency}</option>)}
                 </select>
               </label>
@@ -1431,12 +1439,15 @@ export default function World() {
                 className={`watch-filter${preferences.watchOnly ? " is-active" : ""}`}
                 onClick={preferences.toggleWatchOnly}
                 aria-pressed={preferences.watchOnly}
+                aria-describedby="world-watch-help"
               >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2.2 2.35 4.76 5.25.76-3.8 3.7.9 5.23L10 14.18l-4.7 2.47.9-5.23-3.8-3.7 5.25-.76L10 2.2Z" /></svg>
                 {preferences.watchOnly ? "Watching" : "Watchlist"}
                 <span>{preferences.watched.length}</span>
               </button>
             </div>
+            <p className="world-hero__help" id="world-currency-help">Currency changes FX and crypto reference values only.</p>
+            <p className="world-hero__help" id="world-watch-help">Star observations, then use Watchlist to filter cards. Saved in this browser; no alerts.</p>
           </div>
           <NextOnClock item={upcoming} loading={viewPhase === "loading"} onReceipt={openReceipt} />
           <div className="world-hero__status" role="status" aria-live="polite">
@@ -1477,9 +1488,9 @@ export default function World() {
         <DataSection id="crypto" kicker="Open monetary rails" title="Crypto & settlement" note={`BTC and ETH reference values in ${preferences.baseCurrency}, plus available Bitcoin and Base fee observations. No stablecoin peg-health coverage is claimed.`} noun="crypto observations" items={[...crypto, ...fees]} section="crypto" phase={viewPhase} watchOnly={preferences.watchOnly} watched={preferences.watched} onWatch={preferences.toggleWatched} onReceipt={openReceipt} />
         <section className="world-onchain-gateway" aria-labelledby="world-onchain-title">
           <div>
-            <p className="world-kicker">A dedicated chain-state instrument</p>
-            <h2 id="world-onchain-title">Follow money onto the rails.</h2>
-            <p>Move from reference prices into pinned network state, native stablecoin supply, selected credit markets, contract-level pool liquidity, and canonical bridge routes. Every observation keeps its method, source, limitation, and—where applicable—its reference block.</p>
+            <p className="world-kicker">A secondary read-only view</p>
+            <h2 id="world-onchain-title">Explore Onchain.</h2>
+            <p>Inspect network state, stablecoin supply, selected lending markets, pools, and bridge routes—with source receipts and reference blocks where available.</p>
           </div>
           <ul aria-label="Onchain coverage">
             <li><span>Networks</span><strong>8 chain contexts</strong></li>
@@ -1489,8 +1500,14 @@ export default function World() {
           <a href="/onchain">Open CashLoom Onchain <span aria-hidden="true">↗</span></a>
           <p className="world-onchain-gateway__limit">Latest state, not a ranking. No wallet connection, execution, TVL fiction, or safety score.</p>
         </section>
-        <ThreadsSection items={threads} phase={viewPhase} onReceipt={openReceipt} />
         <CalendarSection items={calendar} phase={viewPhase} onReceipt={openReceipt} />
+        <section className="world-section threads-section" id="threads" aria-label="Policy context and research coverage">
+          <p className="world-section__note" id="world-research-help">Research coverage is incomplete. Policy context and unavailable research records remain here, with their receipts and limits.</p>
+          <details className="world-research">
+            <summary aria-describedby="world-research-help">Policy context &amp; research coverage</summary>
+            <ThreadsSection items={threads} phase={viewPhase} onReceipt={openReceipt} />
+          </details>
+        </section>
         <CoverageSection data={viewData} phase={viewPhase} onReceipt={openReceipt} />
       </main>
       <WorldFooter generatedAt={viewData?.generated_at} />

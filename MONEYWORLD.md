@@ -1,3 +1,72 @@
+# CashLoom World — product guide
+
+**[Open World at cashloom.io](https://cashloom.io/)** to read public money
+observations with source receipts. No account or wallet is required. This opening
+describes the shipped World release; the original framework below is design
+history, not a list of current capabilities.
+
+## What you can read
+
+- **Observations:** policy and overnight cash rates, available sovereign yield
+  curves, FX and BTC/ETH reference values, Bitcoin/Base fee observations, and
+  scheduled central-bank meetings. Today is a sourced overview, not a claim that
+  every observation changed today.
+- **Receipts:** use an observation's **Receipt** button to inspect its original
+  source, timestamps, method, supplied derivation inputs, and usage terms where
+  available. A receipt explains provenance; it is not proof of accuracy or advice.
+- **Freshness:** source observation times, fetch times, and World assembly time
+  are different. A newly fetched snapshot need not contain new observations.
+  Saved or stale snapshots and failed refreshes are labeled; check the receipt
+  and **Sources / Coverage & freshness** before relying on a value.
+- **Partial coverage:** unavailable sources and rights restrictions are disclosed.
+  Brent/WTI benchmark values and UK yield-curve values remain withheld pending
+  display rights; broader research coverage is incomplete. Missing values are
+  not replaced with a proxy or an invented zero.
+
+## Currency references and Watching
+
+Choose **USD, EUR, GBP, JPY, CHF, CAD, AUD, or CNY**. The selector changes the
+requested FX reference pairs and BTC/ETH reference currency. It does not convert
+every observation, provide executable exchange quotes, or change a wallet.
+
+Star cards, then use **Watching** to filter the observation-card sections to your
+saved choices. Currency, stars, and the filter preference are stored in this
+browser when local storage is available. This is local filtering, not alerts,
+background monitoring, cross-device sync, or a history of watched values. World
+also keeps bounded public snapshots locally for reloads and labels saved data.
+
+## Hosted World and local software are separate
+
+The hosted World website reads the public INFO service; that service's entrypoint
+has no wallet vault, ledger, or transaction signers. You can run the same read-only
+path with the [Run World locally guide](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally).
+It still uses upstream public data services and RPC endpoints, not an offline copy
+of the money world. The [advanced local wallet](sovereign/README.md) is a separate
+entrypoint with owner-controlled custody and signing capabilities.
+
+[Onchain](https://cashloom.io/onchain) is a secondary read-only view of selected
+chain and protocol observations. For current API discovery, start with the
+[machine orientation](https://cashloom-api.fly.dev/v1/orientation), not the
+historical endpoint sketch below. Read the
+[data-practices disclosure](https://cashloom-api.fly.dev/v1/data-practices) for
+application scope and external-layer unknowns: no account requirement is not an
+anonymity guarantee, and hosting, networks, browsers, and upstream providers have
+their own practices.
+
+[Published release source](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823)
+identifies the World source branch, not the exact deployed revision.
+
+## Historical proposals — not shipped capabilities
+
+The original 2026-07-19 framework is preserved below as historical proposals.
+Its universal coverage, pricing, exports, integrations, example schemas, and
+phases are not a current service contract or evidence that those capabilities
+shipped. Some ideas informed today's product; use the guide above and machine
+orientation for the implemented surface.
+
+<details>
+<summary>Original MONEYWORLD framework and roadmap (2026-07-19)</summary>
+
 # MONEYWORLD — cashloom as the information provider of the money world
 
 > Money you can read — not just yours. All of it.
@@ -129,3 +198,5 @@ never transmit, never advise. A fact with sources is not a recommendation.
 — framework set down 2026-07-19; birthed from Yu's directive:
   "all money related information packed into API and formats for people to
   build upon. For both agents and humans."
+
+</details>

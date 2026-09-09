@@ -27,6 +27,7 @@ import { mountFedAnnouncementsDoor } from "./info/fed-announcements.ts";
 import { mountOnchainDoor } from "./info/blockchain/door.ts";
 import {
   CASHLOOM_PUBLIC_ORIGIN_HEADER,
+  CASHLOOM_WORLD_SOURCE_URL,
   mountXeniaSurface,
   surfaceInternalErrorResponse,
   surfaceRouteNotFoundResponse,
@@ -92,7 +93,7 @@ app.get("/api/meta", (c) =>
     name: "cashloom-info",
     mode: "info", // the hosted MONEYWORLD door — no vault, no ledger, no senders in this process
     version: "0.1.0",
-    self_run: "this is one reference copy of an open-source node — github.com/cambridgetcg/cashloom",
+    self_run: `Run CashLoom World locally in read-only mode (no wallet required): ${CASHLOOM_WORLD_SOURCE_URL}#run-world-locally`,
   })
 );
 
