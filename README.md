@@ -1,3 +1,21 @@
+# CashLoom World — understand money, with source receipts
+
+**[Open CashLoom World](https://cashloom.io/)** — public, read-only money
+information. No account or wallet required.
+
+- **[Current World source](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823)**
+- [Product guide](https://github.com/cambridgetcg/cashloom/blob/release/moneyworld-wallet-kernel-v2-20260823/MONEYWORLD.md)
+- [Run World locally](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally)
+- [Machine orientation](https://cashloom.io/v1/orientation)
+
+World's current source lives on the release branch linked above. This `main`
+branch retains the older wallet/protocol code line; its documentation below is
+preserved for that implementation, not a description of the current hosted site.
+Source links identify the published branch, not the exact deployed revision.
+
+<details>
+<summary>Legacy main documentation — preserved</summary>
+
 # CashLoom
 
 > **Money you can read. Payment authority you keep.**
@@ -134,3 +152,5 @@ CashLoom adopts [`xenia.rights/0.1`](RIGHTS.md) — every guest at every door,
 human or agent, is met as a subject. Reading without registration is a right;
 refusals teach; no profile or payment state is collected by CashLoom. Ordinary
 network logs may still exist. Pinned + byte-vendored in [RIGHTS.md](RIGHTS.md).
+
+</details>
