@@ -9,13 +9,11 @@ providers; the manual steps below do not require them.
 
 Release status on 29 September 2026: the source branch includes local agent
 access, and its public setup guide is deployed at [cashloom.io](https://cashloom.io).
-Production and preview each passed 24 checks with zero failures. See the
-[current release record](release-agent-layer-2026-09-29.md) for source and
-deployment evidence. The hosted Capital flows API still returns 404; its
-separate rollout remains incomplete and `releaseReady` remains false. Fly
-authentication is still missing, so INFO is unchanged. The workspace remains
-a local developer pilot; this release activates no live banks, hosted model or
-private payments.
+The separate public INFO rollout now serves Capital flows through cashloom.io;
+source coverage remains partial. See the [INFO rollout record](release-info-rollout-2026-09-29.md)
+and [agent release record](release-agent-layer-2026-09-29.md) for verification.
+The workspace remains a local developer pilot; this release activates no live
+banks, hosted model or private payments.
 
 ## Install, build, and start
 

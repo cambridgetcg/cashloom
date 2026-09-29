@@ -5,10 +5,10 @@ Capital flows, wallet, and TCG work in `feature/capital-flows-20260909`; that
 original development worktree and its edits remain preserved. The current source
 is pushed on `release/service-workspace-20260929` in the private CashLoom
 repository. The website is deployed at [cashloom.io](https://cashloom.io).
-Production and the final Cloudflare preview each passed 19 checks with zero
-failures; the hosted Capital flows API (404) is the sole capability gap and its
-separate rollout remains incomplete. Historical implementation checks below are
-dated separately from this deployment verification.
+The separate public INFO rollout now serves Capital flows directly and through
+cashloom.io, with source failures and partial coverage disclosed. See the
+[current rollout record](release-info-rollout-2026-09-29.md). Historical
+implementation and earlier website checks below retain their original outcomes.
 
 The [current release source](https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929)
 requires private repository access. Use the
@@ -142,8 +142,8 @@ Publication was authorized for this release. The private source branch is
 published; the production website and Cloudflare preview are verified. These
 checks use synthetic planner values and public INFO reads. They do not activate
 credentials, connect real banks, or make payments. The private workspace remains
-a local developer pilot. The new Capital flows API needs a separate hosted INFO deployment; its page
-discloses the current 404 instead of claiming available data.
+a local developer pilot. The separate hosted INFO deployment now serves Capital
+flows; this public-data rollout does not host the private workspace.
 
 ## Verification history
 

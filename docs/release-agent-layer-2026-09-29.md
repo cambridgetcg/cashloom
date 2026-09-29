@@ -4,6 +4,9 @@ This extends the [service/workspace release](release-service-workspace-2026-09-2
 with selected-account agent access, local MCP tools and owner-reviewed activity
 categories. The private workspace and MCP adapter remain local. The website
 adds setup guidance; it does not host a model or receive private records.
+The later [INFO rollout](release-info-rollout-2026-09-29.md) resolved the hosted
+Capital flows API gap recorded below. These are the original agent-release
+checks, not the current public API availability report.
 
 ## Delivered behaviour
 
@@ -86,7 +89,7 @@ Rollback target for the website is the previous production Pages deployment
 changing the Git main branch. The original development branch and its local
 edits remain uncommitted; release checkpoints are in the separate worktree.
 
-The hosted Capital flows API remains a separate incomplete rollout. A
-`fly status --app cashloom-api --json` check still reports no access token and
-requests `flyctl auth login`; the INFO app is unchanged. Website release checks
-retain this capability gap rather than marking the full API release ready.
+At the agent website release, Capital flows remained a separate incomplete
+rollout: `fly status --app cashloom-api --json` reported no access token and
+requested `flyctl auth login`. Those original website checks retained the gap.
+The later INFO rollout above records the completed deployment and live checks.

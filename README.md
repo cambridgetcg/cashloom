@@ -18,11 +18,12 @@ private wallet and public information tools.
 **Release status — 29 September 2026:** source is published on
 `release/service-workspace-20260929` in the private CashLoom repository.
 The website and local-agent setup guide are deployed at [cashloom.io](https://cashloom.io).
-Production and the [agent-layer preview](https://0f31568b.cashloom-atlas.pages.dev) each passed 24 checks
-with zero failures. The sole capability gap is the hosted Capital flows API,
-which returns 404; the separate API rollout remains incomplete and the smoke
-report retains `releaseReady: false`. Fly access was unavailable, so INFO is
-unchanged. Existing account, payment, Capital flows, and TCG work is preserved.
+The public INFO service has now been updated on Fly, and the Capital flows API
+returns publisher reports through the same website origin. Coverage remains
+partial: source failures and missing observations stay explicit. See the
+[INFO rollout record](docs/release-info-rollout-2026-09-29.md) for current
+verification and deployment details. Existing account, payment, Capital flows,
+and TCG work is preserved.
 Household/group planning is one person's editable plan with an export, not shared
 accounts or joint payment authority. The private workspace remains a local
 developer pilot; this website release activates no live banks or private payments.
@@ -121,11 +122,12 @@ Provider failures can leave partial coverage. For local machine discovery, read
 
 The published private release includes the lazy human route `/capital-flows`
 and read-only API `GET /v1/capital-flows` (also conditional GET/HEAD).
-As verified on 29 September 2026, production and the preview serve the page but the
-existing hosted INFO service returns **404 for the new API**. The page discloses
-that gap; source publication and a deployed website do not establish hosted data
-availability. The public-only INFO image passed local Linux verification, and its
-hosted deployment remains separate. To use the implemented API locally, clone
+As verified on 29 September 2026, the hosted API now returns **200** directly and
+through [cashloom.io/v1/capital-flows](https://cashloom.io/v1/capital-flows).
+The observed snapshot contained US Treasury financing and ECB securities/fund
+reports; TIC transactions timed out and remained explicitly unavailable. This
+is selected, delayed coverage, not a complete view of capital flows. The
+public-only image excludes private workspace and agent code. To use the API locally, clone
 the release above, run the INFO/frontend commands, then open `/capital-flows`
 on the local frontend and `http://127.0.0.1:4747/v1/capital-flows`.
 [Product guide](MONEYWORLD.md#capital-flows--source-and-deployment-status) ·
@@ -164,7 +166,7 @@ exposes World, Onchain, and Capital flows alongside its existing read tools.
 
 These changes are published in the private release branch. The public website
 and preview were deployed and verified on 29 September 2026. The private
-workspace remains local, and the separate Capital flows API rollout is pending.
+workspace remains local; the separate public INFO rollout now serves Capital flows.
 See the [integration report and verification](docs/experience-integration-2026-09-23.md)
 and the [earlier implementation survey](docs/current-map-2026-09-23.md).
 For daily use, setup, and recovery, see the [local pilot guide](docs/local-pilot.md).

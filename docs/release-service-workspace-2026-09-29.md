@@ -2,8 +2,10 @@
 
 Status: public website deployed and verified at https://cashloom.io on
 29 September 2026. Source is published to the existing private repository.
-The Fly API update remains pending authentication; the private workspace remains
-a local developer pilot.
+At this website release, the Fly API update was pending authentication. It was
+subsequently deployed; see the [INFO rollout record](release-info-rollout-2026-09-29.md).
+The private workspace remains a local developer pilot. Evidence below records
+the original website release and its then-unavailable Capital flows API.
 
 ## Scope and source
 

@@ -3,13 +3,12 @@
 **[Open World at cashloom.io/world](https://cashloom.io/world)** to read public
 money observations with source receipts. No account or wallet is required.
 The current service/workspace source is published in the private repository on
-`release/service-workspace-20260929`. On 29 September 2026, production at
-[cashloom.io](https://cashloom.io) and the
-[final Cloudflare preview](https://449cf6c3.cashloom-atlas.pages.dev) each passed
-19 checks with zero failures. The hosted Capital flows API still returns 404,
-the sole capability gap; `releaseReady: false` records that incomplete API
-rollout. Fly access was unavailable and INFO is unchanged. The original framework
-below is design history, not a list of current capabilities.
+`release/service-workspace-20260929`. The public INFO service was updated on
+29 September 2026; [Capital flows](https://cashloom.io/capital-flows) now reads
+publisher reports from the hosted API. Source coverage remains partial. See the
+[current rollout record](docs/release-info-rollout-2026-09-29.md) for verification
+and remaining source failures. The original framework below is design history,
+not a list of current capabilities.
 
 ## What you can read
 
@@ -70,11 +69,11 @@ branch, not the exact deployed revision.
 
 `release/service-workspace-20260929` includes the separate, lazy `/capital-flows`
 page and `GET /v1/capital-flows` API, with conditional GET/HEAD. The source is
-published privately, and the production website and preview are verified. **The existing
-hosted INFO service still returns 404 for this API**, as checked on
-29 September 2026; the page shows the unavailable-feed boundary explicitly.
-The public-only INFO image passed local Linux verification, which does not
-establish hosted deployment. To run it locally, use the current release and the
+published privately. **The hosted API returns 200**, verified directly and through
+cashloom.io on 29 September 2026. The observed snapshot includes US Treasury
+financing and ECB securities/fund reports. TIC transactions reached the adapter
+deadline and remain explicitly unavailable; HTTP availability does not mean
+complete source coverage. To run it locally, use the current release and the
 [local INFO and frontend instructions](README.md#run-the-existing-information-tools-locally),
 then open `/capital-flows` on the frontend and
 `http://127.0.0.1:4747/v1/capital-flows` for JSON. INFO serves the API; Atlas serves
