@@ -17,6 +17,7 @@ import {
 } from "./xenia-surface.ts";
 import { mountInfoDoors } from "./doors.ts";
 import { WORLD_BASE_CURRENCIES, WORLD_MEDIA_TYPE } from "./world-door.ts";
+import { CAPITAL_FLOWS_MEDIA_TYPE, CAPITAL_FLOWS_SCHEMA, HISTORY_LIMIT } from "./capital-flows/model.ts";
 
 const LOCAL_ORIGIN = "http://127.0.0.1:4899";
 
@@ -242,6 +243,55 @@ describe("CashLoom agent recovery and disclosures", () => {
     expect(world.input.parameters[0].enum).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "CNY"]);
   });
 
+  it.each(["hosted_info", "local_sovereign"] as const)("advertises the exact capital-flow read without enlarging Surface for %s", async (runtime) => {
+    const app = new Hono();
+    mountXeniaSurface(app, { runtime });
+    const origin = runtime === "hosted_info" ? CASHLOOM_WEBSITE_ORIGIN : LOCAL_ORIGIN;
+    const headers = runtime === "hosted_info" ? { [CASHLOOM_PUBLIC_ORIGIN_HEADER]: origin } : undefined;
+    const orientation = await json(await app.request(`${LOCAL_ORIGIN}/v1/orientation`, { headers }));
+    const manifest = await json(await app.request(`${LOCAL_ORIGIN}/.well-known/agent.json`, { headers }));
+    const capital = orientation.actions.filter((action: any) => action.id === "capital-flows.snapshot");
+    expect(capital).toHaveLength(1);
+    expect(capital[0]).toMatchObject({
+      href: `${origin}/v1/capital-flows`,
+      href_template: `${origin}/v1/capital-flows`,
+      method: "GET",
+      authentication: "none",
+      input: { location: "none", parameters: [] },
+      custody: orientation.operating_contract.custody,
+      response: {
+        media_type: CAPITAL_FLOWS_MEDIA_TYPE,
+        schema: { id: CAPITAL_FLOWS_SCHEMA, version_field: "schema" },
+        history: { policy: "latestRevisedPublisherHistoryNotVintageArchive", maximum_observations_per_series: HISTORY_LIMIT },
+      },
+    });
+    expect(capital[0].response.freshness).toContain("generatedAt");
+    expect(capital[0].response.freshness).toContain("receipt.publicationAt (nullable)");
+    expect(capital[0].response.freshness).toContain("expectation_unknown");
+    expect(capital[0].response.amounts).toContain("unitMultiplier");
+    expect(capital[0].response.cache).toContain("at most one second");
+    expect(capital[0].response.cache).toContain("No continuous collector or alerts");
+    expect(capital[0].response.partial).toContain("refresh.launchReadiness is notAssessed");
+    expect(capital[0].response.partial).toContain("rightsWithheld");
+    expect(orientation.next_actions).toContainEqual({
+      rel: "read_capital_flows", href: `${origin}/v1/capital-flows`, method: "GET", accept: CAPITAL_FLOWS_MEDIA_TYPE,
+    });
+    expect(manifest.resources.map((resource: any) => resource.id)).toEqual(["orientation", "rights", "data-practices"]);
+    expect(orientation.surface.declared_scope).not.toContain(capital[0].href);
+    expect(manifest.claims).toEqual([]);
+    expect(manifest.not_covered).toContainEqual(expect.stringContaining("market-data routes outside"));
+
+    const practices = await json(await app.request(`${LOCAL_ORIGIN}/v1/data-practices`, { headers }));
+    expect(practices.application_handler_layer.persistence.application_database_imported_by_process)
+      .toBe(runtime === "local_sovereign");
+    const disclosure = practices.application_handler_layer.other_public_read_routes.capital_flows;
+    expect(disclosure.inputs).toContain("filters operate locally");
+    expect(disclosure.persistence).toContain("at most seven days");
+    expect(disclosure.persistence).toContain("restart loses them");
+    expect(disclosure.browser_storage).toContain("no application-level persistent snapshot or preference storage");
+    expect(practices.conclusions.cross_layer_anonymity_promised).toBe(false);
+  });
+
   it("orients agents with typed, zero-cost, non-custodial read actions", async () => {
     const response = await testApp().request(`${LOCAL_ORIGIN}/v1/orientation`, {
       headers: { Accept: "application/json" },
@@ -251,6 +301,7 @@ describe("CashLoom agent recovery and disclosures", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([
       "world.snapshot",
+      "capital-flows.snapshot",
       "onchain.snapshot",
       "onchain.section",
       "fx.rate",

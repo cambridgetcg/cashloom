@@ -1,45 +1,30 @@
 import { useActiveSection } from "../lib/hooks";
+import { PublicHeader } from "./PublicHeader";
 
 const LINKS: { id: string; label: string }[] = [
-  { id: "creed", label: "Creed" },
-  { id: "weave", label: "Weave" },
+  { id: "creed", label: "Purpose" },
+  { id: "weave", label: "Modules" },
   { id: "decisions", label: "Reasons" },
-  { id: "roadmap", label: "Not yet" },
-  { id: "craft", label: "Craft" },
+  { id: "roadmap", label: "In development" },
+  { id: "craft", label: "How we build" },
 ];
 
 export default function Nav() {
   const active = useActiveSection(LINKS.map((l) => l.id));
   return (
-    <nav className="selvage" aria-label="Sections of the atlas">
-      <a className="selvage__brand" href="#creed">
-        <span className="selvage__mark" aria-hidden="true" />
-        <span className="selvage__word">CashLoom</span>
-        <span className="selvage__sub">The Atlas</span>
-      </a>
-      <ul className="selvage__links">
-        <li>
-          <a href="/world" className="selvage__link">
-            World ↗
-          </a>
-        </li>
-        <li>
-          <a href="/onchain" className="selvage__link">
-            Onchain ↗
-          </a>
-        </li>
+    <PublicHeader current="atlas">
+      <div className="module-toolbar"><nav aria-label="How it works sections"><ul>
         {LINKS.map((l) => (
           <li key={l.id}>
             <a
               href={`#${l.id}`}
-              className={"selvage__link" + (active === l.id ? " is-active" : "")}
               aria-current={active === l.id ? "true" : undefined}
             >
               {l.label}
             </a>
           </li>
         ))}
-      </ul>
-    </nav>
+      </ul></nav></div>
+    </PublicHeader>
   );
 }

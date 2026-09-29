@@ -1,4 +1,4 @@
-/** CashLoom sovereign node — one process, one file, your machine.
+/** CashLoom sovereign node — one process, local data, your machine.
  *
  *  Binds 127.0.0.1 by default: this is YOUR node, not a server. The UI is
  *  served from the same process (ui/dist) — no CORS, no second origin, no
@@ -38,11 +38,17 @@ import { mountWorldDoor } from "./info/world-door.ts";
 import { mountCashRatesDoor } from "./info/cash-rates.ts";
 import { mountFedAnnouncementsDoor } from "./info/fed-announcements.ts";
 import { mountOnchainDoor } from "./info/blockchain/door.ts";
+import { mountCapitalFlowsDoor } from "./info/capital-flows/door.ts";
 import {
   mountXeniaSurface,
   surfaceRouteNotFoundResponse,
 } from "./info/xenia-surface.ts";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, chmodSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { Database } from "bun:sqlite";
+import { TradeStore } from "./tcg/store.ts";
+import { SimulationStore } from "./tcg/simulation-store.ts";
+import { createTcgRoutes } from "./tcg/routes.ts";
 import {
   compressPublicResponses,
   publicDeliveryHeaders,
@@ -63,6 +69,8 @@ import {
 } from "./wallet/base-position-service.ts";
 import { createBaseReconciliationScheduler } from "./wallet/base-reconciliation-scheduler.ts";
 import { buildWalletIntegrationCatalog } from "./wallet/integration-catalog.ts";
+import { createConnectRoutes } from "./connect/routes.ts";
+import { createPlaidSandboxService, PlaidError } from "./connect/plaid.ts";
 
 export const app = new Hono();
 
@@ -278,6 +286,7 @@ mountCashRatesDoor(app); // SOFR + EFFR — official overnight cash reference ra
 mountFedAnnouncementsDoor(app); // latest official Federal Reserve monetary-policy release titles and links
 mountWorldDoor(app); // composed policy · yields · FX · crypto · fees · calendar — partial-safe, cited
 mountOnchainDoor(app); // networks · stable money · lending · selected pools · bridge routes — pinned and cited
+mountCapitalFlowsDoor(app); // independent public publisher histories; no wallet access or World fan-out
 mountZeroneTruth(app); // zerone truth chain — verified facts · doctrine · commitments · calibration (read-only, cited)
 
 // The rights the doors stand on, served AT the door — a guest should never
@@ -297,6 +306,9 @@ const sessionScopeSchema = z.enum([
   "payments:quote",
   "payments:confirm",
   "agent:authorize",
+  "trades:read",
+  "trades:write",
+  "trades:simulate",
 ]);
 
 const passphraseSchema = z.object({
@@ -329,13 +341,48 @@ app.post("/api/vault/unlock", async (c) => {
 /* ---------------------------- session-gated API --------------------------- */
 
 /** The local API's least-authority map. Public routes are mounted above this
- *  gate; every private route gets one explicit wallet-session capability.
+ *  gate; every private route gets an explicit wallet-session requirement.
+ *  "valid-session" only permits inspecting the caller's own expiry.
  *  Exported so the authority surface can be audited without starting a node. */
 export const requiredScopeForLocalRoute = (
   method: string,
   pathname: string,
-): vault.VaultSessionScope | undefined => {
+): vault.VaultSessionScope | "valid-session" | undefined => {
   const verb = method.toUpperCase();
+  if (pathname === "/api/vault/session") return verb === "GET" ? "valid-session" : undefined;
+
+  if (pathname === "/api/connections" || pathname === "/api/transfers" || pathname === "/api/transactions/export") {
+    return verb === "GET" || verb === "HEAD" ? "accounts:read" : undefined;
+  }
+  if (["/api/connections/plaid/link", "/api/connections/plaid/exchange", "/api/transfers/link",
+    "/api/transactions/import", "/api/transactions/import/preview"].includes(pathname) ||
+    /^\/api\/connections\/plaid\/[^/]+\/(sync|disconnect)$/.test(pathname) ||
+    /^\/api\/transfers\/[^/]+\/unlink$/.test(pathname)) {
+    return verb === "POST" ? "accounts:write" : undefined;
+  }
+  if (pathname.startsWith("/api/connections/") || pathname.startsWith("/api/transfers/") ||
+      pathname.startsWith("/api/transactions/import/")) return undefined;
+
+  if (pathname === "/api/tcg/trades") {
+    return verb === "GET" || verb === "HEAD" ? "trades:read"
+      : verb === "POST" ? "trades:write" : undefined;
+  }
+  if (/^\/api\/tcg\/trades\/[^/]+(?:\/history)?$/.test(pathname)) {
+    return verb === "GET" || verb === "HEAD" ? "trades:read" : undefined;
+  }
+  if (/^\/api\/tcg\/trades\/[^/]+\/(revisions|evidence)$/.test(pathname)) {
+    return verb === "POST" ? "trades:write" : undefined;
+  }
+  if (pathname === "/api/tcg/simulations") {
+    return verb === "GET" || verb === "HEAD" ? "trades:read"
+      : verb === "POST" ? "trades:simulate" : undefined;
+  }
+  if (/^\/api\/tcg\/simulations\/[^/]+(?:\/history)?$/.test(pathname)) {
+    return verb === "GET" || verb === "HEAD" ? "trades:read" : undefined;
+  }
+  if (/^\/api\/tcg\/simulations\/[^/]+\/commands$/.test(pathname)) {
+    return verb === "POST" ? "trades:simulate" : undefined;
+  }
 
   if (
     pathname === "/api/vault/lock" ||
@@ -384,6 +431,7 @@ export const requiredScopeForLocalRoute = (
 };
 
 app.use("/api/*", async (c, next) => {
+  c.header("Cache-Control", "private, no-store");
   const token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
   // Distinguish an absent/expired vault session from a real session that has
   // insufficient authority. This gives agent callers a recoverable signal
@@ -402,7 +450,7 @@ app.use("/api/*", async (c, next) => {
       403,
     );
   }
-  if (!vault.isValidSession(token, requiredScope)) {
+  if (requiredScope !== "valid-session" && !vault.isValidSession(token, requiredScope)) {
     return c.json(
       {
         error: "insufficient_scope",
@@ -424,6 +472,58 @@ app.use("/api/*", async (c, next) => {
   }
   await next();
 });
+
+app.get("/api/vault/session", (c) => {
+  const token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+  const session = vault.getSessionInfo(token);
+  if (!session) return c.json({ error: "locked", message: "Unlock the vault first." }, 401);
+  // Do not return scopes, principal, keys, balances, or extend the session.
+  return c.json({ expiresAt: session.expiresAt, serverTime: new Date().toISOString() });
+});
+
+/* ----------------------- unified read connections ----------------------- */
+const canManageConnections = (token: string | undefined): boolean =>
+  vault.isValidSession(token, "accounts:write") && vault.getSessionInfo(token)?.principal.kind === "owner";
+const plaidSandbox = createPlaidSandboxService({
+  db,
+  assertOwner: (token) => {
+    if (!canManageConnections(token)) throw new PlaidError("PLAID_OWNER_REQUIRED");
+  },
+  sealToken: vault.sealProviderToken,
+  unsealToken: vault.unsealProviderToken,
+});
+app.route("/api", createConnectRoutes({
+  db, plaid: plaidSandbox,
+  sessionToken: (c) => c.req.header("Authorization")?.replace(/^Bearer\s+/i, "") ?? "",
+  canManage: (c) => canManageConnections(c.req.header("Authorization")?.replace(/^Bearer\s+/i, "")),
+}));
+
+/* -------------------------- private TCG records --------------------------- */
+
+const tradeStore = new TradeStore(db);
+const sandboxPath = join(dirname(DB_PATH), "tcg-sandbox.db");
+let simulationStore: SimulationStore | null = null;
+app.route("/api/tcg", createTcgRoutes({
+  trades: tradeStore,
+  getSimulationStore: (create) => {
+    if (simulationStore) return simulationStore;
+    if (!create && !existsSync(sandboxPath)) return null;
+    const sandboxDb = new Database(sandboxPath, { create, readwrite: true });
+    try {
+      chmodSync(sandboxPath, 0o600);
+      simulationStore = new SimulationStore(sandboxDb);
+      return simulationStore;
+    } catch (error) {
+      sandboxDb.close();
+      throw error;
+    }
+  },
+  getActor: (c) => {
+    const token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+    const principal = vault.getSessionInfo(token)?.principal;
+    return principal?.kind === "owner" ? principal : null;
+  },
+}));
 
 app.post("/api/vault/lock", (c) => {
   vault.lock();
@@ -541,13 +641,15 @@ const accountSchema = z.object({
   }
 });
 
-app.get("/api/accounts", (c) =>
-  c.json({
-    accounts: db
-      .query("SELECT * FROM accounts WHERE status = 'ACTIVE' ORDER BY created_at")
-      .all(),
-  })
-);
+app.get("/api/accounts", (c) => {
+  const includeArchived = z.enum(["true", "false"]).optional().parse(c.req.query("includeArchived"));
+  return c.json({
+    accounts: db.query(`SELECT a.*, r.status AS read_connection_status FROM accounts a
+      LEFT JOIN read_connections r ON r.id=a.read_connection_id
+      WHERE a.status='ACTIVE' OR (?=1 AND a.status='ARCHIVED') ORDER BY a.created_at`)
+      .all(includeArchived === "true" ? 1 : 0),
+  });
+});
 
 app.post("/api/accounts", async (c) => {
   const body = accountSchema.parse(await c.req.json());
@@ -575,6 +677,14 @@ app.post("/api/accounts", async (c) => {
 });
 
 app.post("/api/accounts/:id/archive", (c) => {
+  const account = db.query(`SELECT a.connector_type,r.status AS read_connection_status FROM accounts a
+    LEFT JOIN read_connections r ON r.id=a.read_connection_id WHERE a.id=?`).get(c.req.param("id")) as
+    { connector_type: string | null; read_connection_status: string | null } | null;
+  // Plaid syncs an item as a unit. Archiving one active child would make all
+  // later item syncs fail, including updates for its other accounts.
+  if (account?.connector_type === "plaid" && account.read_connection_status !== "disconnected") {
+    return c.json({ error: "disconnect_before_archive", message: "Disconnect this test bank in Connections before archiving its accounts. Saved activity will remain." }, 409);
+  }
   db.query("UPDATE accounts SET status = 'ARCHIVED' WHERE id = ?").run(c.req.param("id"));
   return c.json({ ok: true });
 });
@@ -582,6 +692,56 @@ app.post("/api/accounts/:id/archive", (c) => {
 app.post("/api/accounts/:id/sync", async (c) => {
   const result = await syncAccount(c.req.param("id"));
   return c.json(result);
+});
+
+// A manual observation updates the saved balance only. It does not infer a
+// ledger movement, contact a provider, or override a connector/chain balance.
+const manualBalanceSchema = z.object({
+  balance_minor: z.string().max(120).regex(/^(?:0|-?[1-9][0-9]*)$/),
+  expected_balance_minor: z.string().max(120).regex(/^-?[0-9]+$/),
+  expected_balance_as_of: z.string().datetime().nullable(),
+}).strict();
+
+app.post("/api/accounts/:id/balance", async (c) => {
+  const accountId = z.string().uuid().parse(c.req.param("id"));
+  const body = manualBalanceSchema.parse(await c.req.json());
+  const outcome = db.transaction(() => {
+    const account = db.query("SELECT * FROM accounts WHERE id=? AND status='ACTIVE'").get(accountId) as
+      | { rail: string; connector_type: string | null; balance_minor: string; balance_as_of: string | null }
+      | null;
+    if (!account) return { kind: "missing" } as const;
+    if (
+      !["CASH", "BANK", "STRIPE", "PLATFORM_CREDIT", "GIFT_CARD"].includes(account.rail) ||
+      (account.connector_type !== null && account.connector_type !== "")
+    ) return { kind: "observed" } as const;
+    if (account.balance_minor !== body.expected_balance_minor ||
+      account.balance_as_of !== body.expected_balance_as_of) return { kind: "conflict" } as const;
+
+    // Advance even when two saves of the same amount share one millisecond.
+    // The timestamp is part of the compare-and-swap token, not client input.
+    const previousTime = account.balance_as_of === null ? 0 : Date.parse(account.balance_as_of);
+    const observedAt = new Date(Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0)).toISOString();
+    const updated = db.query(
+      `UPDATE accounts SET balance_minor=?, balance_as_of=?
+       WHERE id=? AND status='ACTIVE' AND rail<>'CRYPTO'
+         AND (connector_type IS NULL OR connector_type='')
+         AND balance_minor=? AND balance_as_of IS ?`,
+    ).run(body.balance_minor, observedAt, accountId, body.expected_balance_minor, body.expected_balance_as_of);
+    if (updated.changes !== 1) return { kind: "conflict" } as const;
+    return { kind: "saved", account: db.query("SELECT * FROM accounts WHERE id=?").get(accountId) } as const;
+  }).immediate();
+  if (outcome.kind === "missing") return c.json({
+    error: "account_not_found", message: "No active account exists with that id.",
+  }, 404);
+  if (outcome.kind === "observed") return c.json({
+    error: "manual_balance_not_allowed",
+    message: "Record a balance only for a manual account without a crypto rail or connector.",
+  }, 422);
+  if (outcome.kind === "conflict") return c.json({
+    error: "account_balance_conflict",
+    message: "This account balance changed. Reload its saved balance and review your amount before recording it.",
+  }, 409);
+  return c.json({ account: outcome.account });
 });
 
 /* ------------------------------ transactions ------------------------------ */
@@ -595,33 +755,35 @@ const txSchema = z.object({
 });
 
 app.get("/api/transactions", (c) => {
-  const accountId = c.req.query("accountId");
-  const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
+  const accountId = z.string().uuid().optional().parse(c.req.query("accountId"));
+  const limit = z.coerce.number().int().min(1).max(500).default(100).parse(c.req.query("limit"));
+  const fields = "id,account_id,external_id,title,amount_minor,category,date,source,created_at,status,gross_minor,fee_minor,net_minor,transfer_link_id,provider_category";
   const rows = accountId
     ? db
         .query(
-          "SELECT * FROM transactions WHERE account_id = ? ORDER BY date DESC LIMIT ?"
+          `SELECT ${fields} FROM transactions WHERE account_id = ? ORDER BY date DESC,id DESC LIMIT ?`
         )
         .all(accountId, limit)
-    : db.query("SELECT * FROM transactions ORDER BY date DESC LIMIT ?").all(limit);
+    : db.query(`SELECT ${fields} FROM transactions ORDER BY date DESC,id DESC LIMIT ?`).all(limit);
   return c.json({ transactions: rows });
 });
 
 app.post("/api/transactions", async (c) => {
   const body = txSchema.parse(await c.req.json());
-  const id = newId();
-  db.query(
-    `INSERT INTO transactions (id, account_id, title, amount_minor, date, category, source)
-     VALUES (?, ?, ?, ?, ?, ?, 'MANUAL')`
-  ).run(
-    id,
-    body.account_id,
-    body.title,
-    body.amount_minor,
-    body.date ?? new Date().toISOString(),
-    body.category ?? null
-  );
-  return c.json({ transaction: db.query("SELECT * FROM transactions WHERE id = ?").get(id) }, 201);
+  const outcome = db.transaction(() => {
+    const account = db.query("SELECT status FROM accounts WHERE id=?").get(body.account_id) as { status: string } | null;
+    if (!account) return { kind: "missing" } as const;
+    if (account.status !== "ACTIVE") return { kind: "inactive" } as const;
+    const id = newId();
+    db.query(
+      `INSERT INTO transactions (id, account_id, title, amount_minor, date, category, source)
+       VALUES (?, ?, ?, ?, ?, ?, 'MANUAL')`,
+    ).run(id, body.account_id, body.title, body.amount_minor, body.date ?? new Date().toISOString(), body.category ?? null);
+    return { kind: "created", transaction: db.query("SELECT * FROM transactions WHERE id=?").get(id) } as const;
+  }).immediate();
+  if (outcome.kind === "missing") return c.json({ error: "account_not_found", message: "No account exists with that id." }, 404);
+  if (outcome.kind === "inactive") return c.json({ error: "account_not_active", message: "This account is archived. Choose an active account before recording an entry." }, 409);
+  return c.json({ transaction: outcome.transaction }, 201);
 });
 
 /* -------------------------------- analytics ------------------------------- */
@@ -632,7 +794,7 @@ app.get("/api/analytics/summary", (c) => {
   // ever passing through SQLite INTEGER or JavaScript Number.
   const accounts = db
     .query(
-      `SELECT id, display_name, currency, decimals, balance_minor
+      `SELECT id, display_name, currency, decimals, balance_minor, read_environment
        FROM accounts WHERE status = 'ACTIVE' ORDER BY created_at`,
     )
     .all() as Array<{
@@ -644,10 +806,10 @@ app.get("/api/analytics/summary", (c) => {
     }>;
   const totals = new Map<string, { inbound: bigint; outbound: bigint; count: number }>();
   const amounts = db.query(
-    `SELECT t.account_id, t.amount_minor
+    `SELECT t.account_id, t.amount_minor, t.gross_minor, t.fee_minor
      FROM transactions t
      INNER JOIN accounts a ON a.id = t.account_id
-     WHERE a.status = 'ACTIVE'`,
+     WHERE a.status = 'ACTIVE' AND t.status='posted' AND t.transfer_link_id IS NULL`,
   );
 
   // Stream the ledger rather than materializing it; exactness need not turn a
@@ -655,11 +817,19 @@ app.get("/api/analytics/summary", (c) => {
   for (const row of amounts.iterate() as IterableIterator<{
     account_id: string;
     amount_minor: string;
+    gross_minor: string | null;
+    fee_minor: string | null;
   }>) {
-    const amount = BigInt(row.amount_minor);
     const total = totals.get(row.account_id) ?? { inbound: 0n, outbound: 0n, count: 0 };
-    if (amount > 0n) total.inbound += amount;
-    if (amount < 0n) total.outbound -= amount;
+    // Preserve a processor's gross receipt and explicit fee. For example,
+    // gross +100 and fee 3 are +100 in / 3 out, rather than unexplained +97.
+    const effects = row.gross_minor !== null && row.fee_minor !== null
+      ? [BigInt(row.gross_minor), -BigInt(row.fee_minor)]
+      : [BigInt(row.amount_minor)];
+    for (const amount of effects) {
+      if (amount > 0n) total.inbound += amount;
+      if (amount < 0n) total.outbound -= amount;
+    }
     total.count += 1;
     totals.set(row.account_id, total);
   }
@@ -919,8 +1089,11 @@ app.onError((err, c) => {
 
 /* ----------------------------------- ui ----------------------------------- */
 
-app.use("/*", serveStatic({ root: "./ui/dist" }));
-const serveUiIndex = serveStatic({ path: "./ui/dist/index.html" });
+// Resolve against the entrypoint so opening the node from another directory
+// serves the same installed UI, rather than an unrelated cwd's files.
+const walletUiRoot = join(import.meta.dir, "../ui/dist");
+app.use("/*", serveStatic({ root: walletUiRoot }));
+const serveUiIndex = serveStatic({ path: join(walletUiRoot, "index.html") });
 app.get("*", async (c, next) => {
   const accept = c.req.header("Accept")?.toLowerCase() ?? "";
   if (accept.includes("application/problem+json") || accept.includes("application/json")) {
@@ -931,6 +1104,10 @@ app.get("*", async (c, next) => {
 app.notFound((c) => surfaceRouteNotFoundResponse(c.req.raw));
 
 if (import.meta.main) {
+  if (!existsSync(join(walletUiRoot, "index.html"))) {
+    console.error("CashLoom's wallet UI is not built. In sovereign/ui, run bun install --frozen-lockfile, then bun run build. Start the node again after the build succeeds.");
+    process.exit(1);
+  }
   const server = Bun.serve({ port: PORT, hostname: HOSTNAME, fetch: app.fetch });
   if (BASE_RECONCILIATION_SCHEDULER_ENABLED) {
     baseReconciliationScheduler.start();

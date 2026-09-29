@@ -1,0 +1,58 @@
+{
+  "data": [
+    {
+      "record_date": "2026-09-04",
+      "transaction_type": "Deposits",
+      "transaction_catg": "Public Debt Cash Issues (Table IIIB)",
+      "transaction_today_amt": "1376",
+      "transaction_mtd_amt": "620813",
+      "transaction_fytd_amt": "31077421",
+      "src_line_nbr": "79",
+      "table_nbr": "II"
+    },
+    {
+      "record_date": "2026-09-04",
+      "transaction_type": "Withdrawals",
+      "transaction_catg": "Public Debt Cash Redemp. (Table IIIB)",
+      "transaction_today_amt": "13877",
+      "transaction_mtd_amt": "632357",
+      "transaction_fytd_amt": "29296834",
+      "src_line_nbr": "181",
+      "table_nbr": "II"
+    },
+    {
+      "record_date": "2026-09-08",
+      "transaction_type": "Deposits",
+      "transaction_catg": "Public Debt Cash Issues (Table IIIB)",
+      "transaction_today_amt": "265484",
+      "transaction_mtd_amt": "886297",
+      "transaction_fytd_amt": "31342905",
+      "src_line_nbr": "79",
+      "table_nbr": "II"
+    },
+    {
+      "record_date": "2026-09-08",
+      "transaction_type": "Withdrawals",
+      "transaction_catg": "Public Debt Cash Redemp. (Table IIIB)",
+      "transaction_today_amt": "291506",
+      "transaction_mtd_amt": "923862",
+      "transaction_fytd_amt": "29588339",
+      "src_line_nbr": "181",
+      "table_nbr": "II"
+    }
+  ],
+  "source_url": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?filter=record_date%3Agte%3A2026-09-04%2Crecord_date%3Alte%3A2026-09-08&fields=record_date%2Ctransaction_type%2Ctransaction_catg%2Ctransaction_today_amt%2Ctransaction_mtd_amt%2Ctransaction_fytd_amt%2Csrc_line_nbr%2Ctable_nbr&sort=record_date%2Csrc_line_nbr&page%5Bsize%5D=1000",
+  "retrieved_at_utc": "2026-09-09",
+  "source_total_count": 360,
+  "representative_subset": true,
+  "dataFormats": {
+    "record_date": "YYYY-MM-DD",
+    "transaction_type": "String",
+    "transaction_catg": "String",
+    "transaction_today_amt": "$1,000,000",
+    "transaction_mtd_amt": "$1,000,000",
+    "transaction_fytd_amt": "$1,000,000",
+    "src_line_nbr": "10",
+    "table_nbr": "String"
+  }
+}

@@ -13,6 +13,11 @@ export interface NormalizedBalance {
   currency: string;
   decimals: number;
   asOf: Date;
+  availableMinor?: string | null;
+  pendingMinor?: string | null;
+  heldMinor?: string | null;
+  balanceKind?: "current" | "total" | "observed";
+  environment?: "sandbox" | "live" | "local";
 }
 
 // One rail transaction, normalized. externalId is the rail's own stable id
@@ -27,6 +32,12 @@ export interface NormalizedTransaction {
   amountMinor: string;
   currency: string;
   date: Date;
+  status?: "pending" | "posted" | "removed";
+  pendingExternalId?: string | null;
+  providerCategory?: string | null;
+  grossMinor?: string | null;
+  feeMinor?: string | null;
+  netMinor?: string | null;
   raw?: unknown;
 }
 

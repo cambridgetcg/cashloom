@@ -1,0 +1,59 @@
+.money-source-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin: 22px 0; }
+.money-source-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+.money-source-head h3, .connection-start h3 { font-size: 21px; }
+.source-badges { display: flex; gap: 7px; flex-wrap: wrap; }
+.source-check { color: var(--cl-muted); font-size: 12px; line-height: 1.5; margin: 8px 0; }
+.source-account { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--cl-border); }
+.source-account h4 { font-size: 15px; }
+.money-balances { margin: 16px 0; }
+.money-balances dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.money-balances dl > div { padding: 12px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm); min-width: 0; background: var(--cl-surface-soft); }
+.money-balances dt { color: var(--cl-muted); font-size: 12px; margin-bottom: 7px; }
+.money-balances dd { margin: 0; overflow-wrap: anywhere; }
+.money-balances .amt { flex-wrap: wrap; white-space: normal; overflow-wrap: anywhere; font-size: 17px; }
+.balance-unknown { color: var(--cl-subtle); font-size: 14px; }
+.money-balances p { margin-top: 9px; color: var(--cl-muted); font-size: 12px; line-height: 1.6; }
+.connection-start { margin: 20px 0; }
+.connection-start > div { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.connection-start > p { margin: 12px 0 18px; max-width: 780px; color: var(--cl-muted); font-size: 14px; line-height: 1.7; }
+.connections-view > .notice { margin-bottom: 16px; }
+.bank-items { display: grid; gap: 12px; margin-top: 24px; }
+.bank-item > p { color: var(--cl-muted); font-size: 13px; line-height: 1.6; margin: 12px 0; }
+.bank-controls { margin-top: 16px; }
+.connection-review { background: var(--cl-surface-soft); border: 1px solid var(--cl-border-strong); border-radius: var(--cl-radius-sm); padding: 16px; margin-top: 16px; }
+.connection-review p { line-height: 1.65; font-size: 14px; margin: 10px 0 16px; }
+.advanced-connections { margin-top: 32px; border-top: 1px solid var(--cl-border); padding-top: 16px; }
+.advanced-connections > summary { min-height: 44px; padding: 10px 0; cursor: pointer; font-weight: 600; }
+.advanced-connections > p { margin: 8px 0 20px; }
+.activity-tools { margin: 18px 0; }
+.activity-import, .transfer-review { margin-bottom: 28px; }
+.activity-import > h3, .transfer-review > h3 { font-size: 22px; }
+.activity-import > p { margin: 12px 0 20px; }
+.activity-import textarea { width: 100%; min-height: 150px; resize: vertical; font: 12px/1.7 var(--cl-font-mono); }
+.activity-import input[type="file"] { max-width: 100%; }
+.import-preview { margin: 22px 0; }
+.import-preview > p { margin: 10px 0; }
+.import-preview .table-wrap { max-height: 460px; }
+.transfer-review > h4 { margin: 24px 0 12px; }
+.transfer-review > .notice { margin: 14px 0; }
+.transfer-card { margin: 12px 0; }
+.transfer-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 18px; align-items: center; margin: 16px 0; }
+.transfer-side { display: grid; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.transfer-side > span:first-child, .transfer-side > small { color: var(--cl-muted); font-size: 12px; }
+.transfer-side .amt { white-space: normal; overflow-wrap: anywhere; }
+.transfer-arrow { color: var(--cl-accent); font-size: 24px; }
+.check-row { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; font-size: 14px; line-height: 1.6; cursor: pointer; }
+.check-row input { width: 20px; height: 20px; min-height: 20px; flex: 0 0 20px; margin-top: 2px; accent-color: var(--cl-primary); }
+.ledger-toolbar { flex-wrap: wrap; }
+.ledger-table td > .badge + .badge { margin-left: 5px; }
+@media (max-width: 900px) {
+  .money-balances dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .money-balances dl { grid-template-columns: minmax(0, 1fr); }
+  .transfer-pair { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .transfer-arrow { transform: rotate(90deg); width: fit-content; }
+  .money-source-head h3 { font-size: 19px; }
+  .activity-tools { align-items: stretch; }
+  .activity-tools > button { flex: 1 1 100%; }
+}

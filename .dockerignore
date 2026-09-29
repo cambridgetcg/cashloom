@@ -49,6 +49,17 @@ sovereign/src/info/*
 !sovereign/src/info/xenia-surface.ts
 !sovereign/src/info/zerone-truth.ts
 
+!sovereign/src/info/capital-flows/
+sovereign/src/info/capital-flows/*
+!sovereign/src/info/capital-flows/model.ts
+!sovereign/src/info/capital-flows/transport.ts
+!sovereign/src/info/capital-flows/snapshot.ts
+!sovereign/src/info/capital-flows/door.ts
+!sovereign/src/info/capital-flows/registry.ts
+!sovereign/src/info/capital-flows/csv.ts
+!sovereign/src/info/capital-flows/ecb.ts
+!sovereign/src/info/capital-flows/us.ts
+
 !sovereign/src/info/blockchain/
 sovereign/src/info/blockchain/*
 !sovereign/src/info/blockchain/aave.ts

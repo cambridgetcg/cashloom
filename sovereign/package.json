@@ -6,10 +6,13 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch src/index.ts",
-    "build:ui": "cd ui && bun install && bun run build",
-    "test": "bun run test:covenant-draft && bunx vitest run src/connectors src/utils src/info && bun run test:node && bun test src/index.test.ts && bun test src/wallet && bun test src/pay/agent-pay.test.ts",
+    "build:ui": "cd ui && bun run build",
+    "data": "bun --no-env-file --no-install src/local-data/cli.ts",
+    "test": "bun run test:covenant-draft && bunx vitest run src/connectors src/utils src/info src/mcp && bun run test:node && bun run test:connect && bun test src/index.test.ts && bun test src/tcg && bun test src/wallet && bun test src/pay/agent-pay.test.ts && bun run test:local-data",
     "test:covenant-draft": "node node_modules/@agenttool/xenia-covenant-beta4/covenant/0.1/validate-adoption.mjs ../rights-adoption.json",
     "test:connectors": "bunx vitest run src/connectors src/utils src/info",
+    "test:connect": "bun --no-env-file test ./src/connect/*.test.ts",
+    "test:local-data": "bun test src/local-data",
     "test:node": "bun test src/vault.test.ts src/sync.test.ts src/pay.test.ts src/senders/btc.sender.test.ts src/senders/evm.sender.test.ts src/zerone.test.ts",
     "test:wallet": "bun test src/wallet && bun test src/pay/agent-pay.test.ts",
     "typecheck": "bunx tsc --noEmit"

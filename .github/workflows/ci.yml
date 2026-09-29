@@ -69,6 +69,9 @@ jobs:
               createErc4337BundlerTransport \
               createGoCardlessBankDataBroker \
               createYapilyConnectExecutor \
+              PLAID_SANDBOX_SECRET \
+              createPlaidSandboxService \
+              installConnectSchema \
               AmbiguousBroadcastError \
               CASHLOOM_DATA_DIR \
               sovereign.db \

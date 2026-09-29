@@ -22,23 +22,23 @@ export const SEAM: Record<
   { stroke: string; glow: string; soft: string; name: string; gloss: string }
 > = {
   read: {
-    stroke: "#57b6a9",
-    glow: "#7fd8c9",
-    soft: "rgba(87,182,169,0.16)",
+    stroke: "var(--cl-info)",
+    glow: "var(--cl-info)",
+    soft: "var(--cl-info-soft)",
     name: "Read seam",
     gloss: "observe every rail · move nothing",
   },
   write: {
-    stroke: "#d4502e",
-    glow: "#ff7a4d",
-    soft: "rgba(212,80,46,0.16)",
+    stroke: "var(--cl-warning)",
+    glow: "var(--cl-warning)",
+    soft: "var(--cl-warning-soft)",
     name: "Write / pay seam",
     gloss: "sign locally · broadcast once",
   },
   core: {
-    stroke: "#d8a24a",
-    glow: "#efc880",
-    soft: "rgba(216,162,74,0.14)",
+    stroke: "var(--cl-primary)",
+    glow: "var(--cl-primary)",
+    soft: "var(--cl-surface-soft)",
     name: "The warp",
     gloss: "the frame — one process, one file",
   },

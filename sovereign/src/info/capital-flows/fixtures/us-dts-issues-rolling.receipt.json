@@ -1,0 +1,8 @@
+{
+  "url": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?filter=transaction_catg%3Aeq%3APublic%20Debt%20Cash%20Issues%20%28Table%20IIIB%29%2Ctransaction_type%3Aeq%3ADeposits%2Ctable_nbr%3Aeq%3AII&fields=record_date%2Ctransaction_type%2Ctransaction_catg%2Ctransaction_today_amt%2Ctransaction_mtd_amt%2Ctransaction_fytd_amt%2Csrc_line_nbr%2Ctable_nbr&sort=-record_date&page%5Bsize%5D=60",
+  "retrievedAt": "2026-09-09T22:43:14.296957+00:00",
+  "status": 200,
+  "decodedBytes": 16202,
+  "etag": null,
+  "lastModified": null
+}

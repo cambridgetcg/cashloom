@@ -3,7 +3,7 @@
  *  This is the single source of narrative truth for the interactive atlas.
  *  The CODE it points at is imported raw at build time (Vite `?raw`) from the
  *  real ../../sovereign/src files, so what a reader sees is always the actual
- *  source — the atlas cannot drift from the code it explains.
+ *  source at build time. Explanations still need review as behavior changes.
  *
  *  Each `loadBearing` marker is a verbatim substring of the real source; the
  *  atlas finds it in the imported code and attaches the note. Markers survive
@@ -53,15 +53,15 @@ export const PHILOSOPHY = {
   name: "CashLoom",
   line: "Money you can read. Code you can read.",
   creed: [
-    "Non-custodial — it holds no funds, ever.",
-    "Local-first — one process, your machine, no server, no telemetry.",
-    "Everyone pays everyone — over every open rail, fiat or crypto.",
-    "Pass-through fees only — no CashLoom fee, ever, because there is no intermediary to take one.",
-    "Your keys, your data, your machine.",
-    "Open — this is the reference implementation; anyone may run, read, fork, or rebuild it.",
+    "Your workspace — one owner runs a local server and keeps account records on their machine.",
+    "Your keys — supported payments sign locally; CashLoom does not take custody of funds.",
+    "Explicit actions — read connections and payment actions have separate permissions and review steps.",
+    "Defined payment routes — local-key Base ETH, Base USDC and Bitcoin are implemented; bank payments and external-wallet execution are not enabled.",
+    "Visible boundaries — provider reads and transaction broadcasts use external services; the local database is not encrypted as a whole.",
+    "Developer pilot — installation requires access to the private repository. The browser planner and public insights are open to everyone.",
   ],
   invitation:
-    "Most open source hands you a folder and wishes you luck. This is the opposite: follow an idea, and the real code that enacts it comes with you. Nothing here is a diagram of the code — it IS the code, wired to the reasons it exists.",
+    "Follow an idea into the selected source modules bundled with this page. They show the implementation at build time; the surrounding explanations describe its purpose and current limits.",
 };
 
 export const MODULES: Module[] = [
@@ -70,14 +70,14 @@ export const MODULES: Module[] = [
     title: "The Node",
     subtitle: "One process, bound to your machine.",
     sources: ["../../sovereign/src/index.ts?raw"],
-    idea: "A single Bun process serves the API and the UI from one origin, listening only to you.",
+    idea: "A single Bun process serves the private workspace API and UI from one origin, bound to loopback by default.",
     doctrine: [
-      "CashLoom is not a service you sign into — it is a program you run. The node binds to 127.0.0.1 by default: the only thing that can reach it is the machine it runs on. There is no account, no tenant, no operator on the other end.",
-      "One process serves both the API and the interface from the same origin, so there is no CORS, no second server, no cloud hop. The whole thing is small enough to read in an afternoon.",
+      "The private workspace is a program you run. Its node binds to 127.0.0.1 by default, limiting ordinary network access to the local machine. An unlocked owner session controls access; this is separate from the public planner and information website.",
+      "One process serves the workspace API and interface from the same origin. Provider reads and transaction broadcasts can still contact external services, depending on the actions and connections you choose.",
       "Everything that can touch money sits behind an unlocked-vault session. The public surface is deliberately tiny: read the node's own state, initialize a vault, unlock one.",
     ],
     loadBearing: [
-      { marker: "const HOSTNAME = process.env.CASHLOOM_BIND ?? \"127.0.0.1\"", note: "Local-first is the default, not a setting you have to find. Exposing the node is a deliberate act, never an accident." },
+      { marker: "const HOSTNAME = process.env.CASHLOOM_BIND ?? \"127.0.0.1\"", note: "The default binding is loopback. Changing this setting changes the network exposure and needs a separate deployment review." },
       { marker: "requires an unlocked vault session", note: "The gate is one middleware. Below it, nothing runs without a live session — money-shaped routes cannot be reached with a locked vault." },
       { marker: "Errors carry instructions, never secrets", note: "Every error is written to be read by the person who hit it — and never carries key material." },
     ],
@@ -91,14 +91,14 @@ export const MODULES: Module[] = [
     sources: ["../../sovereign/src/vault.ts?raw"],
     idea: "Private keys are sealed with a key derived from your passphrase, decrypted only in memory, only to sign.",
     doctrine: [
-      "Non-custodial is not a promise, it is an architecture. Your passphrase runs through Argon2id — memory-hard, slow on purpose — to derive a master key that seals every private key with AES-256-GCM. The sealed blob is all that ever touches disk.",
-      "A key is decrypted for exactly the span of one signature and never returned to any caller, written to any log, or sent over any network. CashLoom signs locally and broadcasts the *signed* transaction — the private half never leaves the machine.",
+      "The vault uses Argon2id to derive a master key from your passphrase and AES-256-GCM to seal key material before database storage. Account and activity records are separate: the whole workspace database is not encrypted.",
+      "Signing uses decrypted key material inside the local process and broadcasts the signed transaction. This limits the intended exposure of key material; it does not make a compromised device or runtime safe.",
       "The passphrase IS custody: there is no recovery, no reset link, no support line that can let you back in. That is the cost of holding nothing on your behalf, stated plainly rather than hidden.",
     ],
     loadBearing: [
-      { marker: "The passphrase IS custody", note: "No recovery by design. A recoverable vault is a custodial vault wearing a costume." },
-      { marker: "One error for every wrong-passphrase shape — no oracle", note: "Unlock failures are indistinguishable, so the error can never become a guessing aid." },
-      { marker: "lives for the duration of one signature", note: "The decrypted key's lifetime is a single call. Exposure is measured in microseconds, never persisted." },
+      { marker: "The passphrase IS custody", note: "There is no passphrase recovery service. Keep a separate secure backup of the keys you control." },
+      { marker: "One error for every wrong-passphrase shape — no oracle", note: "The unlock path uses the same error message for wrong-passphrase cases to reduce information disclosed by failures." },
+      { marker: "lives for the duration of one signature", note: "The signing path scopes decrypted key use to its callback and clears the working buffer afterward. Runtime memory can have other copies; this is not a universal erasure guarantee." },
     ],
     relatesTo: ["pay", "the-node"],
     weave: { x: 0.22, y: 0.4 },
@@ -133,7 +133,7 @@ export const MODULES: Module[] = [
     sources: ["../../sovereign/src/pay.ts?raw"],
     idea: "Every payment is a two-step rite: a quote that discloses the fee and signs nothing, then a confirm that signs and broadcasts exactly once.",
     doctrine: [
-      "The universal primitive is deliberately slow at the one moment speed would be dangerous. Quote first: the network fee is estimated as an upper bound and shown to you with nothing yet signed. Only an explicit confirm turns that quoted intent — and only that intent — into a broadcast.",
+      "The payment flow separates preparation from execution. Quote first: the estimated network fee is shown with nothing yet signed. An explicit confirmation then requests execution of that quoted intent.",
       "A failed send is recorded and surfaced, never auto-retried. A payment that failed is a decision for a human, not a loop; retrying money automatically is how money gets sent twice.",
       "The status is marked *before* the point of no return inside send(), so a crash between broadcast and bookkeeping is visible as 'needs investigation', never silently re-sendable.",
     ],
@@ -153,8 +153,8 @@ export const MODULES: Module[] = [
     idea: "All money movement goes through PaymentSender — a separate interface from reading, held to stricter rules: validate, disclose the fee, sign locally, broadcast the signed result.",
     doctrine: [
       "Reading a balance and moving money are different acts with different blast radii, so they live behind different interfaces. A sender validates the destination and amount before anything is signed, discloses the fee before anything moves, and signs locally — the key never rides the wire.",
-      "Two rails move money so far: Base L2 (ETH + USDC), a cheap fast stablecoin path chosen so 'everyone pays everyone' is affordable enough to actually mean everyone — and Bitcoin on-chain, which earned its own module because UTXOs carry their own ways to lose money quietly. The quote uses only the public address; the private key surfaces solely inside the send.",
-      "Fees are pass-through only — the network's gas, nothing added. The fee summary says so out loud: 'No CashLoom fee, ever.'",
+      "Implemented local-key routes cover Base L2 (ETH + USDC) and Bitcoin on-chain. Bitcoin has its own module because UTXO selection and change need separate validation. The quote uses the public address; local key material is used during signing.",
+      "The implemented payment routes disclose network fees and currently add no CashLoom service fee. Provider charges and future routes need their own disclosure.",
     ],
     loadBearing: [
       { marker: "a connector that could initiate movement does not belong behind the read interface", note: "The seam boundary as a sentence. Read and write are kept apart at the type level, not just by convention." },
@@ -186,9 +186,9 @@ export const MODULES: Module[] = [
   {
     id: "the-read-seam",
     title: "The Read Seam",
-    subtitle: "Observe every rail. Move nothing.",
+    subtitle: "Read supported sources. Move nothing.",
     sources: ["../../sovereign/src/connectors/types.ts?raw", "../../sovereign/src/connectors/agenttool.connector.ts?raw"],
-    idea: "RailConnector reads balances and transactions from any rail — Stripe, banks, Bitcoin, Ethereum, the agent economy — and can never, by construction, move money.",
+    idea: "RailConnector defines balance and transaction reads for supported Stripe, bank-data, Bitcoin, Ethereum and AgentTool sources. Its interface has no payment method.",
     doctrine: [
       "A connector has exactly two methods, both read: fetch a balance, fetch transactions. Nothing behind this interface can initiate a movement — a rail you can watch is not a rail that can drain you.",
       "Credentials are pointers, never values: an account stores the NAME of an environment variable, and the secret is resolved at call time from a closed namespace. A stored reference can never name your database URL or your session secret and exfiltrate it.",
@@ -207,7 +207,7 @@ export const MODULES: Module[] = [
     title: "Sync",
     subtitle: "Record; never double, never mix.",
     sources: ["../../sovereign/src/sync.ts?raw"],
-    idea: "Sync pulls a connector's balance and transactions into the local ledger, deduped and currency-checked, so the same row can never land twice or in the wrong denomination.",
+    idea: "Sync brings supported connector balances and transactions into the local ledger, checking currency and using provider identifiers to avoid repeated imports of the same record.",
     doctrine: [
       "Connectors observe; sync records. Every imported row is deduped on the rail's own stable id via a database uniqueness constraint — a re-sync is a skip, never a double.",
       "A row whose currency or decimal scale disagrees with the account is refused loudly, not imported wrong. Silent mis-scaling is the least-debuggable kind of money bug, so the code would rather stop than guess.",
@@ -307,7 +307,7 @@ export const DECISIONS: Decision[] = [
       { label: "Hosted SaaS: plans, quotas, pricing, a central operator", verdict: "rejected", note: "That is the old age. It makes the operator the owner of your money's story." },
       { label: "Sovereign: one owner, one machine, everything unlimited, no operator", verdict: "chosen", note: "Plans, quotas, and pricing were deleted, not toggled off." },
     ],
-    because: "'For everyone' means no one needs anyone else's server. The SaaS layer was removed entirely so the default posture is yours.",
+    because: "The workspace runs locally under one owner. There is no hosted shared-workspace service; configured provider connections still depend on external services.",
     livesIn: "the-node",
   },
 ];
@@ -334,10 +334,10 @@ export const ROADMAP: RoadmapThread[] = [
     whyNotYet: "Direct addressing (paste an address or link) proves the primitive first; naming is the layer on top.",
   },
   {
-    title: "Local import — CSV & statements, no cloud AI",
+    title: "More statement formats",
     status: "considering",
-    mindset: "Getting messy real-world money data in cleanly is the highest-value everyday feature — but it must happen entirely on your machine. No statement is ever shipped to someone else's model.",
-    whyNotYet: "The old build leaned on a cloud AI for this; the sovereign version needs a local parser, which is its own piece of work.",
+    mindset: "The workspace now previews and imports the supported CSV format into manual accounts locally. Additional bank-specific formats would reduce preparation work while retaining explicit review.",
+    whyNotYet: "Each new format needs tested date, amount, currency and duplicate handling. PDF extraction and automatic provider-statement matching are not implemented.",
   },
   {
     title: "Tauri desktop packaging",
@@ -348,7 +348,7 @@ export const ROADMAP: RoadmapThread[] = [
   {
     title: "More rails — SEPA, UPI, Solana, and beyond",
     status: "considering",
-    mindset: "Every rail added is one more way 'everyone pays everyone' becomes literally true. Each slots into the same two seams — read to observe, sender to move — so the shape never changes, only the reach.",
+    mindset: "Additional payment routes could make the workspace useful in more places. Each needs a separate reader, sender, eligibility check and review of its failure modes.",
     whyNotYet: "Breadth follows a proven spine. The seams are built to make each new rail additive, never a rewrite.",
   },
 ];
@@ -359,7 +359,7 @@ export const HOW_WE_BUILD = {
     { name: "Reversible steps, bounded changes", body: "Nothing that works gets removed; new capability arrives as a layer that can be peeled back. A change you can undo is a change you can dare to make." },
     { name: "Refuse loudly over guess quietly", body: "When the code isn't sure — a mismatched currency, an unknown scale, a stale quote — it stops and says why, instead of proceeding into a silent error that surfaces as wrong money weeks later." },
     { name: "Errors are written to be read", body: "Every failure carries instructions for the person who hit it, and never carries a secret. The message is part of the product." },
-    { name: "The code is the spec's reference implementation", body: "The protocol is the promise; this repo is one honest way to keep it. Anyone may read it, run it, fork it, or write their own — and interoperate over the same open rails." },
-    { name: "Everyone runs their own", body: "The whole design bends toward the day a person double-clicks and holds their own money, needing no one else's server. Every decision is measured against that." },
+    { name: "Connect explanations to implementation", body: "The selected source modules on this page are bundled at build time. Read them alongside their purpose and limits. Installing the current developer pilot requires private repository access." },
+    { name: "Make local ownership practical", body: "The workspace runs on the owner's computer. Easier installation is planned; provider connections still depend on their services, access requirements and availability." },
   ],
 };

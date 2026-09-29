@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../api";
 import { EmptyState, Field, LoadingThreads, SectionTitle } from "../components";
 import {
   PaymentActivity,
   paymentHasFinalizedConsensus,
+  paymentCanReconcile,
+  paymentRecoveryReview,
+  samePaymentRecoveryReview,
+  type PaymentRecoveryReview,
 } from "../components/PaymentActivity";
 import { QuoteFeeTerms } from "../components/QuoteFeeTerms";
+import type { WalletNavigate } from "../navigation";
 import {
   ASSET_DECIMALS,
-  formatMinor,
   formatMinorCompact,
   parseToMinor,
 } from "../format";
@@ -67,9 +71,10 @@ export function isLegacyMappedBitcoinAccount(account: Account): boolean {
 /** Pure UI projection of pay.ts's account-routing eligibility boundary. */
 export function isLiveSendingAccount(
   account: Account,
-  asset: Asset,
+  asset: string,
   keyById: ReadonlyMap<string, VaultKey>,
 ): boolean {
+  if (!(ASSETS as readonly string[]).includes(asset)) return false;
   if (
     account.rail !== "CRYPTO" ||
     account.status.toUpperCase() !== "ACTIVE" ||
@@ -77,7 +82,7 @@ export function isLiveSendingAccount(
   ) {
     return false;
   }
-  const identity = LIVE_IDENTITY_BY_ASSET[asset];
+  const identity = LIVE_IDENTITY_BY_ASSET[asset as Asset];
   const key = keyById.get(account.vault_key_id);
   if (!key || key.kind !== identity.keyKind) return false;
 
@@ -138,19 +143,80 @@ function decimalsFor(asset: Asset, account: Account | undefined): number {
   return ASSET_DECIMALS[asset] ?? 18;
 }
 
-export function Pay() {
+export function initialSendingAccount(accounts: Account[], keys: VaultKey[], requestedId?: string): Account | null {
+  const keyById = new Map(keys.map((key) => [key.id, key]));
+  return accounts.find((candidate) => {
+    if (requestedId && candidate.id !== requestedId) return false;
+    const asset = candidate.currency.trim().toUpperCase();
+    return (ASSETS as readonly string[]).includes(asset)
+      && isLiveSendingAccount(candidate, asset as Asset, keyById);
+  }) ?? null;
+}
+
+/** Re-read local truth before the one explicit mutation, then re-read it again
+ * regardless of the broadcast response. Never infer a retry from a lost reply. */
+export async function recoverReviewedPayment(
+  review: PaymentRecoveryReview,
+  requests: Pick<typeof api, "payments" | "payRecover"> = api,
+): Promise<{
+  payments: PaymentListItem[] | null;
+  reloadError: string | null;
+  notice: { kind: "status" | "alert"; text: string };
+}> {
+  let payments: PaymentListItem[];
+  try {
+    payments = (await requests.payments()).payments;
+    if (!Array.isArray(payments)) throw new Error("The node returned no readable payment records.");
+  } catch (error) {
+    return { payments: null, reloadError: errorMessage(error), notice: {
+      kind: "alert", text: "Recovery was not requested because the saved payment could not be checked. Reload payment activity before another action.",
+    } };
+  }
+  const current = payments.find(payment => payment.id === review.paymentId);
+  const currentReview = current ? paymentRecoveryReview(current) : null;
+  if (!currentReview || !samePaymentRecoveryReview(review, currentReview)) {
+    return { payments, reloadError: null, notice: {
+      kind: "alert", text: "The payment changed or exact-byte recovery is no longer available. No recovery was requested. Review the latest payment truth.",
+    } };
+  }
+  let notice: { kind: "status" | "alert"; text: string };
+  try {
+    const result = await requests.payRecover(review.paymentId);
+    notice = result.paymentId === review.paymentId && result.status === "broadcast"
+      && result.txHash?.toLowerCase() === review.txId.toLowerCase() && result.error === null
+      ? { kind: "status", text: "Recovery reported a broadcast for the reviewed transaction. Settlement is still unverified; inspect the reloaded payment truth." }
+      : { kind: "alert", text: "Recovery did not establish a successful broadcast. Inspect the reloaded payment truth before another action. No recovery was retried." };
+  } catch {
+    notice = { kind: "alert", text: "The recovery response could not establish the outcome. The same transaction may already be on the network. Inspect payment truth before another action. No recovery was retried." };
+  }
+  try {
+    const latest = (await requests.payments()).payments;
+    if (!Array.isArray(latest)) throw new Error("The node returned no readable payment records.");
+    return { payments: latest, reloadError: null, notice };
+  } catch (error) {
+    return { payments, reloadError: errorMessage(error), notice: {
+      kind: "alert", text: `${notice.text} Local truth could not be reloaded; the displayed record is from before recovery.`,
+    } };
+  }
+}
+
+export function Pay({ initialAccountId, onGoto }: { initialAccountId?: string; onGoto?: WalletNavigate } = {}) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [keys, setKeys] = useState<VaultKey[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [payments, setPayments] = useState<PaymentListItem[] | null>(null);
   const [paymentsErr, setPaymentsErr] = useState<string | null>(null);
   const [checkingPaymentId, setCheckingPaymentId] = useState<string | null>(null);
+  const [recoveringPaymentId, setRecoveringPaymentId] = useState<string | null>(null);
+  const [recoveryReview, setRecoveryReview] = useState<PaymentRecoveryReview | null>(null);
+  const activityAction = useRef(false);
   const [activityNotice, setActivityNotice] = useState<{
     kind: "status" | "alert";
     text: string;
   } | null>(null);
 
   const [accountId, setAccountId] = useState("");
+  const [selectionRequired, setSelectionRequired] = useState(Boolean(initialAccountId));
   const [to, setTo] = useState("");
   const [amountStr, setAmountStr] = useState("");
   const [asset, setAsset] = useState<Asset>("ETH");
@@ -168,16 +234,11 @@ export function Pay() {
         if (!live) return;
         setAccounts(r.accounts);
         setKeys(k.keys);
-        const keyById = new Map(k.keys.map((key) => [key.id, key]));
-        const first = r.accounts.find((candidate) => {
-          if (!(ASSETS as readonly string[]).includes(candidate.currency)) return false;
-          return isLiveSendingAccount(candidate, candidate.currency as Asset, keyById);
-        });
+        const first = initialSendingAccount(r.accounts, k.keys, initialAccountId);
         if (first) {
           setAccountId(first.id);
-          if ((ASSETS as readonly string[]).includes(first.currency)) {
-            setAsset(first.currency as Asset);
-          }
+          setAsset(first.currency.trim().toUpperCase() as Asset);
+          setSelectionRequired(false);
         }
       } catch (ex) {
         if (live) setLoadErr(errorMessage(ex));
@@ -230,12 +291,13 @@ export function Pay() {
 
   // Switching asset can strand the picker on an account that can't sign it.
   useEffect(() => {
+    if (selectionRequired) return;
     if (!eligible.some((a) => a.id === accountId) && eligible.length > 0) {
       setAccountId(eligible[0].id);
     } else if (eligible.length === 0 && accountId !== "") {
       setAccountId("");
     }
-  }, [asset, eligible, accountId]);
+  }, [asset, eligible, accountId, selectionRequired]);
 
   async function requestQuote(e?: FormEvent<HTMLFormElement>) {
     e?.preventDefault();
@@ -313,6 +375,9 @@ export function Pay() {
   }
 
   async function reconcile(payment: PaymentListItem): Promise<void> {
+    if (activityAction.current || !paymentCanReconcile(payment)) return;
+    activityAction.current = true;
+    setRecoveryReview(null);
     setCheckingPaymentId(payment.id);
     setActivityNotice(null);
     try {
@@ -332,6 +397,27 @@ export function Pay() {
       setActivityNotice({ kind: "alert", text: `Base check unavailable: ${errorMessage(ex)}` });
     } finally {
       setCheckingPaymentId(null);
+      activityAction.current = false;
+    }
+  }
+
+  async function recover(review: PaymentRecoveryReview): Promise<void> {
+    if (activityAction.current || paymentsErr) return;
+    const selected = payments?.find(payment => payment.id === review.paymentId);
+    const current = selected ? paymentRecoveryReview(selected) : null;
+    if (!current || !samePaymentRecoveryReview(review, current)) return;
+    activityAction.current = true;
+    setRecoveringPaymentId(review.paymentId);
+    setActivityNotice(null);
+    try {
+      const result = await recoverReviewedPayment(review);
+      if (result.payments) setPayments(result.payments);
+      setPaymentsErr(result.reloadError);
+      setActivityNotice(result.notice);
+    } finally {
+      setRecoveryReview(null);
+      setRecoveringPaymentId(null);
+      activityAction.current = false;
     }
   }
 
@@ -349,13 +435,20 @@ export function Pay() {
       checkingId={checkingPaymentId}
       notice={activityNotice}
       onReconcile={(payment) => void reconcile(payment)}
+      recoveringId={recoveringPaymentId}
+      recoveryReview={recoveryReview}
+      onReviewRecovery={(payment) => {
+        if (!activityAction.current && !paymentsErr) setRecoveryReview(paymentRecoveryReview(payment));
+      }}
+      onCancelRecovery={() => setRecoveryReview(null)}
+      onRecover={(review) => void recover(review)}
     />
   );
 
   if (loadErr) {
     return (
       <div className="stagger">
-        <SectionTitle>Pay</SectionTitle>
+        <SectionTitle>Send money</SectionTitle>
         <EmptyState>{loadErr}</EmptyState>
         {activity}
       </div>
@@ -364,7 +457,7 @@ export function Pay() {
   if (!accounts) {
     return (
       <div className="stagger">
-        <SectionTitle>Pay</SectionTitle>
+        <SectionTitle>Send money</SectionTitle>
         <LoadingThreads />
         {activity}
       </div>
@@ -380,11 +473,11 @@ export function Pay() {
   if (!anyLiveSending) {
     return (
       <div className="stagger">
-        <SectionTitle>Pay</SectionTitle>
+        <SectionTitle>Send money</SectionTitle>
         <EmptyState>
-          Nothing here is an exact live sending position yet. Paying needs a
-          Base ETH, Base USDC, or Bitcoin mainnet account whose CAIP identity
-          and public address match its vault key. Add one under <strong>Accounts</strong>.
+          Set up a supported account before sending money. You can send Base ETH,
+          Base USDC or Bitcoin mainnet from an account matched to its vault key.
+          {onGoto && <div className="btn-row"><button className="btn btn-primary" onClick={() => onGoto("accounts")}>Set up a sending account</button></div>}
         </EmptyState>
         {activity}
       </div>
@@ -401,9 +494,9 @@ export function Pay() {
     const explorer = r.txHash ? explorerFor(asset, r.txHash) : null;
     return (
       <div className="stagger">
-        <SectionTitle>Pay</SectionTitle>
+        <SectionTitle>Send money</SectionTitle>
         <div className={`pay-result card ${ok ? "is-ok" : unknown ? "is-unknown" : "is-failed"}`}>
-          <h3>{ok ? "Woven." : unknown ? "The network didn't answer." : "The thread didn't take."}</h3>
+          <h3>{ok ? "Payment broadcast" : unknown ? "Payment status is uncertain" : "Payment failed"}</h3>
           {ok ? (
             <>
               <p className="pay-result-sub">
@@ -447,7 +540,7 @@ export function Pay() {
             </>
           )}
           <button className="btn btn-primary" onClick={reset}>
-            Weave another payment
+            Prepare another payment
           </button>
         </div>
         {activity}
@@ -476,7 +569,7 @@ export function Pay() {
 
     return (
       <div className="stagger">
-        <SectionTitle>Pay · read before you sign</SectionTitle>
+        <SectionTitle>Review your payment</SectionTitle>
         <div className="card pay-quote">
           <div className="disclosure">
             <span className="disclosure-label">The fee, disclosed</span>
@@ -557,7 +650,13 @@ export function Pay() {
   /* ── form ── */
   return (
     <div className="stagger">
-      <SectionTitle>Pay</SectionTitle>
+      <SectionTitle>Send money</SectionTitle>
+      <p className="journey-note">Prepare a supported wallet payment. You will review the recipient, amount and costs before you sign and send.</p>
+      {selectionRequired && <p role="status">The selected account cannot send here. Choose an eligible account to continue.</p>}
+      {onGoto && <div className="btn-row journey-actions">
+        <button className="link-btn" onClick={() => onGoto("accounts", accountId ? { accountId } : undefined)}>{eligible.length ? "View account and saved balances" : "Set up a sending account"}</button>
+        <button className="link-btn" onClick={() => onGoto("ledger", accountId ? { accountId } : undefined)}>Open activity</button>
+      </div>}
       <form className="card pay-form" onSubmit={(e) => void requestQuote(e)}>
         <Field
           label="From"
@@ -567,11 +666,12 @@ export function Pay() {
               : "Only an exact asset, chain, account-address and vault-key match appears here."
           }
         >
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <select value={accountId} onChange={(e) => { setAccountId(e.target.value); setSelectionRequired(false); }}>
+            {selectionRequired && eligible.length > 0 && <option value="">choose an account…</option>}
             {eligible.length === 0 && <option value="">no eligible account</option>}
             {eligible.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.display_name} · {formatMinor(a.balance_minor, a.decimals)} {a.currency} · {a.chain_id ?? "Bitcoin mainnet"}
+                {a.display_name} · {a.currency} · {a.chain_id ?? "Bitcoin mainnet"}
                 {isLegacyMappedBitcoinAccount(a) ? " · legacy mapped" : ""}
               </option>
             ))}
@@ -622,7 +722,7 @@ export function Pay() {
                   key={a}
                   type="button"
                   className={asset === a ? "is-active" : ""}
-                  onClick={() => setAsset(a)}
+                  onClick={() => { setAsset(a); setSelectionRequired(false); }}
                 >
                   {a}
                 </button>

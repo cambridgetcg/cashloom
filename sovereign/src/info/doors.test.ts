@@ -1,9 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import { mountInfoDoors } from "./doors";
 import { satPerVbTimes100, readFees, type FeeFetchers } from "./fees";
 import { resolveAsset, searchAssets } from "./assets";
 import type { getFxRate } from "./fx";
+import { mountWorldDoor } from "./world-door.ts";
+import { mountCapitalFlowsDoor } from "./capital-flows/door.ts";
+import { CAPITAL_FLOWS_MEDIA_TYPE, CAPITAL_FLOWS_SCHEMA, HISTORY_LIMIT } from "./capital-flows/model.ts";
 
 // All deps faked — no network anywhere in this file.
 
@@ -261,4 +265,93 @@ describe("/v1/guide", () => {
     expect(body.not_covered.join(" ")).toContain("prices");
     expect(body.rights.baseline).toBe("xenia.rights/0.1");
   });
+
+  it("describes scoped publisher histories, exact units and source-specific reuse evidence", async () => {
+    const body = await (await appWith({}).request("/v1/guide")).json();
+    expect(body.doors.capital_flows).toBe("/v1/capital-flows");
+    expect(body.capital_flows).toMatchObject({
+      api: "/v1/capital-flows",
+      media_type: CAPITAL_FLOWS_MEDIA_TYPE,
+      schema: CAPITAL_FLOWS_SCHEMA,
+      history: { policy: "latestRevisedPublisherHistoryNotVintageArchive", maximum_observations_per_series: HISTORY_LIMIT },
+    });
+    expect(body.capital_flows.human_route).toContain("INFO process serves JSON");
+    expect(body.capital_flows.scope.join(" ")).toContain("Grand Total 99996");
+    expect(body.capital_flows.scope.join(" ")).toContain("quarterly EUR millions");
+    expect(body.capital_flows.scope.join(" ")).toContain("Foreign purchases use _sale, foreign sales use _pur");
+    expect(body.capital_flows.scope.join(" ")).toContain("not pure secondary turnover");
+    expect(body.capital_flows.read_values).toContain("unitMultiplier");
+    expect(body.capital_flows.periods_and_receipts).toContain("nullable receipt.publicationAt");
+    expect(body.capital_flows.refresh).toContain("no capital fetch enters World's critical path");
+    expect(body.capital_flows.boundaries).toContain("No accounts, execution, alerts, continuous collector or archived vintages");
+    expect(body.capital_flows.boundaries).toContain("not a declared XENIA Surface resource");
+    const ecb = body.sources_ledger.find((source: any) => source.name === "ECB securities issuance and investment-fund statistics");
+    expect(ecb.license).toContain("available free of charge from the ECB");
+    expect(ecb.evidence_url).toBe("https://www.ecb.europa.eu/services/disclaimer/html/index.en.html");
+    const fiscal = body.sources_ledger.find((source: any) => source.name === "US Treasury Daily Treasury Statement cash debt totals");
+    expect(fiscal.evidence_url).toBe("https://fiscaldata.treasury.gov/api-documentation/");
+    const tic = body.sources_ledger.find((source: any) => source.name === "US Treasury TIC SLT aggregate securities transactions");
+    expect(tic.evidence_url).toBe("https://www.copyright.gov/title17/92chap1.html#105");
+    expect(tic.provenance_url).toBe("https://home.treasury.gov/data/treasury-international-capital-tic-system-home-page/tic-forms-instructions/tic-slt-form-and-instructions");
+    expect(tic.license).toContain("not blanket permission");
+  });
+});
+
+// Exercise only injected Hono reads: importing either real entrypoint would start
+// the INFO listener or initialize the local wallet database, outside this test.
+describe("capital-flow public route integration", () => {
+  it("mounts once in each entrypoint, before the local vault session gate", () => {
+    for (const file of ["../info-server.ts", "../index.ts"]) {
+      const source = readFileSync(new URL(file, import.meta.url), "utf-8");
+      expect(source.match(/mountCapitalFlowsDoor\(app\)/g)).toHaveLength(1);
+      expect(source).toContain('from "./info/capital-flows/door.ts"');
+      expect(source.indexOf("mountCapitalFlowsDoor(app)")).toBeGreaterThan(source.indexOf("mountWorldDoor(app)"));
+      if (file === "../index.ts") {
+        expect(source.indexOf("mountCapitalFlowsDoor(app)")).toBeLessThan(source.indexOf("session-gated API"));
+      }
+    }
+  });
+
+  it("serves World while a capital read is blocked, then after its sanitized failure", async () => {
+    const app = new Hono();
+    let failCapital!: (reason: Error) => void;
+    let started!: () => void;
+    const capitalStarted = new Promise<void>((resolve) => { started = resolve; });
+    const blocked = new Promise<never>((_, reject) => { failCapital = reject; });
+    const capitalRead = vi.fn(() => { started(); return blocked; });
+    const cache = mountCapitalFlowsDoor(app, { cache: {
+      read: capitalRead,
+      waitForIdle: async () => {},
+      dispose: () => { failCapital(new Error("injected capital failure")); },
+    } });
+    const unavailable = async (): Promise<never> => { throw new Error("fixture unavailable"); };
+    mountWorldDoor(app, {
+      macro: unavailable, announcements: unavailable, cash: unavailable, price: unavailable,
+      fxRate: fakeFx, fees: async () => ({ facts: [], failed: [] }),
+      now: () => new Date("2026-07-22T12:00:00.000Z"),
+    });
+    let capitalSettled = false;
+    const capital = Promise.resolve(app.request("/v1/capital-flows")).then((response) => {
+      capitalSettled = true;
+      return response;
+    });
+    try {
+      await capitalStarted;
+      const world = await app.request("/v1/world");
+      expect(world.status).toBe(200);
+      expect((await world.json()).schema).toBe("cashloom.world/1");
+      expect(capitalSettled).toBe(false);
+      expect(capitalRead).toHaveBeenCalledOnce();
+      failCapital(new Error("injected capital failure"));
+      const failure = await capital;
+      expect(failure.status).toBe(503);
+      expect(await failure.text()).not.toContain("injected capital failure");
+      const unchanged = await app.request("/v1/world", { headers: { "If-None-Match": world.headers.get("ETag")! } });
+      expect(unchanged.status).toBe(304);
+      expect(capitalRead).toHaveBeenCalledOnce();
+    } finally {
+      cache.dispose();
+      await capital;
+    }
+  }, 1_000);
 });

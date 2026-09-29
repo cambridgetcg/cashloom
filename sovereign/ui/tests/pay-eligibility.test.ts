@@ -245,6 +245,10 @@ const fixtures: EligibilityFixture[] = [
 ];
 
 describe("Wallet Kernel Pay account eligibility", () => {
+  test("refuses unsupported runtime assets before looking up a live identity", () => {
+    expect(isLiveSendingAccount(account({ currency: "SOL" }), "SOL", keyMap(EVM_KEY))).toBe(false);
+    expect(isLiveSendingAccount(account(), "constructor", keyMap(EVM_KEY))).toBe(false);
+  });
   for (const fixture of fixtures) {
     test(fixture.name, () => {
       expect(

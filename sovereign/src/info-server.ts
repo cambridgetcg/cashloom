@@ -25,6 +25,7 @@ import { mountWorldDoor } from "./info/world-door.ts";
 import { mountCashRatesDoor } from "./info/cash-rates.ts";
 import { mountFedAnnouncementsDoor } from "./info/fed-announcements.ts";
 import { mountOnchainDoor } from "./info/blockchain/door.ts";
+import { mountCapitalFlowsDoor } from "./info/capital-flows/door.ts";
 import {
   CASHLOOM_PUBLIC_ORIGIN_HEADER,
   CASHLOOM_WORLD_SOURCE_URL,
@@ -121,6 +122,7 @@ mountCashRatesDoor(app);
 mountFedAnnouncementsDoor(app);
 mountWorldDoor(app);
 mountOnchainDoor(app);
+mountCapitalFlowsDoor(app); // independent publisher histories; never part of World's fan-out
 mountZeroneTruth(app);
 
 /* ------------------------------- the rights ------------------------------- */

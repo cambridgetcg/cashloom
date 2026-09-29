@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useId, useState, type ReactNode } from "react";
 import { formatMinor, isNegativeMinor } from "./format";
 import { onToast, type ToastMsg } from "./toast";
 
@@ -126,12 +126,27 @@ export function Field({
   hint?: ReactNode;
   children: ReactNode;
 }) {
+  const id = useId();
+  const labelId = `${id}-label`;
+  const hintId = `${id}-hint`;
+  let firstControl: string | undefined;
+  const controls = Children.map(children, (child, index) => {
+    if (!isValidElement<{ id?: string; "aria-describedby"?: string }>(child)
+      || typeof child.type !== "string" || !["input", "select", "textarea"].includes(child.type)) return child;
+    const controlId = child.props.id ?? `${id}-${index}`;
+    firstControl ??= controlId;
+    return cloneElement(child, {
+      id: controlId,
+      "aria-describedby": [child.props["aria-describedby"], hint ? hintId : undefined].filter(Boolean).join(" ") || undefined,
+    });
+  });
   return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      {children}
-      {hint && <span className="field-hint">{hint}</span>}
-    </label>
+    <div className="field" role={firstControl ? undefined : "group"} aria-labelledby={firstControl ? undefined : labelId}>
+      {firstControl ? <label className="field-label" id={labelId} htmlFor={firstControl}>{label}</label>
+        : <span className="field-label" id={labelId}>{label}</span>}
+      {controls}
+      {hint && <span className="field-hint" id={hintId}>{hint}</span>}
+    </div>
   );
 }
 
@@ -168,29 +183,10 @@ export function SectionTitle({
   );
 }
 
-/* ── The weave mark ───────────────────────────────────────────────
-   Three warp threads, three weft threads, over-under like a real loom.
-   Gaps in each stroke are where the other thread passes over. */
+/* Shared service brand; the export name preserves existing callers. */
 export function WeaveMark({ size = 40 }: { size?: number }) {
-  return (
-    <svg
-      className="weave-mark"
-      width={size}
-      height={size}
-      viewBox="0 0 56 56"
-      fill="none"
-      aria-hidden="true"
-    >
-      {/* warp (vertical, gold) */}
-      <path d="M16 8v4M16 20v16M16 44v4" stroke="var(--gold)" strokeWidth="3" strokeLinecap="round" />
-      <path d="M28 8v16M28 32v16" stroke="var(--gold)" strokeWidth="3" strokeLinecap="round" />
-      <path d="M40 8v4M40 20v16M40 44v4" stroke="var(--gold)" strokeWidth="3" strokeLinecap="round" />
-      {/* weft (horizontal, ember) */}
-      <path d="M8 16h16M32 16h16" stroke="var(--ember)" strokeWidth="3" strokeLinecap="round" />
-      <path d="M8 28h4M20 28h16M44 28h4" stroke="var(--ember)" strokeWidth="3" strokeLinecap="round" />
-      <path d="M8 40h16M32 40h16" stroke="var(--ember)" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
+  return <span className="cashloom-brand-mark weave-mark" aria-hidden="true"
+    style={{ width: size, height: size, fontSize: size * 1.125, borderRadius: size * 0.28 }}>c</span>;
 }
 
 /* ── Toasts ───────────────────────────────────────────────────────── */

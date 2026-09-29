@@ -1,3 +1,50 @@
+// Trades share the backend's canonical DTOs, but never its runtime modules.
+export type {
+  AgreementTerms, AgreementRevision, AgreementTotals, TradeRecord,
+  TradeEvidence, EvidenceInput, ActivityEvent as TradeActivityEvent,
+  EventPage as TradeEventPage,
+} from "../../src/tcg/domain";
+export type { SimulationRun, SimulationCommand } from "../../src/tcg/simulation";
+export type { ReadAccountView, ReadConnectionView, TransferCandidate, TransferLink, TransferRecord } from "../../src/connect/contracts";
+
+export interface PlaidItem {
+  id: string;
+  label: string;
+  state: "setup_pending" | "connected" | "reconnect_required" | "disconnect_pending" | "disconnected";
+  account_count: number;
+  last_synced_at: string | null;
+  error_code: string | null;
+}
+export interface ConnectionsResponse {
+  schema_version: string;
+  generated_at: string;
+  can_manage?: boolean;
+  sources: import("../../src/connect/contracts").ReadConnectionView[];
+  plaid: { environment: "sandbox"; configured: boolean; items: PlaidItem[] };
+}
+export interface PlaidLinkStart {
+  attempt_id: string;
+  link_token: string;
+  expires_at: string;
+  environment: "sandbox";
+}
+export interface ImportPreview {
+  preview_hash: string;
+  account_id: string;
+  currency: string;
+  decimals: number;
+  rows: Array<{ row_id: string; external_id: string; distinct_reference: string | null; matched_existing: boolean; already_recorded: boolean; date: string; title: string; amount_minor: string; currency: string; category?: string | null }>;
+  distinct_rows: DistinctImportRow[];
+  row_count: number;
+  duplicate_count: number;
+}
+export interface DistinctImportRow { row_id: string; reference: string }
+
+export interface TradeMutation {
+  idempotencyKey: string;
+  expectedVersion: number;
+}
+
 export interface Meta {
   name: string;
   mode: string;
@@ -95,6 +142,14 @@ export interface Account {
   decimals: number;
   balance_minor: string;
   balance_as_of: string | null;
+  available_minor?: string | null;
+  pending_minor?: string | null;
+  held_minor?: string | null;
+  balance_kind?: string;
+  read_connection_id?: string | null;
+  read_connection_status?: "active" | "reconnect_required" | "disconnected" | "error" | null;
+  read_environment?: "sandbox" | "live" | "local";
+  account_type?: string | null;
   external_account_id: string | null;
   chain_id: Caip2ChainId | null;
   asset_id: Caip19AssetId | null;
@@ -228,6 +283,8 @@ export interface Tx {
   date: string;
   source: string;
   created_at: string;
+  status?: "pending" | "posted" | "removed";
+  transfer_link_id?: string | null;
 }
 
 export interface SummaryRow {

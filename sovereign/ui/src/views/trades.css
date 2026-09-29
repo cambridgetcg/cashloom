@@ -1,0 +1,56 @@
+.trades-view { min-width: 0; overflow-wrap: anywhere; }
+.trades-view > .card, .trades-view > section, .trades-view > form { margin-top: 20px; }
+.trades-view h3 { margin-bottom: 12px; }
+.trades-view h4 { margin: 16px 0 8px; font-size: 16px; }
+.trades-view p { margin: 10px 0; }
+.trades-view code, .trades-view pre { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+.trades-view pre { font-size: 12px; max-height: 320px; overflow: auto; padding: 12px; background: var(--cl-bg); border-radius: 6px; }
+.trades-view .trade-notice { padding: 12px 16px; margin: 0 0 16px; border: 1px solid var(--cl-border-strong); border-left: 4px solid var(--cl-info); border-radius: var(--cl-radius-sm); background: var(--cl-info-soft); color: var(--cl-info); }
+.trades-view .trade-notice.is-simulation { border-style: dashed; border-left-style: solid; }
+.trades-view .trade-notice.is-simulation { background: var(--cl-warning-soft); border-left-color: var(--cl-warning); color: var(--cl-warning); }
+.trades-view > .trade-notice { position: sticky; top: 82px; z-index: 10; }
+.trades-view .trade-warning { padding: 12px 16px; border: 1px solid var(--cl-border-strong); border-radius: var(--cl-radius-sm); color: var(--cl-warning); background: var(--cl-warning-soft); }
+.trades-view .trade-muted, .trades-view .field-hint { color: var(--cl-muted); font-size: 13px; }
+.trades-view .trade-toolbar { margin-bottom: 20px; }
+.trades-view .trade-list { list-style: none; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.trades-view .trade-list h4 { margin: 8px 0; }
+.trades-view .trade-list .btn { text-align: left; max-width: 100%; overflow-wrap: anywhere; }
+.trades-view .trade-details { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 3fr); gap: 10px 20px; }
+.trades-view .trade-detail-pair { display: contents; }
+.trades-view dt { color: var(--cl-muted); }
+.trades-view dd { margin: 0; min-width: 0; white-space: pre-wrap; }
+.trades-view dd ul { margin: 0; padding-left: 18px; }
+.trades-view .trade-items, .trades-view .trade-evidence, .trades-view .trade-history { padding-left: 24px; }
+.trades-view .trade-items > li, .trades-view .trade-evidence > li, .trades-view .trade-history > li { padding: 12px 0; border-bottom: 1px solid var(--cl-border); }
+.trades-view .trade-plain { white-space: pre-wrap; }
+.trades-view .trade-total { border-top: 1px solid var(--cl-border); padding-top: 16px; }
+.trades-view .trade-actions { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.trades-view .trade-actions > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.trades-view .trade-actions span { color: var(--cl-muted); font-size: 12px; }
+.trades-view .trade-operation { border: 1px solid var(--cl-primary); border-radius: 6px; padding: 12px 16px; }
+.trades-view fieldset { border: 1px solid var(--cl-border); border-radius: 7px; padding: 18px; margin: 16px 0; min-width: 0; }
+.trades-view legend { font-weight: 600; color: var(--cl-text); padding: 0 8px; }
+.trades-view fieldset:disabled { opacity: 0.7; }
+.trades-view .field-row .field { min-width: min(180px, 100%); }
+.trades-view textarea { resize: vertical; }
+.trades-view textarea:focus { outline: 2px solid var(--cl-primary); outline-offset: 2px; }
+.trades-view input, .trades-view select, .trades-view textarea { min-height: 44px; }
+.trades-view button { min-height: 44px; white-space: normal; }
+.trades-view button:focus-visible, .trades-view summary:focus-visible { outline: 2px solid var(--cl-primary-hover); outline-offset: 3px; }
+.trades-view details { padding: 12px 0; }
+.trades-view summary { cursor: pointer; min-height: 44px; padding: 10px 2px; color: var(--cl-primary-hover); }
+.trades-view .trade-metadata { margin-top: 18px; }
+.trades-view .trade-metadata-row { border-left: 2px solid var(--cl-border); padding: 12px; margin: 12px 0; }
+@media (max-width: 900px) {
+  .trades-view > .trade-notice { position: static; }
+}
+@media (max-width: 560px) {
+  .trades-view .card { padding: 16px 14px; }
+  .trades-view fieldset { padding: 12px; }
+  .trades-view .trade-details { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .trades-view dd { margin-bottom: 12px; }
+  .trades-view .trade-actions, .trades-view .trade-actions > div { width: 100%; }
+  .trades-view .trade-actions button { width: 100%; }
+  .trades-view .field-row { gap: 0; }
+  .trades-view .field-row .field { flex-basis: 100%; }
+}

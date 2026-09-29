@@ -29,9 +29,9 @@ export default function HowWeBuild() {
       <footer className="colophon">
         <p className="colophon__line">{PHILOSOPHY.line}</p>
         <p className="colophon__meta">
-          {PHILOSOPHY.name} · the reference implementation · non-custodial,
-          local-first, no operator on the other end. Everything you just read is
-          the actual source — run it, read it, fork it, or write your own.
+          {PHILOSOPHY.name} · local workspace developer pilot. Selected source
+          modules are included here for inspection. Installation requires private
+          repository access; the public planner and insights work in this browser.
         </p>
       </footer>
     </section>

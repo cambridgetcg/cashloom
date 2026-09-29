@@ -29,6 +29,7 @@ import {
 import { MONEYFACT_MEDIA_TYPE } from "./money-fact.ts";
 import { WORLD_BASE_CURRENCIES, WORLD_MEDIA_TYPE } from "./world-door.ts";
 import { ONCHAIN_MEDIA_TYPE, ONCHAIN_SECTION_MEDIA_TYPE } from "./blockchain/model.ts";
+import { CAPITAL_FLOWS_MEDIA_TYPE, CAPITAL_FLOWS_SCHEMA, HISTORY_LIMIT } from "./capital-flows/model.ts";
 
 export const CASHLOOM_API_ORIGIN = "https://cashloom-api.fly.dev";
 export const CASHLOOM_WEBSITE_ORIGIN = "https://cashloom.io";
@@ -258,6 +259,22 @@ export function cashLoomOrientation(
         },
       },
       {
+        id: "capital-flows.snapshot",
+        ...readAction,
+        href: url("/v1/capital-flows"),
+        href_template: url("/v1/capital-flows"),
+        input: { location: "none", parameters: [] },
+        response: {
+          media_type: CAPITAL_FLOWS_MEDIA_TYPE,
+          schema: { id: CAPITAL_FLOWS_SCHEMA, version_field: "schema" },
+          freshness: "generatedAt is assembly time. Inspect series[].history[].period, receipt.retrievedAt and receipt.publicationAt (nullable); sources[].lastSuccessAt is validation time, not the reporting period. series[].reportingRecency remains expectation_unknown: no publication schedule is inferred.",
+          amounts: "series[].definition names metricKind, perspective, signConvention, geography, valuation and unit. history[].value is nullable; raw × 10^-decimals is the exact native-unit decimal, then unitMultiplier gives currency units. Preserve currency, unitExponent and publisherLexeme; never total incompatible scopes or convert history with today's FX.",
+          history: { policy: "latestRevisedPublisherHistoryNotVintageArchive", maximum_observations_per_series: HISTORY_LIMIT },
+          cache: "Independent, bounded RAM cache with on-demand single-flight refresh, ETag and conditional GET/HEAD. Cache-Control requires revalidation; cold reads wait at most one second, then can return refreshing/partial data. Respect sources[].nextAttemptAt; manual reads cannot bypass cadence/backoff. Last-good fallback expires at sources[].fallbackExpiresAt, at most seven days after validation; restart clears RAM. No continuous collector or alerts.",
+          partial: "Inspect refresh.state, refresh.health, sources[].retrievalState, series[].state, coverage and limitations. refresh.launchReadiness is notAssessed, not a coverage certification. history[].status distinguishes missing/suppressed/notYetReported/withdrawn from observed zero; rightsWithheld series contain no numeric history. This route is outside the three declared Surface resources.",
+        },
+      },
+      {
         id: "onchain.snapshot",
         ...readAction,
         href: url("/v1/onchain"),
@@ -356,12 +373,14 @@ export function cashLoomOrientation(
         : "The local sovereign process has separate owner-controlled vault/write capabilities, but the declared and orientation-listed public GET handlers do not access keys, construct transactions, or broadcast transactions.",
       "Amounts intended for arithmetic use integer strings and explicit decimal scales; display strings are not execution inputs.",
       "Source failure, staleness, and partial coverage are disclosed rather than filled with estimates.",
+      "Capital flows separate issuer financing, cross-border securities transactions and fund-share transactions. Holdings changes, prices and trading turnover are not interchangeable with net flows; overlapping measures are never a global total.",
       "Onchain pool rows are selected contract-state observations, not TVL, volume, APY, safety, or route recommendations.",
       "Cross-source threads describe possible channels and limits; they do not prove causation or provide investment advice.",
       "Legacy routes outside Surface resources do not yet share one universal content-negotiation or problem contract.",
     ],
     next_actions: [
       { rel: "read_world", href: url("/v1/world"), method: "GET", accept: WORLD_MEDIA_TYPE },
+      { rel: "read_capital_flows", href: url("/v1/capital-flows"), method: "GET", accept: CAPITAL_FLOWS_MEDIA_TYPE },
       { rel: "read_onchain", href: url("/v1/onchain"), method: "GET", accept: ONCHAIN_MEDIA_TYPE },
       { rel: "read_rights", href: url("/v1/rights"), method: "GET", accept: "application/json" },
       { rel: "read_data_practices", href: url("/v1/data-practices"), method: "GET", accept: "application/json" },
@@ -460,6 +479,11 @@ export function cashLoomDataPractices(
             : "The local process contains separate owner-controlled database, vault, payment, and sender routes. They are outside the declared Surface; this disclosure makes no process-wide no-custody or no-persistence claim.",
       },
       other_public_read_routes: {
+        capital_flows: {
+          inputs: "No account, wallet, or user-selected upstream identifier; interface filters operate locally on the selected public series.",
+          persistence: "Bounded source snapshots and latest-revised publisher histories in process memory only, with at most seven days of failed-refresh fallback. A process restart loses them; no continuous collector or alert service.",
+          browser_storage: "The Capital flows interface adds no application-level persistent snapshot or preference storage; ordinary browser and HTTP caching remain separate layers.",
+        },
         path_and_query_inputs: "Some routes accept currencies, asset names, public chain addresses, holdings, or chain selectors.",
         upstream_disclosure:
           "A route may send a public identifier or selected query to the source named in its response; source and method fields should be inspected before supplying an input.",

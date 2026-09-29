@@ -8,19 +8,26 @@
  */
 
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { installWalletKernelSchema } from "./wallet/infrastructure/sqlite/schema.ts";
+import { installTradeSchema } from "./tcg/schema.ts";
+import { installConnectSchema } from "./connect/schema.ts";
+import { installPlaidSchema } from "./connect/plaid-schema.ts";
 
 const dataDir = process.env.CASHLOOM_DATA_DIR ?? join(homedir(), ".cashloom");
-mkdirSync(dataDir, { recursive: true });
+// New data directories and database files are owner-only. Do not chmod an
+// existing user-selected parent directory, which may hold unrelated files.
+mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 
 export const DB_PATH = join(dataDir, "sovereign.db");
 
 export const db = new Database(DB_PATH, { create: true });
+chmodSync(DB_PATH, 0o600);
 
-// WAL: safe concurrent reads while a sync writes; still a single local file.
+// WAL permits concurrent readers and uses companion files while open. Use the
+// local-data snapshot command rather than copying only sovereign.db.
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
 // A second process on the same file (a stray dev node) must make writers
@@ -123,5 +130,11 @@ for (const column of ["chain_id", "asset_id", "account_ref"] as const) {
 // Wallet Kernel v2 is additive and migration-transactional. Installing here
 // makes database shape independent of which application route imports first.
 installWalletKernelSchema(db);
+// Trade records hold claims only. Simulated money lives in a separate database.
+installTradeSchema(db);
+// Read observations extend the existing accounts/activity records. Provider
+// tokens live in a separate sealed table and are never account attributes.
+installConnectSchema(db);
+installPlaidSchema(db);
 
 export const newId = (): string => crypto.randomUUID();

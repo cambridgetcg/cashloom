@@ -48,6 +48,113 @@ describe("CashLoom Pages public threshold", () => {
     expect(response.headers.get("X-CashLoom-Edge")).toBe("cashloom.io-read-proxy");
   });
 
+  it.each(["GET", "HEAD"])("preserves capital-flow conditional %s responses without forwarding credentials", async (method) => {
+    const etag = 'W/"capital-flows-fixture"';
+    const upstream = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      expect(String(input)).toBe("https://cashloom-api.fly.dev/v1/capital-flows");
+      expect(init?.method).toBe(method);
+      expect(init?.body).toBeUndefined();
+      expect(init?.redirect).toBe("manual");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Accept")).toBe("application/vnd.cashloom.capital-flows.v1+json");
+      expect(headers.get("If-None-Match")).toBe(etag);
+      expect(headers.get("If-Modified-Since")).toBe("Tue, 08 Sep 2026 12:00:00 GMT");
+      expect(headers.get("X-CashLoom-Public-Origin")).toBe("https://cashloom.io");
+      expect(headers.get("Authorization")).toBeNull();
+      expect(headers.get("Cookie")).toBeNull();
+      return new Response(null, { status: 304, headers: {
+        ETag: etag, "Cache-Control": "public, max-age=0, must-revalidate",
+        Vary: "Accept", "X-CashLoom-Cache": "current", "Set-Cookie": "not-for-client=1",
+      } });
+    });
+    const next = vi.fn(async () => new Response("unexpected spa"));
+    const response = await onRequest(context(new Request("https://cashloom.io/v1/capital-flows", {
+      method, headers: {
+        Accept: "application/vnd.cashloom.capital-flows.v1+json", "If-None-Match": etag,
+        "If-Modified-Since": "Tue, 08 Sep 2026 12:00:00 GMT",
+        Authorization: "Bearer test-only", Cookie: "test-only=1", "X-CashLoom-Public-Origin": "https://untrusted.example",
+      },
+    }), next));
+    expect(upstream).toHaveBeenCalledOnce();
+    expect(next).not.toHaveBeenCalled();
+    expect(response.status).toBe(304);
+    expect(response.headers.get("ETag")).toBe(etag);
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=0, must-revalidate");
+    expect(response.headers.get("Vary")).toBe("Accept");
+    expect(response.headers.get("X-CashLoom-Cache")).toBe("current");
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    expect(await response.text()).toBe("");
+  });
+
+  it("returns a bodyless capital-flow HEAD while retaining delivery headers", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("upstream body must not reach a HEAD caller", {
+      status: 200, headers: {
+        "Content-Type": "application/vnd.cashloom.capital-flows.v1+json", ETag: 'W/"capital-head"',
+        "Cache-Control": "public, max-age=0, must-revalidate", Age: "4", "X-CashLoom-Cache": "fallback",
+        "Content-Length": "999", "Set-Cookie": "not-for-client=1",
+      },
+    }));
+    const response = await onRequest(context(new Request("https://cashloom.io/v1/capital-flows", { method: "HEAD" })));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/vnd.cashloom.capital-flows.v1+json");
+    expect(response.headers.get("ETag")).toBe('W/"capital-head"');
+    expect(response.headers.get("Age")).toBe("4");
+    expect(response.headers.get("X-CashLoom-Cache")).toBe("fallback");
+    expect(response.headers.get("Content-Length")).toBeNull();
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    expect(await response.text()).toBe("");
+  });
+
+  it("forwards capital-flow OPTIONS preflight without a body or credentials", async () => {
+    const upstream = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      expect(String(input)).toBe("https://cashloom-api.fly.dev/v1/capital-flows");
+      expect(init?.method).toBe("OPTIONS");
+      expect(init?.body).toBeUndefined();
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Origin")).toBe("https://cashloom.io");
+      expect(headers.get("Access-Control-Request-Method")).toBe("HEAD");
+      expect(headers.get("Access-Control-Request-Headers")).toBe("if-none-match");
+      expect(headers.get("Authorization")).toBeNull();
+      expect(headers.get("Cookie")).toBeNull();
+      return new Response(null, { status: 204, headers: { "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS" } });
+    });
+    const response = await onRequest(context(new Request("https://cashloom.io/v1/capital-flows", {
+      method: "OPTIONS", headers: {
+        Origin: "https://cashloom.io", "Access-Control-Request-Method": "HEAD",
+        "Access-Control-Request-Headers": "if-none-match", Authorization: "Bearer test-only", Cookie: "test-only=1",
+      },
+    })));
+    expect(upstream).toHaveBeenCalledOnce();
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, HEAD, OPTIONS");
+    expect(await response.text()).toBe("");
+  });
+
+  it.each(["POST", "PUT", "PATCH", "DELETE"])("refuses capital-flow %s before proxy or human fallback", async (method) => {
+    const upstream = vi.spyOn(globalThis, "fetch");
+    const next = vi.fn(async () => new Response("unexpected spa"));
+    const response = await onRequest(context(new Request("https://cashloom.io/v1/capital-flows", {
+      method, body: "{}",
+    }), next));
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
+    expect(await response.json()).toMatchObject({ code: "method_not_allowed", retryable: false });
+    expect(upstream).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it.each(["/capital-flows", "/capital-flows/"])("leaves human capital route %s to Pages without starting an API read", async (path) => {
+    const upstream = vi.spyOn(globalThis, "fetch");
+    const next = vi.fn(async () => new Response("capital route spa", { headers: { "Content-Type": "text/html" } }));
+    const response = await onRequest(context(new Request(`https://cashloom.io${path}`, {
+      headers: { Accept: "text/html" },
+    }), next));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("capital route spa");
+    expect(next).toHaveBeenCalledOnce();
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it("redirects www to the canonical apex without proxying", async () => {
     const upstream = vi.spyOn(globalThis, "fetch");
     const response = await onRequest(context(new Request(

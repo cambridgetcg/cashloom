@@ -47,6 +47,7 @@ const balanceFixture = {
     { amount: 54321, currency: "jpy", source_types: { card: 54321 } },
   ],
   livemode: false,
+  connect_reserved: null,
   pending: [
     { amount: -2500, currency: "usd", source_types: { card: -2500 } },
     { amount: 679, currency: "jpy", source_types: { card: 679 } },
@@ -57,6 +58,9 @@ const balanceTxn = (
   overrides: Partial<{
     id: string;
     amount: number;
+    fee: number;
+    net: number;
+    status: string;
     created: number;
     currency: string;
     description: string | null;
@@ -99,6 +103,8 @@ const txnPage1 = {
     balanceTxn({
       id: "txn_FAKE0000000000000002",
       amount: -50000,
+      fee: 0,
+      net: -50000,
       created: 1749500000,
       description: null,
       reporting_category: "payout",
@@ -116,6 +122,8 @@ const txnPage2 = {
     balanceTxn({
       id: "txn_FAKE0000000000000003",
       amount: 700,
+      fee: 0,
+      net: 700,
       created: 1749400000,
       currency: "jpy",
       description: "JPY card charge",
@@ -159,6 +167,11 @@ describe("fetchBalance", () => {
     const balance = await createStripeConnector("USD").fetchBalance(ctx);
 
     expect(balance.balanceMinor).toBe("122500"); // 125000 - 2500; EUR/JPY ignored
+    expect(balance.availableMinor).toBe("125000");
+    expect(balance.pendingMinor).toBe("-2500");
+    expect(balance.heldMinor).toBeNull();
+    expect(balance.balanceKind).toBe("total");
+    expect(balance.environment).toBe("sandbox");
     expect(balance.currency).toBe("USD");
     expect(balance.decimals).toBe(2);
     expect(balance.asOf).toBeInstanceOf(Date);
@@ -247,7 +260,11 @@ describe("fetchTransactions", () => {
     expect(txns[0]).toMatchObject({
       externalId: "txn_FAKE0000000000000001",
       title: "Subscription payment — Acme Co",
-      amountMinor: "10000",
+      amountMinor: "9680",
+      grossMinor: "10000",
+      feeMinor: "320",
+      netMinor: "9680",
+      status: "posted",
       currency: "USD",
     });
     expect(txns[0].date).toEqual(new Date(1749590000 * 1000));
@@ -305,6 +322,18 @@ describe("fetchTransactions", () => {
       since
     );
     expect(txns).toEqual([]);
+  });
+
+  it("keeps pending net effects out of posted flows", async () => {
+    mockedGet.mockResolvedValueOnce(stripeResponse(200, { data: [balanceTxn({ status: "pending" })], has_more: false }));
+    expect((await createStripeConnector("USD").fetchTransactions(ctx, since))[0]).toMatchObject({ status: "pending", amountMinor: "9680", grossMinor: "10000", feeMinor: "320" });
+  });
+
+  it("rejects inconsistent fee math and amounts outside safe integer precision", async () => {
+    mockedGet.mockResolvedValueOnce(stripeResponse(200, { data: [balanceTxn({ net: 10000 })], has_more: false }));
+    await expect(createStripeConnector("USD").fetchTransactions(ctx, since)).rejects.toThrow(/do not reconcile/);
+    mockedGet.mockResolvedValueOnce(stripeResponse(200, { data: [balanceTxn({ amount: Number.MAX_SAFE_INTEGER + 1 })], has_more: false }));
+    await expect(createStripeConnector("USD").fetchTransactions(ctx, since)).rejects.toThrow(/unsafe/);
   });
 });
 

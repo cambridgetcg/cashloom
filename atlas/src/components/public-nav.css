@@ -1,0 +1,67 @@
+/* Shared destinations use native links and a keyboard-accessible disclosure. */
+.public-nav {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  color: var(--cl-muted);
+}
+.public-nav ul { margin: 0; padding: 0; list-style: none; }
+.public-nav__main {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+.public-nav li { min-width: 0; }
+.public-nav a, .public-nav summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  min-height: 44px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--cl-radius-sm);
+  color: inherit;
+  font: 550 13px/1.3 var(--cl-font-body);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.public-nav summary { list-style: none; }
+.public-nav summary::-webkit-details-marker { display: none; }
+.public-nav summary span { transition: transform .15s ease; }
+.public-nav details[open] summary span { transform: rotate(180deg); }
+.public-nav a:hover, .public-nav summary:hover {
+  color: var(--cl-primary);
+  background: var(--cl-surface-soft);
+}
+.public-nav a[aria-current="page"], .public-nav summary.is-current {
+  color: var(--cl-primary);
+  border-color: var(--cl-border-strong);
+  background: var(--cl-surface-soft);
+}
+.public-nav a:focus-visible, .public-nav summary:focus-visible {
+  outline: 2px solid var(--cl-focus);
+  outline-offset: -2px;
+}
+.public-nav__insights {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  padding-top: .25rem !important;
+}
+.public-nav__insights a { font-size: 12px; min-height: 44px; }
+@media (max-width: 700px) {
+  .public-nav__main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .public-nav a, .public-nav summary { padding-inline: .3rem; font-size: 12px; }
+  .public-nav__more { grid-column: 1 / -1; }
+  .public-nav__insights { flex-direction: row; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-nav summary span { transition: none; }
+}
+@media (forced-colors: active) {
+  .public-nav a[aria-current="page"], .public-nav summary.is-current { border-color: LinkText; }
+}

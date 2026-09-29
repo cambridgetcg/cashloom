@@ -1,0 +1,40 @@
+# US source fixture attribution and selection
+
+## TIC Table 4
+
+`tic-table4-grand-total.excerpt.txt` is a **selected excerpt, not a raw HTTP response**. Source: U.S. Department of the Treasury, Treasury International Capital (TIC), Form SLT Table 4, [publisher TSV](https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table4.txt).
+
+Original preamble and machine header, every Grand Total (`country_code=99996`) row, and original definitions/footnotes are retained unchanged; all other country/region/memo data rows are omitted. The retained source had 4,305 data rows and 105 codes; this excerpt has 41 rows, February 2023–June 2026. Its SHA-256 is `249511d0b3e818d1cd0e778d376754386599500a104aed3504be616138719ecd`. Tests explicitly synthesize additional/error records; these are not new publisher facts. Runtime reads the complete bounded table and charges all parsed rows before selecting at most the latest 24 complete published months. Fixtures do not prove live availability.
+
+Units are USD millions. `_sale` means US sales to foreign entities, hence **foreign purchases**; `_pur` means US purchases from foreign entities, hence **foreign sales**. June 2026 exact differences: Treasury bonds/notes `3853609 - 3846831 = 6778`; corporate/other bonds `389816 - 354183 = 35633`; corporate equities `6815219 - 6633793 = 181426`. Bills and overlapping countries/memos are not summed or included. `n.a.` is missing; `-0` is numerical zero with its original lexeme retained.
+
+[Official SLT instructions](https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/sltinstr-2022nov.pdf) establish settlement-date accounting at original settlement cost (US purchases include expenses, US sales net charges; settlement-day closing spot FX), not end-month revaluation. Transactions include primary issues/redemptions and asset-backed principal payments, not only secondary trades. February 2023 is a methodology break; revisions are possible. Seasonal adjustment, exact publication/revision schedules, and publication timestamps are unknown. Test retrieval times and Last-Modified headers are synthetic transport inputs, never publisher publication facts.
+
+Reuse basis is scoped public-government-statistics treatment under [17 USC 105 and the official-duty definition in 101](https://www.copyright.gov/title17/92chap1.html#105), supported by official Treasury/FRBNY/Federal Reserve SLT aggregate-reporting provenance and fiscal-agent roles. No restriction was identified for these Table 4 numerical aggregates. This is not an affirmative invented licence or blanket permission for material hosted by government: third-party material, transferred copyright, confidential respondent reports, and marks are outside this basis. No Treasury endorsement is implied. CashLoom modifications are selection, foreign-perspective relabeling, exact net calculation, and normalized period/value presentation.
+
+## Daily Treasury Statement
+
+`us-dts-cash-debt.excerpt.json` is the previously retained **four-row selected excerpt, not a native paginated API envelope**. It has no native `meta`/`links`; its top-level `dataFormats`, selection URL, date-only retrieval annotation and source count describe the prior extraction, not runtime pagination or an exact publication timestamp. Source: U.S. Department of the Treasury, FiscalData, Daily Treasury Statement, [Table II operating cash deposits/withdrawals endpoint](https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash).
+
+Selection matches `table_nbr=II`, `Deposits / Public Debt Cash Issues (Table IIIB)` and `Withdrawals / Public Debt Cash Redemp. (Table IIIB)` by type/category, **not source line numbers**. Use daily `transaction_today_amt` in USD millions only. September 4, 2026: `1376 - 13877 = -12501`; September 8: `265484 - 291506 = -26022`. Month-to-date/fiscal-year-to-date columns are not daily flows. Published Table II cash totals must not be replaced by summed Table IIIA detail or rounded Table IIIB components. Positive net means cash into the Treasury General Account, not debt-stock growth, foreign financing or fiscal/tax receipts.
+
+[FiscalData API reuse documentation](https://fiscaldata.treasury.gov/api-documentation/) permits copying, adapting and redistributing for commercial and noncommercial purposes. Attribute U.S. Department of the Treasury/FiscalData; no endorsement implied.
+
+**Verified rolling contract:** the old category `in:(...)` query with parenthesized category names returned zero rows. The replacement uses two fixed resources, each with `transaction_catg:eq:<exact category>,transaction_type:eq:<matching Deposits/Withdrawals>,table_nbr:eq:II`, explicit fields, `sort=-record_date` and `page[size]=60`. Exact verified URLs (including `%20` and encoded parentheses) are preserved in the separate receipt files below and matched by tests. There is no fixed date window or history-page follow.
+
+Native, unmodified publisher response bodies retained from the two successful GETs on 2026-09-09:
+
+| Body | Decoded bytes | SHA-256 |
+|---|---:|---|
+| `us-dts-issues-rolling.native.json` | 16,202 | `799f7c10154d360ba88c905b9883b58e5e1509735c861e112beceb3710272990` |
+| `us-dts-redemptions-rolling.native.json` | 16,501 | `7974c448463063e001e42d84cfd1bde2ba3a4a7ba78cac0c52abe3b80156d58f` |
+
+These bodies retain all `data`, `meta` and `links` unchanged. Each reports 60 rows, 1,000 total matching records and 17 pages; the selected paired dates are 2026-06-15 through 2026-09-08. `us-dts-issues-rolling.receipt.json` and `us-dts-redemptions-rolling.receipt.json` are **separate collector transport evidence**, not publisher payloads or publication metadata. Their actual retrieval timestamps are 2026-09-09T22:43:14.296957+00:00 and 2026-09-09T22:43:15.739959+00:00; both record HTTP 200, with unknown ETag and Last-Modified. The four-row excerpt above remains an excerpt and is rejected as a runtime envelope.
+
+The adapter validates native column labels/types/formats (all three cash amount columns report `$1,000,000`), counts, page links, exact Table II/type/category and strictly descending unique dates. Both pages must contain the same complete selected date set. Fewer than 60 records is accepted only if the publisher reports fewer available records. Selected-window completeness is **not full publisher historical pagination**; per-observation limitations retain each actual selected/total count, page count and date window. Sequential requests share the adapter deadline and preserve receipt completion order; they are not an atomic publisher vintage. No source-line number is hardcoded.
+
+FiscalData's [API documentation](https://fiscaldata.treasury.gov/api-documentation/) specifies string-valued fields, including the literal string `"null"` for missing values. This becomes an explicit missing observation and a null derived net, never zero or an older-value substitute. JSON null, omitted fields and unknown numeric/status tokens fail the contract. Exact decimal lexemes and native exponent 6 are retained. No cumulative/noncash values or hidden derivation values are serialized. Test mutations (including null/zero, fractional amounts, future windows, malformed records and synthetic transport clocks) are test inputs, not additional publisher facts.
+
+History is latest-revised publisher history, not a release-vintage archive. Publication time, seasonal adjustment and finality/status flags are unknown. False provisional/revised/estimated booleans mean no reported flag, not guaranteed finality. Actual retrieval receipts are returned; Last-Modified is never promoted to publication time. CashLoom transformations are the bounded selection, normalized presentation and exact issues-minus-redemptions calculation; attribute Treasury/FiscalData, with no endorsement implied.
+
+Production never imports these fixtures. Fixture validation is distinct from live adapter verification and does not establish continuing upstream availability.

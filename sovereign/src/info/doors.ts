@@ -10,6 +10,7 @@ import { FX_REFERENCE_DATE_TTL_S, fxReferenceIsStale, getFxRate } from "./fx.ts"
 import { readFees, supportedFeeChains } from "./fees.ts";
 import { ASSETS, resolveAsset, searchAssets } from "./assets.ts";
 import { applyRate } from "../utils/minor-units.ts";
+import { CAPITAL_FLOWS_MEDIA_TYPE, CAPITAL_FLOWS_SCHEMA, HISTORY_LIMIT } from "./capital-flows/model.ts";
 
 // Mirrors router.ts's refusal shape (kept private there; six lines beat a hot-file export).
 const problem = (status: number, title: string, detail: string, next?: string[]) => ({
@@ -214,6 +215,7 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         rights_disclosure: "/v1/rights",
         data_practices: "/v1/data-practices",
         world: "/v1/world?base={ccy}",
+        capital_flows: "/v1/capital-flows",
         onchain: "/v1/onchain",
         onchain_networks: "/v1/onchain/chains",
         onchain_stablecoins: "/v1/onchain/stablecoins",
@@ -234,6 +236,23 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         value: "/v1/value/{amount_minor}/{asset}/{quote}",
         portfolio: "/v1/portfolio?quote={ccy}&hold={symbol}:{amount_minor}",
       },
+      capital_flows: {
+        api: "/v1/capital-flows",
+        human_route: "/capital-flows (World frontend; the INFO process serves JSON, not this page)",
+        media_type: CAPITAL_FLOWS_MEDIA_TYPE,
+        schema: CAPITAL_FLOWS_SCHEMA,
+        scope: [
+          "US published Table II public-debt cash issues/redemptions and compatible net financing into the Treasury General Account; daily USD millions, not auction allocations or raw debt-accounting totals.",
+          "Spain/Germany central government excluding social security: all-maturity face-value issuance/redemptions/net issuance, monthly EUR millions.",
+          "Euro area (changing composition) non-MMF equity/bond/real-estate/private-equity fund-share transactions, quarterly EUR millions; fund domicile is neither investor nor underlying-asset geography. Nonconsolidated populations and PE overlaps must not be summed.",
+          "TIC Grand Total 99996 foreign purchases/sales/net of US long-term Treasury, corporate/other bonds and equities, monthly USD millions. Foreign purchases use _sale, foreign sales use _pur. Settlement-cost trades include primary issues/redemptions, not pure secondary turnover; US purchases include expenses and US sales proceeds are net of charges. No Table III bill holdings-change estimates.",
+        ],
+        read_values: "series[].definition supplies metricKind, perspective, signConvention, geography, valuation, unit, seasonalAdjustment and annualization. series[].history[].value contains exact raw/decimals, decimal, publisherLexeme, currency, unitExponent and unitMultiplier, or null. Never use display strings for arithmetic or apply current FX to history.",
+        periods_and_receipts: "Read series[].history[].period and status separately from receipt.retrievedAt and nullable receipt.publicationAt. Receipts name sourceSeriesId, datasetId, resourceUrl, method, recipe, inputObservationIds and limitations; sources[].definition.rights supplies attribution and rights evidence. Missing/suppressed/notYetReported/withdrawn are not observed zero.",
+        history: { policy: "latestRevisedPublisherHistoryNotVintageArchive", maximum_observations_per_series: HISTORY_LIMIT, qualification: "Upper bounds, not guaranteed coverage; no auctions are currently enabled." },
+        refresh: "On-demand, independent RAM cache; no capital fetch enters World's critical path. Cold reads wait at most one second before an explicit partial/refreshing response. Inspect refresh.state/health, sources[].retrievalState/nextAttemptAt/fallbackExpiresAt and series[].state; reportingRecency remains expectation_unknown. Conditional GET/HEAD and manual refresh respect cadence/backoff. Fallback lasts at most seven days after validation; restart loses it.",
+        boundaries: "No accounts, execution, alerts, continuous collector or archived vintages. No global total, mismatched-period comparison, or wrapper-plus-underlying sum. Crypto/metals flows, other issuer regions including China/UK/Japan, broader BIS, direct property, worldwide PE calls/distributions and global secondary volume remain coverage gaps. The new route is not a declared XENIA Surface resource.",
+      },
       promises_not_to: [
         "no account, API key, cookie, or CAPTCHA required by the public GET handlers",
         "the hosted application entrypoint intentionally persists no caller identity or public-read query values; external logging and retention layers remain separately disclosed and unknown",
@@ -246,8 +265,9 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
       not_covered: [
         "live commodity benchmark prices (display licensing unresolved; tokenized proxies would mislead)",
         "geopolitical causal scores (association is not proof of impact)",
-        "equities and derivatives (structurally out — display licensing is a minefield)",
-        "long-horizon chart history beyond the official observations currently fetched",
+        "live equity/derivative prices and comprehensive trading turnover; selected official securities and fund-share transactions are separately scoped in /v1/capital-flows",
+        "global capital-flow totals, direct property-market investment, worldwide private-equity calls/distributions, and comprehensive crypto/precious-metals investment flows",
+        "historical vintages or complete market histories beyond the bounded latest-revised publisher observations currently fetched",
         "historical onchain volume, TVL rankings, bridge completion aggregates, and protocol-wide risk scores (the launch surface is latest-state and contract-specific)",
       ],
       rights: {
@@ -265,6 +285,9 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         { name: "BIS central-bank policy rates", keyless: true, license: "reuse with BIS attribution and commercial-product conditions" },
         { name: "US Treasury par-yield curve", keyless: true, license: "US government source; methodology linked" },
         { name: "ECB euro-area yield curve", keyless: true, license: "free reuse with acknowledgment; third-party exclusions still apply" },
+        { name: "ECB securities issuance and investment-fund statistics", keyless: true, license: "free reuse with ECB attribution and explicit modification disclosures; these data are available free of charge from the ECB, with no paid access here; selected issuer and fund populations only", evidence_url: "https://www.ecb.europa.eu/services/disclaimer/html/index.en.html" },
+        { name: "US Treasury Daily Treasury Statement cash debt totals", keyless: true, license: "FiscalData permits copying, adaptation and redistribution for commercial or non-commercial use; published cash totals, not raw debt-accounting aggregates", evidence_url: "https://fiscaldata.treasury.gov/api-documentation/" },
+        { name: "US Treasury TIC SLT aggregate securities transactions", keyless: true, license: "US government-work/public-data basis for Treasury's official SLT aggregates only; not blanket permission for government-hosted third-party files, vendor/branding rights, or confidential reports", evidence_url: "https://www.copyright.gov/title17/92chap1.html#105", provenance_url: "https://home.treasury.gov/data/treasury-international-capital-tic-system-home-page/tic-forms-instructions/tic-slt-form-and-instructions" },
         { name: "Japan Ministry of Finance JGB yields", keyless: true, license: "official reference observations; source terms linked" },
         { name: "Chainlink BTC/USD and ETH/USD aggregators", keyless: true, license: "public on-chain observations, independently re-derivable" },
       ],

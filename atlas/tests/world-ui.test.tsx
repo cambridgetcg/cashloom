@@ -115,7 +115,7 @@ describe("World first-use markup", () => {
   it("explains the read-only product and keeps first actions outside the hidden section nav", async () => {
     const html = await renderWorld();
     const hero = html.match(/<header class="world-hero">([\s\S]*?)<\/header>/)?.[1] ?? "";
-    expect(textContent(hero)).toContain("CashLoom World");
+    expect(textContent(hero)).toContain("Money insights");
     expect(textContent(hero)).toContain("Understand money, with source receipts.");
     expect(hero).toContain("Read-only. No account or wallet required.");
     expect(hero).toContain("Receipt button for its source, timestamps, method, and limits where supplied.");
@@ -129,9 +129,9 @@ describe("World first-use markup", () => {
     expect(loadSnapshot).toHaveBeenCalledWith("USD");
   });
 
-  it("keeps five primary sections, secondary Onchain, and Atlas only in the footer", async () => {
+  it("keeps five World sections beside the shared destinations and marks the current page", async () => {
     const html = await renderWorld();
-    const nav = html.match(/<nav class="world-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+    const nav = html.match(/<header class="cashloom-header"[^>]*>([\s\S]*?)<\/header>/)?.[1] ?? "";
     const sectionLinks = [...nav.matchAll(/<a href="#([^"]+)">([^<]+)<\/a>/g)]
       .map(([, id, label]) => [id, label]);
     expect(sectionLinks).toEqual([
@@ -141,12 +141,30 @@ describe("World first-use markup", () => {
       ["calendar", "Calendar"],
       ["coverage", "Sources"],
     ]);
-    expect(nav).toContain('class="world-brand__place">World</span>');
+    expect(nav).toContain('aria-label="CashLoom home"');
+    expect(nav).toContain('aria-label="Money insight sections"');
     expect(nav).toContain('href="/onchain"');
-    expect(nav).not.toContain('href="/atlas"');
+    expect(nav).toContain('href="/capital-flows"');
+    expect(nav).toContain('href="/atlas"');
+    expect(nav).toContain('href="/wallet"');
+    expect(nav).toContain('href="/world" aria-current="page"');
+    expect(nav.match(/aria-current="page"/g)).toHaveLength(1);
     const footer = html.slice(html.indexOf('<footer class="world-footer">'));
-    expect(footer).toContain('<a href="/atlas">Wallet code atlas — advanced</a>');
-    expect(html.match(/href="\/atlas"/g)).toHaveLength(1);
+    expect(footer).toContain('<a href="/atlas">How it works</a>');
+    expect(html.match(/href="\/atlas"/g)).toHaveLength(2);
+  });
+
+  it("links to Capital flows near sovereign coverage without importing its route or fetching", async () => {
+    const loadCapital = vi.fn(() => { throw new Error("World must not import Capital flows"); });
+    vi.doMock("../src/capital-flows/CapitalFlows.tsx", loadCapital);
+    const html = await renderWorld();
+    expect(loadCapital).not.toHaveBeenCalled();
+    const gateway = html.match(/<section class="world-capital-gateway"[\s\S]*?<\/section>/)?.[0] ?? "";
+    expect(gateway).toContain('href="/capital-flows"');
+    expect(gateway).toContain("not a global money-flow total");
+    expect(html.indexOf('id="sovereigns"')).toBeLessThan(html.indexOf(gateway));
+    expect(html.indexOf(gateway)).toBeLessThan(html.indexOf('id="currencies"'));
+    vi.doUnmock("../src/capital-flows/CapitalFlows.tsx");
   });
 
   it("offers all eight existing currency lenses", async () => {
@@ -158,7 +176,7 @@ describe("World first-use markup", () => {
 
   it("keeps every research record and its receipt in a closed disclosure after Calendar", async () => {
     const html = await renderWorld();
-    const disclosures = [...html.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/g)];
+    const disclosures = [...html.matchAll(/<details\b([^>]*class="world-research"[^>]*)>([\s\S]*?)<\/details>/g)];
     expect(disclosures).toHaveLength(1);
     const [disclosure, attributes, content] = disclosures[0];
     expect(attributes).toContain('class="world-research"');
@@ -187,7 +205,7 @@ describe("World first-use markup", () => {
 
   it("preserves all observation sections, partial-state warnings, rights notices and external coverage gaps", async () => {
     const html = await renderWorld();
-    const disclosure = html.match(/<details\b[^>]*>[\s\S]*?<\/details>/)?.[0] ?? "";
+    const disclosure = html.match(/<details\b[^>]*class="world-research"[^>]*>[\s\S]*?<\/details>/)?.[0] ?? "";
     const outsideDisclosure = html.replace(disclosure, "");
     for (const title of [
       "Fixture briefing", "Fixture policy rate", "Fixture sovereign reference",
@@ -246,8 +264,8 @@ describe("World first-use markup", () => {
     const footer = html.slice(html.indexOf('<footer class="world-footer">'));
     expect(footer).toContain(`href="${expectedBase}/v1/data-practices">Privacy &amp; data practices</a>`);
     expect(footer).toContain(`href="${expectedBase}/v1/orientation">Machine orientation</a>`);
-    expect(footer).toContain('href="https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823">Current release source</a>');
-    expect(footer).toContain('href="https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally">Run World locally</a>');
+    expect(footer).toContain('href="https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929">Source · repository access required</a>');
+    expect(footer).toContain('href="https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929#run-the-existing-information-tools-locally">Run insights locally · repository access required</a>');
     if (expectedBase) expect(footer).not.toMatch(/href="\/v1\//);
   });
 });

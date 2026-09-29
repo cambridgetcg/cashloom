@@ -11,6 +11,8 @@ import {
 import { formatDate } from "../format";
 import { toast } from "../toast";
 import type { VaultKey } from "../types";
+import type { WalletNavigate } from "../navigation";
+import { isAddressKey } from "../wallet-key";
 
 type Kind = "evm" | "btc";
 
@@ -38,7 +40,7 @@ function KindPicker({ value, onPick }: { value: Kind; onPick: (k: Kind) => void 
   );
 }
 
-export function Keys() {
+export function Keys({ onGoto }: { onGoto?: WalletNavigate } = {}) {
   const [keys, setKeys] = useState<VaultKey[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -80,7 +82,7 @@ export function Keys() {
         action: "generate",
         kind: genKind,
       });
-      toast(`Key "${r.key.label}" woven. It lives only in your vault.`, "ok");
+      toast(`Key "${r.key.label}" created in your vault.`, "ok");
       setGenLabel("");
       await load();
     } catch (ex) {
@@ -133,14 +135,14 @@ export function Keys() {
 
   return (
     <div className="stagger">
-      <SectionTitle aside="Sealed by your passphrase. They never leave this machine.">
-        Keys
+      <SectionTitle>
+        Signing keys
       </SectionTitle>
+      <p className="journey-note">Create or import signing keys for supported wallet payments. Keys are encrypted in your local vault. Manual accounts and activity records do not need a signing key.</p>
 
       {keys.length === 0 ? (
         <EmptyState>
-          The vault is empty. Weave a fresh key below, or bring one you already
-          hold.
+          No keys saved. Generate a new key below, or import one you already hold.
         </EmptyState>
       ) : (
         <div className="key-rows">
@@ -155,6 +157,10 @@ export function Keys() {
                 <code>{k.address}</code>
                 <CopyButton text={k.address} />
               </div>
+              {onGoto && isAddressKey(k) && <div className="btn-row journey-actions">
+                <button className="btn btn-ghost" onClick={() => onGoto("accounts", { keyId: k.id })}>Use in an account</button>
+                <button className="link-btn" onClick={() => onGoto("receive", { keyId: k.id })}>Receive money</button>
+              </div>}
             </article>
           ))}
         </div>
@@ -162,7 +168,7 @@ export function Keys() {
 
       <div className="key-forms">
         <form className="card key-form" onSubmit={(e) => void generate(e)}>
-          <h3>Weave a new key</h3>
+          <h3>Create a signing key</h3>
           <p className="key-form-sub">
             Generated inside your node, encrypted at rest, shown to no one.
           </p>
@@ -178,12 +184,12 @@ export function Keys() {
           </Field>
           {genErr && <p className="form-error">{genErr}</p>}
           <button className="btn btn-primary" type="submit" disabled={genBusy}>
-            {genBusy ? "Weaving…" : "Generate key"}
+            {genBusy ? "Generating…" : "Generate key"}
           </button>
         </form>
 
         <form className="card key-form" onSubmit={(e) => void importKey(e)}>
-          <h3>Bring your own</h3>
+          <h3>Import an existing key</h3>
           <p className="key-form-sub">
             Paste only here. It travels once, over localhost, into the vault —
             then this field is wiped. It is never logged.

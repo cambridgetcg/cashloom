@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, errorMessage } from "../api";
+import { api, ApiError, errorMessage } from "../api";
 import {
   Amount,
   Badge,
@@ -9,8 +9,11 @@ import {
   RailBadge,
   SectionTitle,
 } from "../components";
-import { formatMinor, shortAddress } from "../format";
+import { formatDateTime, formatMinor, parseToMinor, shortAddress } from "../format";
 import { toast } from "../toast";
+import type { WalletNavigate } from "../navigation";
+import { isLiveSendingAccount, type Asset } from "./Pay";
+import { AccountBalances } from "../components/AccountBalances";
 import {
   BasePositionPanel,
   isObservableBaseAccount,
@@ -132,13 +135,115 @@ function compactAccountAddress(account: Account): string | null {
     : null;
 }
 
-export function Accounts() {
+export const canRecordManualBalance = (account: Account): boolean =>
+  account.status.toUpperCase() === "ACTIVE" &&
+  !account.read_connection_id &&
+  ["CASH", "BANK", "STRIPE", "PLATFORM_CREDIT", "GIFT_CARD"].includes(account.rail) &&
+  (account.connector_type === null || account.connector_type === "");
+
+export const canArchiveAccount = (account: Account): boolean =>
+  account.connector_type !== "plaid" || account.read_connection_status === "disconnected";
+
+/** Parse the owner's balance without deriving it from transaction history. */
+export function manualBalanceRequest(account: Account, input: string) {
+  if (!canRecordManualBalance(account)) throw new Error("This account does not accept a manual balance.");
+  const value = input.trim();
+  const negative = value.startsWith("-");
+  const absolute = parseToMinor(negative ? value.slice(1) : value, account.decimals);
+  if (absolute === null) throw new Error(`Enter a balance with at most ${account.decimals} decimal places.`);
+  const amount = negative && absolute !== "0" ? `-${absolute}` : absolute;
+  if (amount.length > 120) throw new Error("That balance is too long to record.");
+  return {
+    balance_minor: amount,
+    expected_balance_minor: account.balance_minor,
+    expected_balance_as_of: account.balance_as_of,
+  };
+}
+
+export function ManualBalanceEditor({ account, onSaved, onCancel }: {
+  account: Account;
+  onSaved(account: Account): void;
+  onCancel(): void;
+}) {
+  const [snapshot, setSnapshot] = useState(account);
+  const [amount, setAmount] = useState(account.balance_as_of ? formatMinor(account.balance_minor, account.decimals) : "");
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mustReload, setMustReload] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function record(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending.current || mustReload) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const body = manualBalanceRequest(snapshot, amount);
+      pending.current = true;
+      setBusy(true);
+      const result = await api.recordAccountBalance(snapshot.id, body);
+      onSaved(result.account);
+    } catch (error) {
+      setError(errorMessage(error));
+      if (error instanceof ApiError && error.code === "account_balance_conflict") setMustReload(true);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function reload() {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    try {
+      const result = await api.accounts();
+      const latest = result.accounts.find((candidate) => candidate.id === snapshot.id);
+      if (!latest || !canRecordManualBalance(latest)) throw new Error("This account is no longer available for manual balances.");
+      setSnapshot(latest);
+      setMustReload(false);
+      setError(null);
+      setNotice("Saved balance reloaded. Your amount is still in the form; review it before recording.");
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="create-form" onSubmit={(event) => void record(event)} aria-label={`Record balance for ${account.display_name}`}>
+      <p className="journey-note">Record what this account holds now. This saves a balance observation; it does not add an activity entry or move money.</p>
+      <p className="journey-note">
+        {snapshot.balance_as_of
+          ? `Saved: ${formatMinor(snapshot.balance_minor, snapshot.decimals)} ${snapshot.currency} · ${formatDateTime(snapshot.balance_as_of)}`
+          : "No balance recorded yet."}
+      </p>
+      <Field label={`Balance (${snapshot.currency})`} hint={`Up to ${snapshot.decimals} decimal places. Use a minus sign for a negative balance.`}>
+        <input className="mono-input" inputMode="decimal" value={amount} maxLength={120}
+          autoFocus disabled={busy} placeholder="e.g. 25.00" onChange={(event) => setAmount(event.target.value)} />
+      </Field>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {notice && <p className="journey-note" role="status">{notice}</p>}
+      <div className="account-row-actions">
+        <button className="btn btn-primary" disabled={busy || mustReload} type="submit">{busy ? "Working…" : "Record balance"}</button>
+        {mustReload && <button className="btn btn-ghost" disabled={busy} type="button" onClick={() => void reload()}>Reload saved balance</button>}
+        <button className="btn btn-ghost" disabled={busy} type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAccountId?: string; initialKeyId?: string; onGoto?: WalletNavigate } = {}) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [keys, setKeys] = useState<VaultKey[]>([]);
   const [basePositions, setBasePositions] = useState<BaseAccountPositionView[]>([]);
   const [baseLoadError, setBaseLoadError] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const loadGeneration = useRef(0);
+  const appliedInitialKey = useRef(false);
 
   // create form
   const [rail, setRail] = useState<Rail>("CASH");
@@ -167,6 +272,7 @@ export function Accounts() {
   const [baseMessages, setBaseMessages] = useState<Record<string, string>>({});
   const [baseErrors, setBaseErrors] = useState<Record<string, string>>({});
   const [confirmArchive, setConfirmArchive] = useState<string | null>(null);
+  const [balanceAccount, setBalanceAccount] = useState<Account | null>(null);
 
   async function load() {
     const generation = ++loadGeneration.current;
@@ -201,7 +307,27 @@ export function Accounts() {
 
   useEffect(() => {
     void load();
+    return () => { loadGeneration.current++; };
   }, []);
+
+  useEffect(() => {
+    if (!initialKeyId || !accounts || appliedInitialKey.current) return;
+    appliedInitialKey.current = true;
+    const key = keys.find((candidate) => candidate.id === initialKeyId);
+    if (!key) { setFormErr("That key is no longer available. Choose a current key before creating an account."); return; }
+    if (key.kind !== "evm" && key.kind !== "btc") { setFormErr("That key has no supported account preset. Choose a supported key or an explicit watch-only identity."); return; }
+    const choice = key.kind === "btc" ? "BITCOIN_BTC" : "BASE_ETH";
+    const preset = LIVE_CRYPTO_IDENTITIES[choice];
+    setRail("CRYPTO");
+    setCryptoChoice(choice);
+    setCurrency(preset.currency);
+    setDecimals(preset.decimals);
+    setVaultKeyId(key.id);
+    setDisplayName(`${key.label} · ${preset.label}`);
+    if (key.kind === "btc") {
+      setConnectorChoice("esplora"); setExternalId(key.address); setEsploraAutofilled(true);
+    }
+  }, [accounts, keys, initialKeyId]);
 
   function pickRail(r: Rail) {
     setRail(r);
@@ -399,7 +525,7 @@ export function Accounts() {
       } else {
         await api.createAccount({ rail, ...common });
       }
-      toast(`"${displayName.trim()}" is on the loom.`, "ok");
+      toast(`"${displayName.trim()}" added to your accounts.`, "ok");
       setDisplayName("");
       setExternalId("");
       setCredentialRef("");
@@ -435,6 +561,7 @@ export function Accounts() {
   }
 
   async function archive(a: Account) {
+    if (!canArchiveAccount(a)) return;
     if (confirmArchive !== a.id) {
       setConfirmArchive(a.id);
       window.setTimeout(() => setConfirmArchive((c) => (c === a.id ? null : c)), 4000);
@@ -443,7 +570,7 @@ export function Accounts() {
     setConfirmArchive(null);
     try {
       await api.archiveAccount(a.id);
-      toast(`${a.display_name} archived. Its history stays in the ledger.`, "info");
+      toast(`${a.display_name} archived. Its history stays in Activity.`, "info");
       await load();
     } catch (ex) {
       toast(errorMessage(ex), "err");
@@ -507,31 +634,35 @@ export function Accounts() {
     ? keys.filter((key) => key.kind === selectedPreset.keyKind)
     : [];
   const activeFirst = [...accounts].sort((a, b) =>
-    a.status === b.status ? 0 : a.status === "archived" ? 1 : -1,
+    a.id === initialAccountId ? -1 : b.id === initialAccountId ? 1
+      : a.status === b.status ? 0 : a.status.toUpperCase() === "ARCHIVED" ? 1 : -1,
   );
 
   return (
     <div className="stagger">
       <SectionTitle>Accounts</SectionTitle>
+      <p className="journey-note">Keep a record of where your money lives. Add cash or a bank account manually, or use a configured connection to read a supported balance.</p>
+      {initialAccountId && !accounts.some((account) => account.id === initialAccountId) && <p role="status">That account is no longer available. Your current accounts are below.</p>}
 
       {accounts.length === 0 ? (
         <EmptyState>
-          Every thread starts somewhere. Add your first account below — the
-          cash in your pocket is a perfectly good one.
+          Add your first account below. Start with the cash you have, a bank account,
+          or a supported wallet. You can record a balance without connecting a service.
         </EmptyState>
       ) : (
         <div className="account-rows">
           {activeFirst.map((a) => {
-            const archived = a.status === "archived";
+            const archived = a.status.toUpperCase() === "ARCHIVED";
             const key = a.vault_key_id ? keyById.get(a.vault_key_id) : undefined;
             const baseView = basePositions.find((entry) => entry.account_id === a.id) ?? null;
             return (
-              <article className={`card account-row${archived ? " is-archived" : ""}`} key={a.id}>
+              <article aria-label={a.display_name} className={`card account-row${archived ? " is-archived" : ""}${a.id === initialAccountId ? " is-selected" : ""}`} key={a.id}>
                 <div className="account-row-main">
                   <div className="account-row-name">
                     <h3>{a.display_name}</h3>
                     <span className="account-row-badges">
                       <RailBadge rail={a.rail} />
+                      {a.read_environment === "sandbox" && <Badge tone="gold">Sandbox • test accounts</Badge>}
                       {a.connector_type && <Badge tone="gold">{a.connector_type}</Badge>}
                       {key && (
                         <Badge tone="ember">key · {shortAddress(key.address)}</Badge>
@@ -553,17 +684,26 @@ export function Accounts() {
                     </span>
                   </div>
                   <div className="account-row-balance">
-                    <Amount
+                    {isObservableBaseAccount(a) || baseView?.status === "identity_invalid" ? <span className="journey-note">Finalized balances below</span> : a.read_connection_id ? <span className="journey-note">Observed values below</span> : a.balance_as_of === null ? <span className="journey-note">Balance not recorded</span> : <Amount
                       minor={a.balance_minor}
                       decimals={a.decimals}
                       currency={a.currency}
                       size="lg"
-                    />
+                    />}
                   </div>
                 </div>
+                {!isObservableBaseAccount(a) && baseView?.status !== "identity_invalid" && <AccountBalances account={a} />}
                 {!archived && (
                   <div className="account-row-actions">
-                    {a.connector_type && (
+                    {canRecordManualBalance(a) && <button className="btn btn-ghost" onClick={() => setBalanceAccount(a)}>Record balance</button>}
+                    {onGoto && <>
+                      {(["ETH", "USDC", "BTC"] as string[]).includes(a.currency.trim().toUpperCase()) && isLiveSendingAccount(a, a.currency.trim().toUpperCase() as Asset, keyById) && <>
+                        <button className="btn btn-ghost" onClick={() => onGoto("pay", { accountId: a.id })}>Send money</button>
+                        <button className="btn btn-ghost" onClick={() => onGoto("receive", { accountId: a.id })}>Receive money</button>
+                      </>}
+                      <button className="link-btn" onClick={() => onGoto("ledger", { accountId: a.id })}>Activity</button>
+                    </>}
+                    {a.connector_type && !a.read_connection_id && (
                       <button
                         className="btn btn-ghost"
                         disabled={syncing === a.id}
@@ -572,13 +712,24 @@ export function Accounts() {
                         {syncing === a.id ? "Syncing…" : "Sync"}
                       </button>
                     )}
+                    {a.read_connection_id && onGoto && <button className="btn btn-ghost" onClick={() => onGoto("connections")}>Manage connection / sync</button>}
                     <button
                       className={`btn btn-ghost btn-danger-ghost${confirmArchive === a.id ? " is-arming" : ""}`}
+                      disabled={!canArchiveAccount(a)}
                       onClick={() => void archive(a)}
                     >
                       {confirmArchive === a.id ? "Really archive?" : "Archive"}
                     </button>
+                    {!canArchiveAccount(a) && <span className="journey-note">Disconnect this bank in Connections before archiving.</span>}
                   </div>
+                )}
+                {!archived && canRecordManualBalance(a) && a.balance_as_of && <p className="journey-note">Recorded balance · <time dateTime={a.balance_as_of}>{formatDateTime(a.balance_as_of)}</time></p>}
+                {!archived && balanceAccount?.id === a.id && (
+                  <ManualBalanceEditor account={balanceAccount} onCancel={() => setBalanceAccount(null)} onSaved={(saved) => {
+                    setAccounts((current) => current?.map((entry) => entry.id === saved.id ? saved : entry) ?? null);
+                    setBalanceAccount(null);
+                    toast("Balance recorded. Your activity history is unchanged.", "ok");
+                  }} />
                 )}
                 {!archived && (isObservableBaseAccount(a) || baseView?.status === "identity_invalid") && (
                   <BasePositionPanel
@@ -760,7 +911,7 @@ export function Accounts() {
                 label="Vault key"
                 hint={
                   selectableKeys.length === 0
-                    ? `No ${selectedPreset.keyKind.toUpperCase()} key exists yet. Weave one under Keys, or use Advanced / watch-only.`
+                    ? `No ${selectedPreset.keyKind.toUpperCase()} key exists yet. Create one under Keys, or use Advanced / watch-only.`
                     : `Required for this live preset. The ${selectedPreset.networkLabel} account identity is derived from its public address.`
                 }
               >
@@ -774,6 +925,7 @@ export function Accounts() {
                     </option>
                   ))}
                 </select>
+                {onGoto && <button type="button" className="link-btn" onClick={() => onGoto("keys")}>{selectableKeys.length ? "Manage keys" : "Create or import a key"}</button>}
               </Field>
             ) : (
               <Field

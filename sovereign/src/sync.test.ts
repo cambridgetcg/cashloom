@@ -125,7 +125,7 @@ describe("sync — the ledger never doubles and never mixes", () => {
     expect(result.skipped).toBe(1);
   });
 
-  it("derives its overlap cursor only from connector rows", async () => {
+  it("revisits known connector history without using future manual or payment dates", async () => {
     const id = makeAccount();
     const connectorDate = new Date("2026-06-15T10:00:00.000Z");
     const add = db.query(
@@ -140,7 +140,7 @@ describe("sync — the ledger never doubles and never mixes", () => {
 
     await syncAccount(id);
 
-    expect(requestedSince?.toISOString()).toBe("2026-06-12T10:00:00.000Z");
+    expect(requestedSince!.getTime()).toBeLessThanOrEqual(Date.parse("2026-06-12T10:00:00.000Z"));
   });
 
   it("rolls back imported rows when the balance update cannot commit", async () => {
@@ -189,13 +189,12 @@ describe("sync — the ledger never doubles and never mixes", () => {
       decimals: 2,
       asOf: new Date("2026-07-01T00:00:00.000Z"),
     });
-    const olderResult = await slowerOld;
+    await expect(slowerOld).rejects.toThrow(/changed during the read/);
 
     const account = db
       .query("SELECT balance_minor, balance_as_of FROM accounts WHERE id = ?")
       .get(id) as { balance_minor: string; balance_as_of: string };
     expect(newerResult.balanceMinor).toBe("200");
-    expect(olderResult.balanceMinor).toBe("200");
     expect(account).toEqual({
       balance_minor: "200",
       balance_as_of: "2026-07-02T00:00:00.000Z",
@@ -273,5 +272,18 @@ describe("sync — the ledger never doubles and never mixes", () => {
     const id = makeAccount({ connector_type: null as unknown as string });
     db.query("UPDATE accounts SET connector_type = NULL WHERE id = ?").run(id);
     await expect(syncAccount(id)).rejects.toThrow(/no connector/);
+  });
+
+  it("updates revised history and preserves a user category", async () => {
+    const id = makeAccount();
+    await syncAccount(id);
+    db.query("UPDATE transactions SET category='household' WHERE account_id=? AND external_id='row-1'").run(id);
+    servedRows = [{ ...fakeRows[0], title: "Corrected record", amountMinor: "450" }];
+    expect((await syncAccount(id)).updated).toBe(1);
+    expect(db.query("SELECT amount_minor,title,category FROM transactions WHERE account_id=? AND external_id='row-1'").get(id)).toEqual({ amount_minor: "450", title: "Corrected record", category: "household" });
+    // A row omitted from a read window has not been explicitly removed.
+    expect(db.query("SELECT status FROM transactions WHERE account_id=? AND external_id='row-2'").get(id)).toEqual({ status: "posted" });
+    servedRows = [{ ...fakeRows[1], status: "removed" }];
+    expect((await syncAccount(id)).removed).toBe(1);
   });
 });

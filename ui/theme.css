@@ -1,0 +1,71 @@
+/* CashLoom's shared visual language. Imported by the public and private apps.
+   Keep semantic colours here; individual modules own layout and interactions. */
+@font-face {
+  font-family: "Fraunces";
+  src: url("../sovereign/ui/src/assets/fonts/fraunces-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spline Sans";
+  src: url("../sovereign/ui/src/assets/fonts/spline-sans-var.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spline Sans Mono";
+  src: url("../sovereign/ui/src/assets/fonts/spline-sans-mono-var.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  color-scheme: light;
+  --cl-bg: #f7f8f2;
+  --cl-surface: #fffef9;
+  --cl-surface-soft: #edf2e7;
+  --cl-surface-strong: #183a30;
+  --cl-text: #183a30;
+  --cl-muted: #57685e;
+  --cl-subtle: #66756b;
+  --cl-border: #dce3d8;
+  --cl-border-strong: #b5c8ba;
+  --cl-primary: #255b46;
+  --cl-primary-hover: #183a30;
+  --cl-on-primary: #ffffff;
+  --cl-on-strong-muted: #d1decd;
+  --cl-border-on-strong: rgba(255, 255, 255, .16);
+  --cl-accent: #648045;
+  --cl-accent-soft: #dcebb9;
+  --cl-danger: #a53328;
+  --cl-danger-soft: #fcece8;
+  --cl-warning: #76571b;
+  --cl-warning-soft: #fbf1d9;
+  --cl-info: #245e78;
+  --cl-info-soft: #e9f2f6;
+  --cl-font-body: "Spline Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --cl-font-heading: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --cl-font-mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --cl-radius-sm: 7px;
+  --cl-radius: 10px;
+  --cl-radius-lg: 16px;
+  --cl-focus: #255b46;
+  --cl-shadow: 0 8px 24px rgba(24, 58, 48, .06);
+  --cl-overlay: rgba(24, 58, 48, .36);
+  --cl-content-width: 1200px;
+  --cl-gutter: clamp(18px, 3.2vw, 40px);
+}
+.cashloom-brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  background: var(--cl-primary);
+  color: var(--cl-accent-soft);
+  border-radius: 9px;
+  font: 500 36px/.8 Georgia, serif;
+  padding-bottom: 6px;
+}

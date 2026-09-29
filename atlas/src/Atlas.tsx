@@ -19,16 +19,6 @@ export default function Atlas() {
   const close = useCallback(() => setOpenId(null), []);
 
   useEffect(() => {
-    document.title = "Wallet code atlas — CashLoom · advanced";
-    document
-      .querySelector<HTMLMetaElement>('meta[name="description"]')
-      ?.setAttribute(
-        "content",
-        "An advanced guide to CashLoom's local-wallet design and code. For public, read-only money observations with source receipts, visit CashLoom World.",
-      );
-  }, []);
-
-  useEffect(() => {
     if (!openId) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpenId(null);
@@ -40,7 +30,7 @@ export default function Atlas() {
   return (
     <>
       <a className="skip-link" href="#weave">
-        Skip to the weave
+        Skip to workspace modules
       </a>
       <Nav />
       <main>

@@ -75,14 +75,14 @@ export function Zerone() {
   const steps = audience === "human" ? guide.for_humans : guide.for_agents;
 
   return (
-    <div className="stagger">
+    <div className="zerone-view stagger">
       <SectionTitle aside="A truth chain for agents. ZRN is additive proof-of-quality — it joins whatever money you already use.">
-        zerone
+        Zerone network
       </SectionTitle>
 
       <p className="muted" style={{ maxWidth: "60ch" }}>{guide.what_is_zerone}</p>
 
-      <div className="card" style={{ borderColor: "var(--warn, #b8860b)" }}>
+      <div className="card zerone-status">
         <strong>Honest status: </strong>
         <span className="muted">{guide.honest_status}</span>
       </div>
@@ -101,13 +101,15 @@ export function Zerone() {
       <h3>How to participate</h3>
       <div className="row" style={{ gap: 8, marginBottom: 8 }}>
         <button
-          className={audience === "human" ? "primary" : "ghost"}
+          className={`btn ${audience === "human" ? "btn-primary" : "btn-ghost"}`}
+          aria-pressed={audience === "human"}
           onClick={() => setAudience("human")}
         >
           I'm human
         </button>
         <button
-          className={audience === "agent" ? "primary" : "ghost"}
+          className={`btn ${audience === "agent" ? "btn-primary" : "btn-ghost"}`}
+          aria-pressed={audience === "agent"}
           onClick={() => setAudience("agent")}
         >
           I'm an agent
@@ -120,7 +122,7 @@ export function Zerone() {
       </ol>
       <div className="row" style={{ gap: 12, marginTop: 8, alignItems: "center" }}>
         <a
-          className="primary"
+          className="btn btn-primary"
           href={`${MARKET_LISTING}/${guide.onboarding.mainnet_passport_listing}`}
           target="_blank"
           rel="noreferrer"

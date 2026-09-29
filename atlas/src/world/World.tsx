@@ -7,6 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { useBodyLock } from "../lib/hooks";
+import { PublicHeader } from "../components/PublicHeader";
+import { WORKSPACE_SOURCE } from "../workspace-source";
 import {
   endpoint,
   fetchWorld,
@@ -1023,7 +1025,7 @@ function ReceiptDrawer({
 
   useEffect(() => {
     const background = Array.from(
-      document.querySelectorAll<HTMLElement>(".world-shell > .skip-link, .world-nav, .world-main, .world-footer"),
+      document.querySelectorAll<HTMLElement>(".world-shell > .skip-link, .world-shell > header, .world-main, .world-footer"),
     );
     const previousHidden = background.map((element) => element.getAttribute("aria-hidden"));
     background.forEach((element) => {
@@ -1109,24 +1111,16 @@ function ReceiptDrawer({
 
 function WorldNav({ sourceState }: { sourceState: string }) {
   return (
-    <nav className="world-nav" aria-label="CashLoom World">
-      <a className="world-brand" href="/world" aria-label="CashLoom World home">
-        <svg className="world-brand__mark" viewBox="0 0 30 30" aria-hidden="true">
-          <circle cx="15" cy="15" r="12" />
-          <path d="M3 15h24M15 3c5 5 5 19 0 24M15 3c-5 5-5 19 0 24" />
-          <circle cx="22.5" cy="9" r="2.4" />
-        </svg>
-        <span className="world-brand__word">CashLoom</span>
-        <span className="world-brand__place">World</span>
-      </a>
-      <div className="world-nav__sections">
+    <PublicHeader current="world">
+      <div className="module-toolbar">
+      <nav className="world-nav__sections" aria-label="Money insight sections">
         {SECTION_LINKS.map(([id, label]) => <a href={`#${id}`} key={id}>{label}</a>)}
-      </div>
+      </nav>
       <div className="world-nav__right">
         <span className={`world-nav__pulse is-${sourceState}`}><i />{sourceState}</span>
-        <a className="world-nav__atlas" href="/onchain">Onchain <span aria-hidden="true">↗</span></a>
       </div>
-    </nav>
+      </div>
+    </PublicHeader>
   );
 }
 
@@ -1134,15 +1128,15 @@ function WorldFooter({ generatedAt }: { generatedAt?: string }) {
   return (
     <footer className="world-footer">
       <div className="world-footer__mark" aria-hidden="true"><span /><i /><span /></div>
-      <p>CashLoom World · observations with receipts.</p>
-      <span>{generatedAt ? `World assembled ${dateTimeText(generatedAt, "full")}` : "World assembly time unavailable"}</span>
+      <p>CashLoom · money insights with source receipts.</p>
+      <span>{generatedAt ? `Snapshot assembled ${dateTimeText(generatedAt, "full")}` : "Snapshot assembly time unavailable"}</span>
       <div>
         <a href="#today">Back to today ↑</a>
-        <a href="https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823">Current release source</a>
-        <a href="https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally">Run World locally</a>
+        <a href={WORKSPACE_SOURCE}>Source · repository access required</a>
+        <a href={`${WORKSPACE_SOURCE}#run-the-existing-information-tools-locally`}>Run insights locally · repository access required</a>
         <a href={endpoint("/v1/data-practices")}>Privacy &amp; data practices</a>
         <a href={endpoint("/v1/orientation")}>Machine orientation</a>
-        <a href="/atlas">Wallet code atlas — advanced</a>
+        <a href="/atlas">How it works</a>
       </div>
     </footer>
   );
@@ -1173,12 +1167,6 @@ export default function World() {
   const requestInFlight = useRef(false);
   activeBase.current = preferences.baseCurrency;
   activeBaseHasSnapshot.current = data?.base_currency?.toLocaleUpperCase() === preferences.baseCurrency;
-
-  useEffect(() => {
-    document.title = "CashLoom World — Understand money, with source receipts";
-    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    description?.setAttribute("content", "Read policy rates, sovereign yields, currency and crypto references, and policy meeting dates with source receipts and coverage gaps. Read-only. No account or wallet required.");
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1419,9 +1407,9 @@ export default function World() {
             </svg>
           </div>
           <div className="world-hero__content">
-            <p className="world-hero__kicker"><span /> CashLoom World</p>
+            <p className="world-hero__kicker"><span /> Money insights</p>
             <h1>Understand money,<br />with <em>source receipts.</em></h1>
-            <p className="world-hero__lede">Read policy rates, sovereign yields, currency and crypto references, and policy meeting dates. Each observation has a Receipt button for its source, timestamps, method, and limits where supplied.</p>
+            <p className="world-hero__lede">Put your money decisions in context. Explore interest rates, government borrowing, currencies and crypto references. Each observation has a Receipt button for its source, timestamps, method, and limits where supplied.</p>
             <p className="world-hero__help">Read-only. No account or wallet required.</p>
             <div className="world-hero__links">
               <a href="#today">Read observations</a>
@@ -1483,21 +1471,25 @@ export default function World() {
 
         <DataSection id="rates" kicker="The price of cash" title="Policy & cash rates" note="Official policy observations and overnight reference rates, each labelled observed or derived." noun="rate observations" items={policy} section="policy" phase={viewPhase} watchOnly={preferences.watchOnly} watched={preferences.watched} onWatch={preferences.toggleWatched} onReceipt={openReceipt} notice={<PolicyNotices policy={policy} />} />
         <DataSection id="sovereigns" kicker="The public cost of time" title="Sovereign curves" note="Official government borrowing references across available maturities. Curves are shown only when the source supplies their points." noun="sovereign observations" items={sovereigns} section="sovereigns" phase={viewPhase} watchOnly={preferences.watchOnly} watched={preferences.watched} onWatch={preferences.toggleWatched} onReceipt={openReceipt} sovereign />
+        <section className="world-capital-gateway" aria-labelledby="world-capital-title">
+          <div><p className="world-kicker">Beyond the borrowing rate</p><h2 id="world-capital-title">Capital flows</h2><p>Reported sovereign financing, cross-border securities transactions and fund-share transactions. Delayed, selected coverage—not a global money-flow total.</p></div>
+          <a href="/capital-flows">Explore Capital flows</a>
+        </section>
         <DataSection id="currencies" kicker={`${preferences.baseCurrency} lens`} title="Currencies" note={`Official reference-rate pairs for the ${preferences.baseCurrency} snapshot. No silent conversion and no claim of live executable pricing.`} noun="currency observations" items={fx} section="fx" phase={viewPhase} watchOnly={preferences.watchOnly} watched={preferences.watched} onWatch={preferences.toggleWatched} onReceipt={openReceipt} />
         <DataSection id="energy" kicker="Rights before prices" title="Energy coverage" note="At launch, Brent and WTI benchmark values remain withheld until public display rights are cleared. CashLoom shows the gap instead of a proxy." noun="energy coverage cards" items={energy} section="energy" phase={viewPhase} watchOnly={preferences.watchOnly} watched={preferences.watched} onWatch={preferences.toggleWatched} onReceipt={openReceipt} />
         <DataSection id="crypto" kicker="Open monetary rails" title="Crypto & settlement" note={`BTC and ETH reference values in ${preferences.baseCurrency}, plus available Bitcoin and Base fee observations. No stablecoin peg-health coverage is claimed.`} noun="crypto observations" items={[...crypto, ...fees]} section="crypto" phase={viewPhase} watchOnly={preferences.watchOnly} watched={preferences.watched} onWatch={preferences.toggleWatched} onReceipt={openReceipt} />
         <section className="world-onchain-gateway" aria-labelledby="world-onchain-title">
           <div>
             <p className="world-kicker">A secondary read-only view</p>
-            <h2 id="world-onchain-title">Explore Onchain.</h2>
+            <h2 id="world-onchain-title">Explore network insights.</h2>
             <p>Inspect network state, stablecoin supply, selected lending markets, pools, and bridge routes—with source receipts and reference blocks where available.</p>
           </div>
-          <ul aria-label="Onchain coverage">
+          <ul aria-label="Network insight coverage">
             <li><span>Networks</span><strong>8 chain contexts</strong></li>
             <li><span>Credit + pools</span><strong>Aave V3 · Uniswap V3</strong></li>
             <li><span>Bridges</span><strong>CCTP burn + mint routes</strong></li>
           </ul>
-          <a href="/onchain">Open CashLoom Onchain <span aria-hidden="true">↗</span></a>
+          <a href="/onchain">Open network insights <span aria-hidden="true">↗</span></a>
           <p className="world-onchain-gateway__limit">Latest state, not a ranking. No wallet connection, execution, TVL fiction, or safety score.</p>
         </section>
         <CalendarSection items={calendar} phase={viewPhase} onReceipt={openReceipt} />

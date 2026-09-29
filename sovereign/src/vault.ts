@@ -40,7 +40,10 @@ export type VaultSessionScope =
   | "keys:manage"
   | "payments:quote"
   | "payments:confirm"
-  | "agent:authorize";
+  | "agent:authorize"
+  | "trades:read"
+  | "trades:write"
+  | "trades:simulate";
 
 interface VaultSession {
   expiresAtMs: number;
@@ -67,6 +70,9 @@ const ALL_SESSION_SCOPES: readonly VaultSessionScope[] = [
   "payments:quote",
   "payments:confirm",
   "agent:authorize",
+  "trades:read",
+  "trades:write",
+  "trades:simulate",
 ];
 const sessions = new Map<string, VaultSession>();
 
@@ -119,6 +125,58 @@ const unseal = async (key: CryptoKey, blob: Uint8Array): Promise<Uint8Array> => 
   return new Uint8Array(
     await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce as BufferSource }, key, ct as BufferSource)
   );
+};
+
+/** Provider credentials use their own encrypted table, never vault_keys. The
+ * authenticated context prevents moving a ciphertext to another connection. */
+export interface ProviderTokenBinding {
+  readonly provider: "plaid-sandbox";
+  readonly itemId: string;
+}
+
+const providerTokenContext = (binding: ProviderTokenBinding): Uint8Array => {
+  if (binding.provider !== "plaid-sandbox" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(binding.itemId)) {
+    throw new Error("Invalid provider token binding.");
+  }
+  return new TextEncoder().encode(`cashloom.provider-token/1\u0000${binding.provider}\u0000${binding.itemId}`);
+};
+
+export const sealProviderToken = async (binding: ProviderTokenBinding, token: string): Promise<Uint8Array> => {
+  const key = masterKey;
+  if (!key) throw new Error("Unlock the vault first.");
+  if (!/^access-sandbox-[A-Za-z0-9-]{1,256}$/.test(token)) throw new Error("Invalid sandbox provider token.");
+  const nonce = randomBytes(12);
+  const plaintext = new TextEncoder().encode(token);
+  try {
+    const ciphertext = new Uint8Array(await crypto.subtle.encrypt({
+      name: "AES-GCM", iv: nonce as BufferSource,
+      additionalData: providerTokenContext(binding) as BufferSource,
+    }, key, plaintext as BufferSource));
+    if (masterKey !== key) throw new Error("Vault changed during provider token sealing.");
+    const blob = new Uint8Array(13 + ciphertext.length);
+    blob[0] = 1;
+    blob.set(nonce, 1);
+    blob.set(ciphertext, 13);
+    return blob;
+  } finally { plaintext.fill(0); }
+};
+
+export const unsealProviderToken = async (binding: ProviderTokenBinding, blob: Uint8Array): Promise<string> => {
+  const key = masterKey;
+  if (!key) throw new Error("Unlock the vault first.");
+  if (blob[0] !== 1 || blob.length < 30) throw new Error("Invalid provider token ciphertext.");
+  let plaintext: Uint8Array | undefined;
+  try {
+    plaintext = new Uint8Array(await crypto.subtle.decrypt({
+      name: "AES-GCM", iv: blob.slice(1, 13) as BufferSource,
+      additionalData: providerTokenContext(binding) as BufferSource,
+    }, key, blob.slice(13) as BufferSource));
+    if (masterKey !== key) throw new Error("Vault changed during provider token access.");
+    const token = new TextDecoder().decode(plaintext);
+    if (!/^access-sandbox-[A-Za-z0-9-]{1,256}$/.test(token)) throw new Error("Invalid sandbox provider token.");
+    return token;
+  } catch { throw new Error("Provider token is unavailable. Unlock the original vault or reconnect."); }
+  finally { plaintext?.fill(0); }
 };
 
 /* ------------------------------ vault state ------------------------------ */

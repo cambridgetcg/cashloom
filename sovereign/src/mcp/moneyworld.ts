@@ -3,7 +3,7 @@
  *
  * A thin, stdio Model-Context-Protocol server that turns MONEYWORLD's public
  * HTTP doors into typed agent tools. It holds no keys and moves no money: every
- * tool reads a cited MoneyFact (or an honest refusal) from a running MONEYWORLD
+ * tool reads a cited fact, public snapshot, or refusal from a running MONEYWORLD
  * node — local (`http://127.0.0.1:4747`, your own sovereign node) or any hosted
  * one via `MONEYWORLD_URL`. Agents get provenance (sources + proof_state) on
  * every number, so they can *check* an answer instead of trusting it.
@@ -17,27 +17,31 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import type { WorldBaseCurrency } from "../info/world-door.ts";
 
 const BASE = (process.env.MONEYWORLD_URL ?? "http://127.0.0.1:4747").replace(/\/+$/, "");
 
 /**
- * Fetch a MONEYWORLD door. On success returns the node's body UNCHANGED (a
- * MoneyFact, or a collection, byte-for-byte — never mutated). On an HTTP error
+ * Fetch a MONEYWORLD door. On success preserves the node's JSON data (a
+ * MoneyFact, snapshot, or collection). On an HTTP error
  * or an unreachable node, returns a shaped, actionable refusal that names a way
  * forward — so an agent always gets something it can branch on, never a bare
  * throw and never a polluted fact.
  */
-async function api(path: string): Promise<any> {
+async function api(path: string, options: { accept?: string; timeoutMs?: number } = {}): Promise<any> {
   try {
     const res = await fetch(BASE + path, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(12_000),
+      method: "GET",
+      credentials: "omit",
+      headers: { Accept: options.accept ?? "application/json" },
+      signal: AbortSignal.timeout(options.timeoutMs ?? 12_000),
     });
     const data = await res.json().catch(() => null);
     // The door's own refusals (RFC-9457) are 4xx JSON carrying {title,status,...}
     // — pass those through untouched. Only a non-JSON body or a 5xx is ours to shape.
     if (data == null || (!res.ok && typeof data.title !== "string")) {
       return {
+        _transport_error: true,
         title: "moneyworld door error",
         status: res.status,
         detail: `${BASE}${path} returned ${res.status}${data == null ? " with an unparseable body" : ""}`,
@@ -50,14 +54,12 @@ async function api(path: string): Promise<any> {
       _transport_error: true,
       title: "moneyworld unreachable",
       detail: `${BASE} did not answer (${e?.message ?? e})`,
-      next_actions: ["start a node: cd sovereign && bun start", "or set MONEYWORLD_URL to a running node"],
+      next_actions: ["start public INFO: cd sovereign && CASHLOOM_BIND=127.0.0.1 bun run src/info-server.ts", "or set MONEYWORLD_URL to a running public INFO node"],
     };
   }
 }
 
-// Wrap a door result as an MCP tool result. A refusal (carries `title`) or a
-// transport failure is flagged isError so an agent's tool-runner routes it as a
-// failure instead of mistaking a refusal for a value.
+// Preserve public refusals as readable results; flag transport and server failures.
 const out = (obj: any) => {
   // A transport failure or a 5xx door error is a genuine tool failure; an honest
   // business refusal (a 4xx problem the agent should read) is a normal result.
@@ -69,6 +71,37 @@ const READ = { readOnlyHint: true, openWorldHint: true, idempotentHint: true } a
 
 /** The tool set — exported so tests can drive the handlers directly. */
 export const TOOLS = [
+  {
+    name: "moneyworld_get_world",
+    description:
+      "Read the public World dashboard as cashloom.world/1: policy and cash rates, available sovereign yields, FX and BTC/ETH references, fees, calendar and source receipts. The base currency selects FX and crypto references; it does not convert every observation. Inspect status, unavailable/stale fields and each receipt's original timestamps. Saved or newly fetched data is not necessarily a new observation; coverage is partial and rights-withheld values remain gaps. No wallet or execution.",
+    schema: {
+      base: z.enum(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "CNY"])
+        .default("USD").describe("World reference currency, default USD"),
+    },
+    handler: async ({ base = "USD" }: { base?: WorldBaseCurrency }) => out(await api(
+      `/v1/world?base=${encodeURIComponent(base)}`,
+      { accept: "application/vnd.cashloom.world.v1+json, application/json;q=0.9", timeoutMs: 30_000 },
+    )),
+  },
+  {
+    name: "moneyworld_get_onchain",
+    description:
+      "Read cashloom.onchain/1: selected network state, native USDC supply, Aave credit markets, Uniswap pools and Circle CCTP fee references. Exact metric values, pinned chain references and source receipts retain their timestamps and limits. Inspect status.sections, unavailable and stale fields. Supply is not reserve or peg verification; fee references and latest state are not completed transfers or capital flows. A cold read can take up to the server's 25-second snapshot budget. No wallet connection or execution.",
+    schema: {},
+    handler: async () => out(await api("/v1/onchain", {
+      accept: "application/vnd.cashloom.onchain.v1+json, application/json;q=0.9", timeoutMs: 30_000,
+    })),
+  },
+  {
+    name: "moneyworld_get_capital_flows",
+    description:
+      "Read cashloom.capital-flows/1: selected publisher-reported financing and securities/fund transactions with bounded latest-revised history. This is one read, with no automatic polling. Cold reads may be refreshing/partial; inspect refresh, sources[].retrievalState, nextAttemptAt, fallbackExpiresAt and coverage. Native amounts are value.raw × 10^-value.decimals, then unitMultiplier for currency units; preserve periods, currencies, geography and missing/rights-withheld states. Receipts retain original retrieval times; generatedAt is assembly time. No global total, current-FX history conversion, vintage archive, alerts or execution. launchReadiness is notAssessed.",
+    schema: {},
+    handler: async () => out(await api("/v1/capital-flows", {
+      accept: "application/vnd.cashloom.capital-flows.v1+json, application/json;q=0.9",
+    })),
+  },
   {
     name: "moneyworld_list_chains",
     description:
@@ -243,7 +276,9 @@ export const TOOLS = [
 ] as const;
 
 const INSTRUCTIONS =
-  "MONEYWORLD serves cited money facts for both humans and agents. Invariants: every amount is an exact integer minor-unit STRING — divide by `decimals`, NEVER parse as a float. Most tools return a bare MoneyFact with the amount at top-level `.value`; moneyworld_convert and moneyworld_value nest it at `result.value`, and moneyworld_get_fees returns `{count, facts:[...]}`. Every fact cites `sources[]` and a `proof_state` (none < asserted < tested < attested) and often a `recompute` recipe — verify instead of trust. Crypto→fiat: use moneyworld_get_price for a unit price, moneyworld_value for one holding's worth, and moneyworld_portfolio for a whole mixed basket (crypto+fiat) totalled in one currency — a portfolio total is marked `complete:false` with a `withheld[]` list when a leg is stale/unknown, so a partial total is never mistaken for the full basket. All three REFUSE or withhold a stale round rather than serve an old number; moneyworld_convert is fiat↔fiat only. A response carrying a `title` (+ `status`, `next_actions`) is an honest refusal, not a value; there is no fabricated number. Start with moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids. Beyond money, the `zerone_*` tools read the kingdom's TRUTH chain — verified facts, the canonical doctrine, the chain's normative commitments, and an agent's calibration (the compassion track record); these return on-chain knowledge (content + confidence + status), NOT MoneyFacts, each citing the REST path to re-derive it.";
+  "MONEYWORLD serves public, read-only money observations with source receipts. Start with moneyworld_get_world for the overview, moneyworld_get_onchain for selected chain/protocol state, or moneyworld_get_capital_flows for reported financing and transactions. These are distinct versioned snapshot schemas, not bare MoneyFacts. Keep their timestamps, source limits, missing values and partial/refreshing states; a fresh retrieval does not make the observation current. Capital flows is one bounded read without automatic polling, and never supplies a global total or an archive of release vintages. " +
+  "For individual MoneyFacts, `.value` is an exact integer string scaled by 10^`.decimals`; do not use binary floats for money. moneyworld_convert and moneyworld_value nest the amount at `result.value`, and moneyworld_get_fees returns `{count, facts:[...]}`. Snapshot metrics have their own typed units: Capital flows additionally requires unitMultiplier and native currency. Preserve sources, proof_state and recompute recipes where supplied. Use moneyworld_list_chains / moneyworld_list_fiat / moneyworld_find_asset to resolve ids. Crypto→fiat: moneyworld_get_price gives a unit price, moneyworld_value a holding's worth, and moneyworld_portfolio a mixed basket total. A portfolio with `complete:false` and `withheld[]` is partial; stale or unknown legs are not zero. moneyworld_convert is fiat↔fiat only. A response with `title` and `status` is a refusal, not a financial value. " +
+  "The zerone_* tools separately read on-chain facts, doctrine, commitments and calibration. They return knowledge records and REST provenance, not MoneyFacts. No tool grants custody, signing, trading or transfer authority.";
 
 /** Build the MCP server with all tools + annotations + instructions. */
 export function buildServer(): McpServer {

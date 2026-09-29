@@ -91,8 +91,8 @@ export default function Weave({ onOpen }: Props) {
               </feMerge>
             </filter>
             <radialGradient id="knot-core" cx="50%" cy="42%" r="65%">
-              <stop offset="0%" stopColor="#241f27" />
-              <stop offset="100%" stopColor="#0e0c11" />
+              <stop offset="0%" stopColor="var(--cl-surface)" />
+              <stop offset="100%" stopColor="var(--cl-surface-soft)" />
             </radialGradient>
           </defs>
 
@@ -174,7 +174,7 @@ export default function Weave({ onOpen }: Props) {
                   <circle className="knot__halo" r={30} fill={c.soft} />
                   <circle className="knot__ring" r={15} stroke={c.stroke} />
                   <circle className="knot__bead" r={7.5} fill={c.stroke} />
-                  <circle className="knot__pip" r={2.6} fill="#0c0a0e" />
+                  <circle className="knot__pip" r={2.6} fill="var(--cl-surface)" />
                   <text className="knot__label" y={44} textAnchor="middle">
                     {n.m.title}
                   </text>

@@ -1,5 +1,5 @@
 import { Badge, LoadingThreads } from "../components";
-import { ASSET_DECIMALS, formatDateTime, formatMinorCompact, shortAddress } from "../format";
+import { ASSET_DECIMALS, formatDateTime, formatMinor, formatMinorCompact, shortAddress } from "../format";
 import type { PaymentListItem, PaymentTruth, PaymentTruthFee } from "../types";
 
 export interface PaymentActivityState {
@@ -174,6 +174,46 @@ export function paymentCanReconcile(payment: PaymentListItem): boolean {
   return state !== "finalized" && state !== "reverted" && state !== "quoted" && state !== "failed";
 }
 
+export interface PaymentRecoveryReview {
+  paymentId: string;
+  accountId: string;
+  txId: string;
+  destination: string;
+  amountMinor: string;
+  asset: "ETH" | "USDC";
+}
+
+/** The recovery endpoint can also finish prepared signing. This UI only offers
+ * an already-signed artifact with a stable identity, never that broader path.
+ * Ambiguous executions currently require reconciliation: the backend recovery
+ * endpoint does not accept them even when its truth projection offers recovery. */
+export function paymentRecoveryReview(payment: PaymentListItem): PaymentRecoveryReview | null {
+  const truth = payment.truth;
+  const txId = truth?.network_tx_id;
+  const asset = payment.asset.toUpperCase();
+  if (!truth || truth.actions?.exact_rebroadcast !== true || !isBasePayment(payment)
+    || truth.intent_id !== payment.id || normalized(truth.lifecycle_state) !== "signed"
+    || ["reorged", "conflicted"].includes(normalized(truth.canonicality))
+    || !["", "not_checked", "not_found"].includes(normalized(truth.visibility))
+    || paymentHasFinalizedConsensus(truth)
+    || !txId || !/^0x[0-9a-f]{64}$/i.test(txId)
+    || (payment.tx_hash !== null && payment.tx_hash.toLowerCase() !== txId.toLowerCase())
+    || !/^0x[0-9a-f]{40}$/i.test(payment.to_addr)
+    || !/^[0-9]{1,128}$/.test(payment.amount_minor) || BigInt(payment.amount_minor) <= 0n
+    || (asset !== "ETH" && asset !== "USDC")) return null;
+  return {
+    paymentId: payment.id, accountId: payment.account_id, txId,
+    destination: payment.to_addr, amountMinor: payment.amount_minor, asset,
+  };
+}
+
+export function samePaymentRecoveryReview(left: PaymentRecoveryReview, right: PaymentRecoveryReview): boolean {
+  return left.paymentId === right.paymentId && left.accountId === right.accountId
+    && left.txId.toLowerCase() === right.txId.toLowerCase()
+    && left.destination.toLowerCase() === right.destination.toLowerCase()
+    && left.amountMinor === right.amountMinor && left.asset === right.asset;
+}
+
 function explorerFor(payment: PaymentListItem, txId: string): { href: string; label: string } {
   return normalized(payment.asset) === "btc"
     ? { href: `https://mempool.space/tx/${txId}`, label: "Open in mempool.space" }
@@ -273,13 +313,27 @@ export function PaymentActivity({
   checkingId,
   notice,
   onReconcile,
+  recoveringId = null,
+  recoveryReview = null,
+  onReviewRecovery,
+  onCancelRecovery,
+  onRecover,
 }: {
   payments: PaymentListItem[] | null;
   error: string | null;
   checkingId: string | null;
   notice: { kind: "status" | "alert"; text: string } | null;
   onReconcile: (payment: PaymentListItem) => void;
+  recoveringId?: string | null;
+  recoveryReview?: PaymentRecoveryReview | null;
+  onReviewRecovery?: (payment: PaymentListItem) => void;
+  onCancelRecovery?: () => void;
+  onRecover?: (review: PaymentRecoveryReview) => void;
 }) {
+  const actionBusy = checkingId !== null || recoveringId !== null;
+  const currentReview = recoveryReview && payments?.find(payment => payment.id === recoveryReview.paymentId);
+  const availableReview = currentReview ? paymentRecoveryReview(currentReview) : null;
+  const reviewMatches = !!(recoveryReview && availableReview && samePaymentRecoveryReview(recoveryReview, availableReview));
   return (
     <section className="payment-activity" aria-labelledby="payment-activity-title">
       <div className="section-title">
@@ -293,6 +347,27 @@ export function PaymentActivity({
         </p>
       )}
       {error && <p className="truth-notice is-error" role="alert">Activity unavailable: {error}</p>}
+      {recoveryReview && (
+        <section className="card" aria-labelledby="payment-recovery-title">
+          <h3 id="payment-recovery-title">Review exact-byte recovery</h3>
+          <p>Rebroadcast the transaction already signed for this payment. Its destination, amount and transaction ID stay the same. No new transaction is created or signed.</p>
+          <dl className="quote-facts">
+            <div><dt>Network</dt><dd>Base</dd></div>
+            <div><dt>Transaction</dt><dd><code style={{ overflowWrap: "anywhere" }}>{recoveryReview.txId}</code></dd></div>
+            <div><dt>Destination</dt><dd><code style={{ overflowWrap: "anywhere" }}>{recoveryReview.destination}</code></dd></div>
+            <div><dt>Amount</dt><dd>{formatMinor(recoveryReview.amountMinor, ASSET_DECIMALS[recoveryReview.asset])} {recoveryReview.asset}<br /><code>{recoveryReview.amountMinor} atomic</code></dd></div>
+          </dl>
+          <p>The node will check the saved record before sending the same signed bytes. A broadcast response does not establish settlement.</p>
+          {!reviewMatches && <p role="alert">This record changed or recovery is no longer available. Close this review and inspect the latest payment truth.</p>}
+          <div className="btn-row">
+            <button type="button" className="btn btn-primary" disabled={actionBusy || !reviewMatches || !!error || !onRecover}
+              aria-busy={recoveringId === recoveryReview.paymentId} onClick={() => onRecover?.(recoveryReview)}>
+              {recoveringId === recoveryReview.paymentId ? "Recovering signed transaction…" : "Rebroadcast this transaction"}
+            </button>
+            <button type="button" className="btn btn-ghost" disabled={actionBusy} onClick={onCancelRecovery}>Cancel</button>
+          </div>
+        </section>
+      )}
       {!payments && !error && <LoadingThreads label="Reading recent payment records…" />}
       {payments?.length === 0 && <p className="payment-activity-empty">No payments have been quoted yet.</p>}
       {payments && payments.length > 0 && (
@@ -351,15 +426,19 @@ export function PaymentActivity({
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      disabled={checkingId !== null}
+                      disabled={actionBusy}
                       aria-busy={checking}
                       onClick={() => onReconcile(payment)}
                     >
                       {checking ? "Checking Base…" : "Check Base now"}
                     </button>
                   )}
-                  {truth?.actions?.exact_rebroadcast === true && (
-                    <span className="truth-action-note">Exact-byte rebroadcast is available; it cannot create a different transaction.</span>
+                  {paymentRecoveryReview(payment) && onReviewRecovery && (
+                    <button type="button" className="btn btn-ghost" disabled={actionBusy || !!error}
+                      onClick={() => onReviewRecovery(payment)}>Review recovery</button>
+                  )}
+                  {truth?.actions?.exact_rebroadcast === true && !paymentRecoveryReview(payment) && (
+                    <span className="truth-action-note">Recovery needs further evidence. Check Base and inspect the local record before another action.</span>
                   )}
                   {truth?.actions?.safe_to_create_new_payment === false && (
                     <strong className="truth-hold">Do not create a replacement payment.</strong>

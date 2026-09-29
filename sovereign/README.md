@@ -24,8 +24,8 @@ its application scope and external-layer caveats, not a wallet-wide privacy guar
 
 - **One Bun process.** API + UI served from the same origin, bound to
   `127.0.0.1`. This is your node, not a server.
-- **One file for all data.** `bun:sqlite` (ships inside Bun) → `~/.cashloom/sovereign.db`.
-  Nothing to install, start, or host.
+- **Local SQLite storage.** `bun:sqlite` (ships inside Bun) → `~/.cashloom/sovereign.db`.
+  The optional TCG rehearsal uses a separate `tcg-sandbox.db`; no database server.
 - **Local encrypted key custody.** Argon2id(passphrase) → AES-256-GCM. Private
   keys are sealed at rest, decrypted only in memory, only to sign, and
   **never leave the machine** — CashLoom signs locally and broadcasts the
@@ -37,13 +37,39 @@ its application scope and external-layer caveats, not a wallet-wide privacy guar
 
 ```bash
 cd sovereign
-bun install
+bun install --frozen-lockfile
+(cd ui && bun install --frozen-lockfile)
 bun run build:ui   # builds the frontend into ui/dist
 bun start          # → http://127.0.0.1:4747
 ```
 
 That is the whole setup. No `.env` is required to boot. Open the URL, forge a
 passphrase, and you have a running non-custodial wallet + money tracker.
+
+Dependency installation is explicit; `build:ui` only checks and builds the UI.
+The node resolves its UI relative to its source and refuses to start without a
+built index page. It does not install packages or build assets during startup.
+
+The private Overview can link to a separately running CashLoom service preview.
+Set the optional **build-time** `VITE_CASHLOOM_SERVICE_ORIGIN` when building the UI:
+
+```bash
+VITE_CASHLOOM_SERVICE_ORIGIN=http://127.0.0.1:5179 bun run build:ui
+```
+
+Use an HTTPS origin or HTTP on `localhost`, `127.0.0.1`, or `[::1]`, with an
+optional port and trailing slash. Credentials, paths, query strings and fragments
+are rejected. The UI adds `/plan` and opens it without a referrer or wallet data.
+The configured origin is public build output, so never put a secret in it.
+An unset or invalid value shows preview availability text without a planner link.
+This setting neither starts nor checks the service; run the preview separately.
+It does not change the existing CashLoom guide link. Rebuild after changing it.
+
+Follow the [local-use and recovery guide](../docs/local-pilot.md) for a separate
+pilot dataset, daily account/ledger usage, and WAL-aware backup, verification,
+and restore into a new directory. `bun run data --help` describes the explicit
+path commands; backups retain private records and still need the vault
+passphrase. The CLI never starts or overwrites a wallet.
 
 ### Optional environment (all off by default)
 
@@ -53,11 +79,52 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 | `CASHLOOM_BIND` | Loopback bind address (default `127.0.0.1`; only `localhost`, `127.0.0.1`, or `::1` are accepted). Wallet Kernel v2 refuses remote custody exposure. |
 | `CASHLOOM_ALLOWED_HOSTS` | Optional extra Host aliases for a loopback-only development setup. This is a DNS-rebinding control, not remote authentication. |
 | `CASHLOOM_ALLOWED_ORIGINS` | Optional extra browser origins for a loopback-only development setup. This is not an access-control or TLS boundary. |
-| `CASHLOOM_DATA_DIR` | Where the SQLite file + keys live (default `~/.cashloom`). |
+| `CASHLOOM_DATA_DIR` | Where the SQLite files + keys live (default `~/.cashloom`). |
 | `CASHLOOM_BASE_RPC_URL` | Primary Base RPC for quotes, sending, and evidence (default public `mainnet.base.org`). API-bearing URLs are accepted but never returned in receipts/errors. |
 | `CASHLOOM_BASE_CONFIRMATION_RPC_URL` | Independent Base evidence provider (default public `base-rpc.publicnode.com`). Must be a distinct endpoint; two-provider finalized agreement is required to settle. |
 | `CASHLOOM_BASE_RECONCILIATION_ENABLED` | Set to exactly `1` to start the bounded background checker for already-signed Base transactions. Off by default; it can observe/settle but cannot sign, submit, recover, or rebroadcast. |
 | `STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*` | Read-only connector keys, **only** if you connect those rails. Each is an env-var **pointer** named on an account; the value is never stored in the DB. |
+
+## Moving through the wallet
+
+In this development checkout, start with **Overview** to inspect saved balances,
+their timestamps, and missing evidence. Base ETH/USDC positions use finalized
+observations and group duplicate local records for the same chain address.
+Different assets and networks retain their own units.
+
+- **Signing keys → Accounts:** choose “Use in an account” to prepare an account with that
+  key. Review and save it yourself. Record-signing secrets have no payment-address
+  actions.
+- **Accounts → Send money / Receive money / Activity:** the selected account follows you, including
+  browser Back/Forward within the unlocked session. Reload reopens the view;
+  private account/key selection stays in memory and clears on lock.
+- **Manual balances:** “Record balance” saves an exact, timestamped observation for
+  an active manual non-crypto account. Concurrent edits require reloading and
+  reviewing the saved value. It neither sends money nor creates Activity entries.
+- **Activity:** record account activity separately from observed balances. Entering
+  an expense does not silently recalculate a balance observation.
+- **Payment recovery:** eligible already-signed Base ETH/USDC payments show “Review
+  recovery.” Review the saved transaction, recipient, and amount before explicitly
+  rebroadcasting its existing bytes. Ambiguous executions use reconciliation;
+  this UI does not create a new transaction or automatically retry recovery.
+- **Agreements:** trade records and the separate escrow rehearsal link back to account
+  activity. A trade record does not establish payment or authorize settlement.
+
+The **World** link opens public information without passing account or key
+identifiers. The public `/wallet` page explains local setup and does not probe
+the browser's loopback network. See the
+[integration report](../docs/experience-integration-2026-09-23.md) for verification
+and activation limits.
+
+## Public information for agents
+
+With the public INFO server running, `bun run src/mcp/moneyworld.ts` starts a
+separate stdio MCP adapter. `MONEYWORLD_URL` selects the INFO origin; the default
+is `http://127.0.0.1:4747`. It exposes 18 read-only tools, including
+`moneyworld_get_world`, `moneyworld_get_onchain`, and
+`moneyworld_get_capital_flows`. These retain each snapshot's source receipts,
+timestamps, units, and partial/unavailable states. They do not access the private
+wallet or move money; public INFO reads can contact upstream data providers.
 
 ## What works today
 
@@ -92,6 +159,14 @@ passphrase, and you have a running non-custodial wallet + money tracker.
 - **Read rails** — sync balances + transactions from Stripe, GoCardless,
   Bitcoin (Esplora), Ethereum (Alchemy), and the agenttool agent economy.
   Strictly read-only: nothing behind a connector can move money.
+- **Unified money view** — shared connection status, balance observations,
+  pending/posted/removed history, Stripe gross/fee/net records, reviewed CSV
+  import and JSON export, and owner-confirmed internal transfers. Plaid US bank
+  consent and sync are implemented for **sandbox test accounts only**.
+- **TCG Trades — records and sandbox only** — card-aware, versioned shipped-sale
+  agreements and owner-reported evidence, with a separate persistent no-money
+  escrow rehearsal. No independent-party consent, funds held, or protection.
+  See [`TCG.md`](../TCG.md) for local usage, storage/privacy and live-service gates.
 - **Ledger + analytics** — every movement in one place, BigInt-exact
   minor units, per-account in/out and net position.
 
@@ -109,6 +184,57 @@ passphrase, and you have a running non-custodial wallet + money tracker.
   `GET /api/wallet/v3/integrations` distinguish built adapters, configuration,
   and live execution without exposing secrets or starting a provider request.
 
+## Unified money view (local pilot)
+
+Open **Connections** in an unlocked owner workspace. Existing Stripe and crypto
+readers share the same records as manual accounts and bank test accounts. Each
+source shows its environment, last observation and data permissions. Refreshes
+are explicit; opening the page does not load Plaid or fetch provider data.
+
+To try the bank journey, supply `PLAID_CLIENT_ID` and `PLAID_SANDBOX_SECRET` only
+to the private node process through your scoped credential mechanism. Restart
+the node, unlock the owner vault, and select **Connect a test bank**. The service
+is fixed to `sandbox.plaid.com`; production tokens are rejected. Plaid Link loads
+from Plaid only after that action. This requires internet access and sends consent
+interaction to Plaid. Initial connection saves supported USD checking, savings
+and credit-card accounts; request a sync to retrieve activity. This integration
+does not provide live bank access, payment authority or account/routing numbers.
+
+Access tokens are encrypted with the vault and bound to their provider and local
+connection ID. Disconnect disables further reads locally before requesting
+provider revocation. A failed revocation stays visible and can be retried; it
+does not erase saved records. Reconnection currently means disconnecting and
+starting a new Link session. An uncertain public-token exchange is not repeated.
+Disconnect a bank before archiving its individual accounts, so one archived
+account cannot block updates for the remaining accounts in that connection.
+
+In **Activity**, choose an active manual account and preview a CSV with columns
+`date,title,amount,currency` and optional `category`. Dates use `YYYY-MM-DD`;
+amounts use signed decimals without separators, with positive money in and
+negative money out. Import supports at most 2,000 entries / 1 MB and preserves
+the account's saved balance. Connected accounts cannot receive CSV imports until
+cross-source duplicate review is supported. CSV matches skip by default. Review
+an individual match as a separate transaction using a unique reusable reference
+(for example, a statement ID and line number), then update the preview before
+confirming. Reusing that reference in the same account skips the saved entry;
+conflicting date/title/amount reuse is refused. References are case-sensitive.
+Export downloads up to 10,000 records as JSON without
+raw provider payloads, external account IDs, tokens, or keys; use a local data
+backup for larger or complete database recovery.
+
+Transfer suggestions require nearby, equal-opposite posted records in the same
+asset and compatible environments. The owner confirms the accounts belong to
+them before linking. Linked records remain visible but are excluded from
+income/spending totals; undo restores their previous treatment. Known fees and
+currency conversions require a later matching model. Provider changes that
+invalidate a match undo that link and retain its history.
+
+Tests use isolated databases and synthetic provider responses. Run
+`bun run test:connect` for the read model, Plaid lifecycle, imports and API checks.
+Actual Plaid sandbox credentials have not been exercised in this implementation.
+PayPal/Cash App connections and production bank access remain future work. See
+the [US-first integration plan](../docs/unified-money-layer-2026-09-29.md).
+
 Architecture, standards, activation gates, and exact implementation files are
 documented in [`../WALLET-CONNECTIVITY.md`](../WALLET-CONNECTIVITY.md).
 
@@ -117,7 +243,7 @@ documented in [`../WALLET-CONNECTIVITY.md`](../WALLET-CONNECTIVITY.md).
 - **Owner coordinators** for external signing and provider consent, plus
   broader finalized position adapters beyond Base ETH/native USDC.
 - **Lightning**, **more rails** (SEPA, UPI, SOL), **payment pointers**
-  (`you@cashloom`), **CSV/receipt import** without any cloud AI.
+  (`you@cashloom`), and **receipt import** without any cloud AI.
 - **Tauri desktop packaging** — double-click to run, zero terminal.
 
 ## Design doctrine (why the code is shaped this way)

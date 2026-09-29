@@ -10,9 +10,9 @@ import { InternalServerException } from "../utils/app-error";
 
 // READ-ONLY Stripe connector over the plain REST API (no Stripe SDK — axios is
 // already the house HTTP client). Built for a RESTRICTED key (rk_...) carrying
-// only the balance:read + balance_transactions:read scopes; it never calls an
-// endpoint outside those two reads, so even a leaked key from this code path
-// could not move money. The key itself is resolved from the environment via
+// only the balance:read + balance_transactions:read scopes; this connector calls
+// only those two GET endpoints. Key permissions must be configured at Stripe;
+// this code cannot attest to their scope. The key is resolved via
 // resolveCredentialRef at call time and never appears in errors or logs.
 
 const STRIPE_API_BASE = "https://api.stripe.com";
@@ -75,11 +75,16 @@ interface StripeBalanceEntry {
 interface StripeBalanceResponse {
   available?: StripeBalanceEntry[];
   pending?: StripeBalanceEntry[];
+  connect_reserved?: StripeBalanceEntry[] | null;
+  livemode?: boolean;
 }
 
 interface StripeBalanceTransaction {
   id: string;
   amount: number;
+  fee: number;
+  net: number;
+  status: "pending" | "available";
   created: number;
   currency: string;
   description?: string | null;
@@ -109,9 +114,9 @@ const retryAfterSeconds = (headerValue: unknown): number => {
 // Stripe amounts must be integers; anything else means we're misreading the
 // payload, and summing it would corrupt a balance — refuse instead.
 const assertIntegerAmount = (amount: number, where: string): void => {
-  if (typeof amount !== "number" || !Number.isInteger(amount)) {
+  if (typeof amount !== "number" || !Number.isSafeInteger(amount)) {
     throw new InternalServerException(
-      `Stripe ${where} returned a non-integer amount (${amount}); refusing to treat it as minor units`
+      `Stripe ${where} returned an unsafe or non-integer amount; refusing to treat it as minor units`
     );
   }
 };
@@ -193,11 +198,20 @@ const normalizeTransaction = (
   txn: StripeBalanceTransaction
 ): NormalizedTransaction => {
   assertIntegerAmount(txn.amount, `balance transaction ${txn.id}`);
+  assertIntegerAmount(txn.fee, "transaction fee");
+  assertIntegerAmount(txn.net, "transaction net");
+  if (BigInt(txn.amount) - BigInt(txn.fee) !== BigInt(txn.net)) throw new InternalServerException("Stripe gross, fee and net do not reconcile");
+  if (txn.status !== "pending" && txn.status !== "available") throw new InternalServerException("Stripe returned an unknown transaction status");
   return {
     externalId: txn.id,
     title: titleFor(txn),
-    // Stripe's sign convention is already what we want: negative = money out.
-    amountMinor: String(txn.amount),
+    // Net is the effect on the Stripe balance; retain gross and fee components.
+    amountMinor: String(txn.net),
+    grossMinor: String(txn.amount),
+    feeMinor: String(txn.fee),
+    netMinor: String(txn.net),
+    status: txn.status === "available" ? "posted" : "pending",
+    providerCategory: txn.reporting_category || txn.type || null,
     currency: txn.currency.toUpperCase(),
     date: new Date(txn.created * 1000),
     raw: txn,
@@ -289,10 +303,23 @@ export const createStripeConnector = (
 
       return {
         balanceMinor: totalMinor.toString(),
+        availableMinor: sumEntries(balance.available),
+        pendingMinor: sumEntries(balance.pending),
+        heldMinor: sumEntries(balance.connect_reserved),
+        balanceKind: "total",
+        environment: balance.livemode === true ? "live" : balance.livemode === false ? "sandbox" : undefined,
         currency,
         decimals: stripeDecimalsFor(currency),
         asOf: new Date(),
       };
+
+      function sumEntries(entries: StripeBalanceEntry[] | null | undefined): string | null {
+        if (entries === undefined || entries === null) return null;
+        return entries.filter((entry) => entry.currency.toUpperCase() === currency).reduce((sum, entry) => {
+          assertIntegerAmount(entry.amount, "balance component");
+          return sum + BigInt(entry.amount);
+        }, 0n).toString();
+      }
     },
 
     // GET /v1/balance_transactions with created[gte]=unix(since), walking the

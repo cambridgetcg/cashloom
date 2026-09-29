@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -43,11 +43,57 @@ beforeAll(async () => {
 });
 
 describe("local API vault-session authority", () => {
+  it("lets any valid scoped session inspect only its own expiry without renewal", async () => {
+    expect(requiredScopeForLocalRoute("GET", "/api/vault/session")).toBe("valid-session");
+    expect(requiredScopeForLocalRoute("POST", "/api/vault/session")).toBeUndefined();
+    expect(requiredScopeForLocalRoute("GET", "/api/vault/session/other")).toBeUndefined();
+    const delegated = vault.createDelegatedAgentSession(ownerToken, {
+      delegateKeyId: `sha256:${"d".repeat(64)}`, scopes: ["accounts:read"],
+    });
+    for (const token of [ownerToken, readToken, delegated.token]) {
+      const before = vault.getSessionInfo(token)!;
+      const start = Date.now();
+      const response = await app.request("/api/vault/session", authorized(token));
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      const body = await response.json() as { expiresAt: string; serverTime: string };
+      expect(Object.keys(body).sort()).toEqual(["expiresAt", "serverTime"]);
+      expect(body.expiresAt).toBe(before.expiresAt);
+      expect(vault.getSessionInfo(token)?.expiresAt).toBe(before.expiresAt);
+      expect(Date.parse(body.serverTime)).toBeGreaterThanOrEqual(start);
+      expect(Date.parse(body.serverTime)).toBeLessThanOrEqual(Date.now());
+    }
+  });
+
+  it("rejects absent and expired session inspections", async () => {
+    for (const token of [undefined, "synthetic-invalid-session"]) {
+      const response = await app.request("/api/vault/session", token ? authorized(token) : undefined);
+      expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+    const expired = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"], ttlMs: 1 });
+    await Bun.sleep(5);
+    expect((await app.request("/api/vault/session", authorized(expired))).status).toBe(401);
+    expect((await app.request("/api/vault/session", authorized(readToken, { method: "POST" }))).status).toBe(403);
+  });
+
+  it("prevents HTTP caching of private wallet responses including refused access", async () => {
+    for (const init of [undefined, authorized(readToken)]) {
+      const response = await app.request("/api/accounts", init);
+      expect(response.status).toBe(init ? 200 : 401);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+    const refused = await app.request("/api/vault/keys", authorized(readToken));
+    expect(refused.status).toBe(403);
+    expect(refused.headers.get("cache-control")).toBe("private, no-store");
+  });
+
   it("maps every private route family to its least required scope", () => {
     expect(requiredScopeForLocalRoute("GET", "/api/vault/keys")).toBe("keys:manage");
     expect(requiredScopeForLocalRoute("POST", "/api/accounts")).toBe("accounts:write");
     expect(requiredScopeForLocalRoute("GET", "/api/accounts")).toBe("accounts:read");
     expect(requiredScopeForLocalRoute("POST", "/api/accounts/a/sync")).toBe("accounts:write");
+    expect(requiredScopeForLocalRoute("POST", "/api/accounts/a/balance")).toBe("accounts:write");
     expect(requiredScopeForLocalRoute("POST", "/api/transactions")).toBe("accounts:write");
     expect(requiredScopeForLocalRoute("GET", "/api/analytics/summary")).toBe("accounts:read");
     expect(requiredScopeForLocalRoute("POST", "/api/pay/quote")).toBe("payments:quote");
@@ -75,6 +121,170 @@ describe("local API vault-session authority", () => {
       "GET",
       "/api/wallet/v2/reconciliation/status",
     )).toBe("accounts:read");
+  });
+
+  it("maps TCG routes explicitly without granting arbitrary status mutation", () => {
+    for (const path of ["/api/tcg/trades", "/api/tcg/trades/a", "/api/tcg/trades/a/history",
+      "/api/tcg/simulations", "/api/tcg/simulations/a", "/api/tcg/simulations/a/history"]) {
+      expect(requiredScopeForLocalRoute("GET", path)).toBe("trades:read");
+      expect(requiredScopeForLocalRoute("HEAD", path)).toBe("trades:read");
+      expect(requiredScopeForLocalRoute("DELETE", path)).toBeUndefined();
+    }
+    for (const path of ["/api/tcg/trades", "/api/tcg/trades/a/revisions", "/api/tcg/trades/a/evidence"]) {
+      expect(requiredScopeForLocalRoute("POST", path)).toBe("trades:write");
+    }
+    for (const path of ["/api/tcg/simulations", "/api/tcg/simulations/a/commands"]) {
+      expect(requiredScopeForLocalRoute("POST", path)).toBe("trades:simulate");
+    }
+    for (const path of ["/api/tcg/trades/a/status", "/api/tcg/simulations/a/release",
+      "/api/tcg/future", "/api/tcg/trades-elsewhere"]) {
+      expect(requiredScopeForLocalRoute("POST", path)).toBeUndefined();
+    }
+  });
+
+  it("keeps TCG reads private and never creates a sandbox on a read", async () => {
+    const sandboxPath = join(process.env.CASHLOOM_DATA_DIR!, "tcg-sandbox.db");
+    expect(existsSync(sandboxPath)).toBe(false);
+    for (const path of ["/api/tcg/trades", "/api/tcg/simulations"]) {
+      const missing = await app.request(path);
+      expect(missing.status).toBe(401);
+      expect(missing.headers.get("cache-control")).toBe("private, no-store");
+      const accountReader = await app.request(path, authorized(readToken));
+      expect(accountReader.status).toBe(403);
+      expect(await accountReader.json()).toMatchObject({ required_scope: "trades:read" });
+      const owner = await app.request(path, authorized(ownerToken));
+      expect(owner.status).toBe(200);
+      expect(owner.headers.get("cache-control")).toBe("private, no-store");
+    }
+    expect(existsSync(sandboxPath)).toBe(false);
+  });
+
+  it("keeps read, write and simulation capabilities separate", async () => {
+    const token = await vault.unlock(PASSPHRASE, { scopes: ["trades:read"] });
+    expect((await app.request("/api/tcg/trades", authorized(token))).status).toBe(200);
+    for (const [path, scope] of [
+      ["/api/tcg/trades", "trades:write"],
+      ["/api/tcg/simulations", "trades:simulate"],
+    ]) {
+      const response = await app.request(path!, authorized(token, { method: "POST", body: "{}" }));
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ required_scope: scope });
+    }
+    const unmapped = await app.request("/api/tcg/trades/a/status", authorized(ownerToken, {
+      method: "POST", body: JSON.stringify({ status: "protected" }),
+    }));
+    expect(unmapped.status).toBe(403);
+    expect(await unmapped.json()).toMatchObject({ error: "route_scope_unmapped" });
+  });
+
+  it("does not delegate owner TCG authority or revive expired sessions", async () => {
+    for (const scope of ["trades:read", "trades:write", "trades:simulate"] as const) {
+      expect(() => vault.createDelegatedAgentSession(ownerToken, {
+        delegateKeyId: `sha256:${"a".repeat(64)}`, scopes: [scope],
+      })).toThrow("Agent sessions may only receive");
+    }
+    const delegated = vault.createDelegatedAgentSession(ownerToken, {
+      delegateKeyId: `sha256:${"a".repeat(64)}`, scopes: ["accounts:read"],
+    });
+    expect((await app.request("/api/tcg/trades", authorized(delegated.token))).status).toBe(403);
+    const expired = await vault.unlock(PASSPHRASE, { scopes: ["trades:read"], ttlMs: 1 });
+    await Bun.sleep(5);
+    expect((await app.request("/api/tcg/trades", authorized(expired))).status).toBe(401);
+  });
+
+  it("revokes TCG access when the wallet locks", async () => {
+    const staleOwner = ownerToken;
+    try {
+      const locked = await app.request("/api/vault/lock", authorized(ownerToken, { method: "POST" }));
+      expect(locked.status).toBe(200);
+      expect((await app.request("/api/vault/session", authorized(staleOwner))).status).toBe(401);
+      expect((await app.request("/api/tcg/trades", authorized(staleOwner))).status).toBe(401);
+      expect((await app.request("/api/tcg/simulations/a/commands", authorized(staleOwner, {
+        method: "POST", body: "{}",
+      }))).status).toBe(401);
+    } finally {
+      readToken = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"] });
+      ownerToken = await vault.unlock(PASSPHRASE);
+    }
+  });
+
+  it("applies existing hostile-origin protection to TCG mutations", async () => {
+    const response = await app.request("/api/tcg/trades", authorized(ownerToken, {
+      method: "POST", body: "{}",
+      headers: { Origin: "https://attacker.example", "Sec-Fetch-Site": "cross-site" },
+    }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "origin_not_allowed" });
+  });
+
+  it("persists a mounted trade and sandbox without writing wallet money", async () => {
+    const walletSnapshot = () => JSON.stringify({
+      accounts: db.query("SELECT * FROM accounts ORDER BY id").all(),
+      transactions: db.query("SELECT * FROM transactions ORDER BY id").all(),
+      payments: db.query("SELECT * FROM payments ORDER BY id").all(),
+      kernel: (db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'wk_%' ORDER BY name")
+        .all() as { name: string }[]).map(({ name }) => ({
+          name, rows: db.query(`SELECT * FROM "${name}"`).all(),
+        })),
+    });
+    const before = walletSnapshot();
+    const asset = { kind: "fiat", currency: "GBP" };
+    const request = {
+      idempotencyKey: "mounted-trade", expectedVersion: 0,
+      terms: {
+        kind: "shipped_sale", title: "Synthetic card sale", originChannel: "Test fixture",
+        ownerRole: "seller", buyerLabel: "Fixture buyer", sellerLabel: "Fixture seller",
+        quoteAsset: asset, quoteDecimals: 2,
+        items: [{ id: "card_1", representation: "physical_copy", game: "OPTCG",
+          cardName: "Fixture card", set: "Test", collectorNumber: "001", language: "English",
+          variant: "Unknown", quantity: 1,
+          condition: { description: "Owner-reported near mint", standard: "Agreed description" },
+          unitPrice: { asset, atomic: "1000" } }],
+        shipping: { payer: "buyer", amount: { asset, atomic: "100" }, responsibility: "Seller ships" },
+        charges: [], plannedPaymentMethod: "cash", inspectionWindowHours: 48,
+        disputeTerms: "Discuss the claimed defect", returnTerms: "Return before refund",
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+    };
+    const post = (path: string, body: unknown) => app.request(path, authorized(ownerToken, {
+      method: "POST", body: JSON.stringify(body),
+    }));
+    const created = await post("/api/tcg/trades", request);
+    expect(created.status).toBe(200);
+    const first = await created.json();
+    expect(first.trade).toMatchObject({ mode: "record", protection: "unavailable", currentRevision: 1 });
+    expect(await (await post("/api/tcg/trades", request)).json()).toEqual(first);
+    const simulated = await post("/api/tcg/simulations", {
+      idempotencyKey: "mounted-simulation", expectedVersion: 0, tradeId: first.trade.id, revision: 1,
+    });
+    expect(simulated.status).toBe(200);
+    const { simulation } = await simulated.json();
+    expect(simulation.mode).toBe("simulation");
+    expect(existsSync(join(process.env.CASHLOOM_DATA_DIR!, "tcg-sandbox.db"))).toBe(true);
+    expect((await app.request(`/api/tcg/simulations/${simulation.id}`, authorized(ownerToken))).status).toBe(200);
+    // A fresh process must reopen the existing sandbox on GET, without creating
+    // it again or confusing the sandbox database with the wallet connection.
+    const restart = Bun.spawnSync([process.execPath, "--no-env-file", "--no-install", "-e", `
+      const { app } = await import(${JSON.stringify(new URL("./index.ts", import.meta.url).href)});
+      const vault = await import(${JSON.stringify(new URL("./vault.ts", import.meta.url).href)});
+      const token = await vault.unlock(${JSON.stringify(PASSPHRASE)}, { scopes: ["trades:read"] });
+      const response = await app.request("/api/tcg/simulations/${simulation.id}", {
+        headers: { Authorization: "Bearer " + token },
+      });
+      console.log(JSON.stringify({ status: response.status, body: await response.json() }));
+    `], {
+      env: { PATH: process.env.PATH!, HOME: process.env.HOME!,
+        TMPDIR: process.env.TMPDIR ?? tmpdir(), CASHLOOM_DATA_DIR: process.env.CASHLOOM_DATA_DIR! },
+      stdout: "pipe", stderr: "pipe", timeout: 10_000,
+    });
+    expect(restart.exitCode).toBe(0);
+    expect(JSON.parse(restart.stdout.toString())).toMatchObject({
+      status: 200, body: { simulation: { id: simulation.id, mode: "simulation" } },
+    });
+    expect(walletSnapshot()).toBe(before);
+    const record = await (await app.request(`/api/tcg/trades/${first.trade.id}`, authorized(ownerToken))).json();
+    expect(record.trade.evidence).toEqual([]);
+    expect(record.trade.protection).toBe("unavailable");
   });
 
   it("keeps scheduler status and saved positions networkless on GET", async () => {
@@ -529,6 +739,163 @@ describe("local API vault-session authority", () => {
   });
 });
 
+describe("manual account balance observations", () => {
+  const createAccount = (rail = "CASH", connector: string | null = null, status = "ACTIVE") => {
+    const id = newId();
+    db.query(`INSERT INTO accounts (id, rail, display_name, currency, decimals, connector_type, status)
+      VALUES (?, ?, 'Manual balance fixture', 'GBP', 2, ?, ?)`).run(id, rail, connector, status);
+    return id;
+  };
+  const body = (balance: string, expectedBalance = "0", expectedTime: string | null = null) => ({
+    balance_minor: balance, expected_balance_minor: expectedBalance, expected_balance_as_of: expectedTime,
+  });
+  const record = (id: string, payload: unknown, token = ownerToken) =>
+    app.request(`/api/accounts/${id}/balance`, authorized(token, { method: "POST", body: JSON.stringify(payload) }));
+  const saved = (id: string) => db.query("SELECT balance_minor,balance_as_of FROM accounts WHERE id=?").get(id) as {
+    balance_minor: string; balance_as_of: string | null;
+  };
+
+  it("requires a live account-write session and refuses a hostile browser origin", async () => {
+    const id = createAccount();
+    expect((await app.request(`/api/accounts/${id}/balance`, { method: "POST", body: JSON.stringify(body("100")) })).status).toBe(401);
+    const denied = await record(id, body("100"), readToken);
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ required_scope: "accounts:write" });
+    const hostile = await app.request(`/api/accounts/${id}/balance`, authorized(ownerToken, {
+      method: "POST", body: JSON.stringify(body("100")),
+      headers: { Origin: "https://attacker.example", "Sec-Fetch-Site": "cross-site" },
+    }));
+    expect(hostile.status).toBe(403);
+    expect(saved(id)).toEqual({ balance_minor: "0", balance_as_of: null });
+  });
+
+  it("records exact positive, negative and zero balances without a ledger entry or payment", async () => {
+    const id = createAccount();
+    const before = JSON.stringify({
+      transactions: db.query("SELECT * FROM transactions ORDER BY id").all(),
+      payments: db.query("SELECT * FROM payments ORDER BY id").all(),
+      journal: db.query("SELECT * FROM wk_journal_entries ORDER BY id").all(),
+    });
+    for (const amount of ["922337203685477580812345678901", "-922337203685477580812345678901", "0"]) {
+      const current = saved(id);
+      const response = await record(id, body(amount, current.balance_minor, current.balance_as_of));
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.account).toMatchObject({ id, balance_minor: amount, rail: "CASH", currency: "GBP", decimals: 2 });
+      expect(Number.isFinite(Date.parse(result.account.balance_as_of))).toBe(true);
+      if (current.balance_as_of) expect(Date.parse(result.account.balance_as_of)).toBeGreaterThan(Date.parse(current.balance_as_of));
+      expect(saved(id).balance_minor).toBe(amount);
+    }
+    expect(JSON.stringify({
+      transactions: db.query("SELECT * FROM transactions ORDER BY id").all(),
+      payments: db.query("SELECT * FROM payments ORDER BY id").all(),
+      journal: db.query("SELECT * FROM wk_journal_entries ORDER BY id").all(),
+    })).toBe(before);
+  });
+
+  it("compares both previous fields and atomically allows only one competing write", async () => {
+    const id = createAccount();
+    const responses = await Promise.all([record(id, body("100")), record(id, body("200"))]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    const current = saved(id);
+    expect((await record(id, body("300", "0", current.balance_as_of))).status).toBe(409);
+    const staleTime = await record(id, body("300", current.balance_minor, null));
+    expect(staleTime.status).toBe(409);
+    expect(await staleTime.json()).toMatchObject({ error: "account_balance_conflict" });
+    expect(saved(id)).toEqual(current);
+  });
+
+  it("advances the compare-and-swap timestamp even for the same balance", async () => {
+    const id = createAccount();
+    const previousTime = new Date(Date.now() + 1000).toISOString();
+    db.query("UPDATE accounts SET balance_minor='500', balance_as_of=? WHERE id=?").run(previousTime, id);
+    const response = await record(id, body("500", "500", previousTime));
+    expect(response.status).toBe(200);
+    expect(Date.parse(saved(id).balance_as_of!)).toBeGreaterThan(Date.parse(previousTime));
+    expect((await record(id, body("500", "500", previousTime))).status).toBe(409);
+  });
+
+  it("refuses crypto and connected accounts, and does not revive archived accounts", async () => {
+    for (const id of [createAccount("CRYPTO"), createAccount("BANK", "gocardless"), createAccount("CASH", "custom")]) {
+      const response = await record(id, body("100"));
+      expect(response.status).toBe(422);
+      expect(await response.json()).toMatchObject({ error: "manual_balance_not_allowed" });
+      expect(saved(id)).toEqual({ balance_minor: "0", balance_as_of: null });
+    }
+    const archivedId = createAccount("CASH", null, "ARCHIVED");
+    expect((await record(archivedId, body("100"))).status).toBe(404);
+    expect(saved(archivedId)).toEqual({ balance_minor: "0", balance_as_of: null });
+    expect((await record(newId(), body("100"))).status).toBe(404);
+  });
+
+  it("allows manual bank, Stripe, credit and gift-card observations without a connector", async () => {
+    for (const rail of ["BANK", "STRIPE", "PLATFORM_CREDIT", "GIFT_CARD"]) {
+      expect((await record(createAccount(rail), body("12345"))).status).toBe(200);
+    }
+  });
+
+  it("rejects noninteger, oversized and extra-field requests without changing the account", async () => {
+    const id = createAccount();
+    for (const balance of [1, "1.0", "1e6", "01", "-0", "9".repeat(121), ""]) {
+      expect((await record(id, { ...body("100"), balance_minor: balance })).status).toBe(400);
+    }
+    for (const extra of [{ rail: "CRYPTO" }, { balance_as_of: "2026-09-23T00:00:00.000Z" }, { display_name: "Changed" }]) {
+      expect((await record(id, { ...body("100"), ...extra })).status).toBe(400);
+    }
+    expect((await record(id, { balance_minor: "100" })).status).toBe(400);
+    expect(saved(id)).toEqual({ balance_minor: "0", balance_as_of: null });
+  });
+});
+
+describe("archived ledger account identity", () => {
+  it("keeps the default account list active while explicitly retaining archived precision and history", async () => {
+    for (const [currency, decimals, amount] of [["ETH", 18, "1234567890123456789"], ["BTC", 8, "123456789"]] as const) {
+      const id = newId();
+      db.query("INSERT INTO accounts (id,rail,display_name,currency,decimals) VALUES (?,'CRYPTO',?,?,?)")
+        .run(id, `Archived ${currency} fixture`, currency, decimals);
+      const created = await app.request("/api/transactions", authorized(ownerToken, {
+        method: "POST", body: JSON.stringify({ account_id: id, title: "Retained history", amount_minor: amount }),
+      }));
+      expect(created.status).toBe(201);
+      expect((await app.request(`/api/accounts/${id}/archive`, authorized(ownerToken, { method: "POST" }))).status).toBe(200);
+      for (const path of ["/api/accounts", "/api/accounts?includeArchived=false"]) {
+        const response = await app.request(path, authorized(readToken));
+        expect(response.status).toBe(200);
+        expect((await response.json()).accounts.some((account: { id: string }) => account.id === id)).toBe(false);
+      }
+      const historyAccounts = await app.request("/api/accounts?includeArchived=true", authorized(readToken));
+      expect(historyAccounts.status).toBe(200);
+      expect((await historyAccounts.json()).accounts.find((account: { id: string }) => account.id === id))
+        .toMatchObject({ id, currency, decimals, status: "ARCHIVED", display_name: `Archived ${currency} fixture` });
+      const transactions = await app.request(`/api/transactions?accountId=${id}`, authorized(readToken));
+      expect((await transactions.json()).transactions).toMatchObject([{ account_id: id, amount_minor: amount }]);
+    }
+  });
+
+  it("validates the explicit archived switch and retains the private read boundary", async () => {
+    for (const value of ["", "1", "yes", "TRUE"]) {
+      const response = await app.request(`/api/accounts?includeArchived=${value}`, authorized(readToken));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "request_failed" });
+    }
+    expect((await app.request("/api/accounts?includeArchived=true")).status).toBe(401);
+  });
+
+  it("refuses new entries for archived or missing accounts without changing retained history", async () => {
+    const id = newId();
+    db.query("INSERT INTO accounts (id,rail,display_name,currency,decimals,status) VALUES (?,'CASH','Archived fixture','GBP',2,'ARCHIVED')").run(id);
+    const before = db.query("SELECT COUNT(*) AS count FROM transactions").get();
+    for (const [accountId, status, error] of [[id, 409, "account_not_active"], [newId(), 404, "account_not_found"]] as const) {
+      const response = await app.request("/api/transactions", authorized(ownerToken, {
+        method: "POST", body: JSON.stringify({ account_id: accountId, title: "Do not create", amount_minor: "123" }),
+      }));
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ error });
+    }
+    expect(db.query("SELECT COUNT(*) AS count FROM transactions").get()).toEqual(before);
+  });
+});
+
 describe("analytics exact atomic values", () => {
   it("sums values beyond SQLite's signed-64-bit range as decimal strings", async () => {
     const accountId = newId();
@@ -559,9 +926,78 @@ describe("analytics exact atomic values", () => {
       currency: "ETH",
       decimals: 18,
       balance_minor: incoming,
+      read_environment: "local",
       in_minor: "922337203685477580812345679000",
       out_minor: "1844674407370955161624691357802",
       tx_count: 3,
     });
+  });
+});
+
+describe("unified money view authority and reconciliation", () => {
+  it("requires bank disconnection before archiving one of its accounts", async () => {
+    const source = newId(), account = newId();
+    db.query("INSERT INTO read_connections(id,provider,environment,display_name) VALUES(?,'plaid','sandbox','Synthetic bank')").run(source);
+    db.query("INSERT INTO accounts(id,rail,display_name,currency,decimals,connector_type,read_connection_id) VALUES(?,'BANK','Synthetic checking','USD',2,'plaid',?)").run(account, source);
+    const list = await (await app.request("/api/accounts", authorized(readToken))).json();
+    expect(list.accounts.find((row: { id: string }) => row.id === account).read_connection_status).toBe("active");
+    const refused = await app.request(`/api/accounts/${account}/archive`, authorized(ownerToken, { method: "POST" }));
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toBe("disconnect_before_archive");
+    expect(db.query("SELECT status FROM accounts WHERE id=?").get(account)).toEqual({ status: "ACTIVE" });
+    db.query("UPDATE read_connections SET status='disconnected' WHERE id=?").run(source);
+    expect((await app.request(`/api/accounts/${account}/archive`, authorized(ownerToken, { method: "POST" }))).status).toBe(200);
+    expect(db.query("SELECT status FROM accounts WHERE id=?").get(account)).toEqual({ status: "ARCHIVED" });
+  });
+  it("declares exact route scopes and keeps all connection reads private", async () => {
+    for (const path of ["/api/connections", "/api/transfers", "/api/transactions/export"]) {
+      expect(requiredScopeForLocalRoute("GET", path)).toBe("accounts:read");
+      expect(requiredScopeForLocalRoute("DELETE", path)).toBeUndefined();
+      expect((await app.request(path)).status).toBe(401);
+      const response = await app.request(path, authorized(readToken));
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+    for (const path of ["/api/connections/plaid/link", "/api/connections/plaid/exchange",
+      "/api/connections/plaid/a/sync", "/api/connections/plaid/a/disconnect",
+      "/api/transfers/link", "/api/transfers/a/unlink", "/api/transactions/import", "/api/transactions/import/preview"]) {
+      expect(requiredScopeForLocalRoute("POST", path)).toBe("accounts:write");
+      expect(requiredScopeForLocalRoute("GET", path)).toBeUndefined();
+    }
+    expect(requiredScopeForLocalRoute("POST", "/api/connections/plaid/activate-production")).toBeUndefined();
+  });
+  it("keeps connection mutation authority out of delegated sessions", async () => {
+    expect(() => vault.createDelegatedAgentSession(ownerToken, {
+      delegateKeyId: `sha256:${"e".repeat(64)}`, scopes: ["accounts:write"],
+    })).toThrow();
+    const delegated = vault.createDelegatedAgentSession(ownerToken, {
+      delegateKeyId: `sha256:${"e".repeat(64)}`, scopes: ["accounts:read"],
+    });
+    const view = await app.request("/api/connections", authorized(delegated.token));
+    expect((await view.json()).can_manage).toBe(false);
+    for (const path of ["/api/connections/plaid/link", "/api/transactions/import/preview", "/api/transfers/link"]) {
+      const response = await app.request(path, authorized(delegated.token, { method: "POST", body: "{}" }));
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toBe("insufficient_scope");
+    }
+  });
+  it("counts a gross receipt and fee once while excluding pending, removed and confirmed internal transfers", async () => {
+    const processor = newId(), bank = newId();
+    for (const id of [processor, bank]) db.query("INSERT INTO accounts(id,rail,display_name,currency,decimals) VALUES(?,'BANK','Reconciliation fixture','USD',2)").run(id);
+    const insert = db.query(`INSERT INTO transactions(id,account_id,title,amount_minor,date,source,status,gross_minor,fee_minor,net_minor)
+      VALUES(?,?,'Synthetic flow',?,'2026-09-29T12:00:00.000Z','CONNECTOR',?,?,?,?)`);
+    insert.run(newId(), processor, "9700", "posted", "10000", "300", "9700");
+    const outgoing = newId(), incoming = newId();
+    insert.run(outgoing, processor, "-9700", "posted", null, null, null);
+    insert.run(incoming, bank, "9700", "posted", null, null, null);
+    insert.run(newId(), bank, "50000", "pending", null, null, null);
+    insert.run(newId(), bank, "60000", "removed", null, null, null);
+    const linked = await app.request("/api/transfers/link", authorized(ownerToken, {
+      method: "POST", body: JSON.stringify({ outgoing_id: outgoing, incoming_id: incoming }),
+    }));
+    expect(linked.status).toBe(200);
+    const summary = await (await app.request("/api/analytics/summary", authorized(readToken))).json();
+    expect(summary.accounts.find((account: { id: string }) => account.id === processor)).toMatchObject({ in_minor: "10000", out_minor: "300", tx_count: 1 });
+    expect(summary.accounts.find((account: { id: string }) => account.id === bank)).toMatchObject({ in_minor: "0", out_minor: "0", tx_count: 0 });
   });
 });

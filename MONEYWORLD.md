@@ -2,7 +2,8 @@
 
 **[Open World at cashloom.io](https://cashloom.io/)** to read public money
 observations with source receipts. No account or wallet is required. This opening
-describes the shipped World release; the original framework below is design
+describes the shipped World release and separately labels the unpublished Capital
+flows implementation in this checkout. The original framework below is design
 history, not a list of current capabilities.
 
 ## What you can read
@@ -55,6 +56,103 @@ their own practices.
 
 [Published release source](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823)
 identifies the World source branch, not the exact deployed revision.
+
+## Capital flows — this checkout, not yet published
+
+`feature/capital-flows-20260909` adds a separate, lazy `/capital-flows` page and
+`GET /v1/capital-flows` API, with conditional GET/HEAD. **Publication and deployment
+verification are separate and have not happened.** Use this feature checkout with
+the [local INFO and frontend instructions](README.md#run-world-locally), then open
+`/capital-flows` on the local frontend and
+`http://127.0.0.1:4747/v1/capital-flows` for JSON. The published World release clone
+in those instructions does not yet contain this feature. INFO serves the API;
+Atlas's World frontend serves the human route. Neither requires a wallet.
+
+### What the selected flows mean
+
+| Source / population | Measures and native reporting units | Limits |
+|---|---|---|
+| US Daily Treasury Statement, published Table II cash totals | Daily public-debt cash issues, cash redemptions, and compatible issues-minus-redemptions net; USD millions | Cash financing into the Treasury General Account, not raw debt-accounting aggregates, auction allotments or a change in outstanding debt stock. |
+| ECB Spain and Germany central government excluding social security | Monthly all-maturity issuance, redemptions and net issuance at face value; EUR millions | Two named issuer markets, not all governments or cash-proceeds accounting. |
+| ECB euro-area (changing composition) non-MMF investment funds | Quarterly equity, bond, real-estate and private-equity fund-share transactions; EUR millions | Fund domicile is neither investor nor underlying-asset geography. Nonconsolidated fund populations and overlapping PE categories must not be summed. Real-estate fund shares are not direct property investment; PE fund flows are not worldwide deals, commitments or calls/distributions. |
+| Treasury TIC Grand Total `99996` | Monthly foreign purchases, sales and compatible net acquisitions of US long-term Treasury bonds/notes, corporate/other bonds and equities; USD millions | `_sale` means US sales to foreigners (foreign purchases); `_pur` means US purchases from foreigners (foreign sales). Settlement-cost transactions include primary issues/redemptions: not pure secondary turnover. Expenses are included in US purchases; US sales proceeds are net of charges. No Table III bill stock-difference estimates. |
+
+All seven asset categories remain visible: sovereign debt, equities, bonds,
+precious metals, crypto, private equity and real estate. Crypto and metals broad
+investment flows, other sovereign issuer regions including China/UK/Japan,
+broader BIS coverage, global secondary volume, direct property and worldwide PE
+calls/distributions remain explicit gaps—not a real-time worldwide census.
+Onchain supply, bridges, prices and TVL are not substitutes for investment flows.
+No cross-source global total, wrapper-plus-underlying sum, mismatched-period
+comparison or historical conversion using today's FX is supplied.
+
+### Read periods, values, history and receipts
+
+The [typed API contract](sovereign/src/info/capital-flows/model.ts) uses schema
+`cashloom.capital-flows/1` and media type
+`application/vnd.cashloom.capital-flows.v1+json`. Read `series[].definition` for
+`metricKind`, `perspective`, `signConvention`, `geography`, `valuation`, `unit`,
+`seasonalAdjustment` and `annualization`. The geography dimensions separately name
+issuer, investor, reporting, custodial and fund domicile where known.
+
+Each `series[].history[]` observation keeps its `period` start/end/frequency,
+`completeness`, revision/provisional flags, and nullable `value`. Exact
+`value.raw × 10^-value.decimals` is the native-unit decimal; `unitMultiplier`
+converts that to currency units (`unitExponent: 6` means millions). Preserve
+`publisherLexeme`, `currency` and the multiplier; do not sum unlike units.
+`status` distinguishes observed zero from `missing`, `suppressed`,
+`notYetReported` and `withdrawn`; `rightsWithheld` series contain no numeric history.
+
+Receipts identify `sourceSeriesId`, `datasetId`, `resourceUrl`, `method`, `recipe`,
+`inputObservationIds`, limitations, `retrievedAt` and nullable `publicationAt`.
+`generatedAt` is snapshot assembly time; a new retrieval does not move the
+reporting period forward. `reportingRecency: expectation_unknown` means no
+publication schedule has been inferred, not that an old period is up to date.
+Open a row's history and receipt before comparing values or relying on a revision.
+History is latest-revised publisher data, **not an archive of prior vintages**:
+up to 60 daily, 26 weekly, 24 monthly or 20 quarterly observations per series,
+subject to what the selected publisher provides. No weekly source or auction
+feed is enabled; the model's 30-event ceiling is not auction coverage.
+
+### Refresh, failure and reuse boundaries
+
+Reads initiate bounded source rechecks only when due: normally hourly for daily
+sources and six-hourly for monthly/quarterly sources, with failure backoff.
+Manual refresh cannot bypass those limits. An independent single-flight RAM
+cache keeps capital fetching out of World's critical path. A cold read waits at
+most one second, then can return completed sources with partial/refreshing states.
+The page's completion checks are bounded to four within 30 seconds, then stop;
+this is not continuous monitoring or alerts.
+
+Inspect `refresh.state`, `refresh.health`, `sources[].retrievalState`,
+`series[].state`, `coverage` and limitations. `refresh.launchReadiness: notAssessed`
+is not a source-coverage certification. Failed refreshes retain original last-good
+histories and receipts for at most seven days after successful validation;
+`sources[].nextAttemptAt` and `fallbackExpiresAt` name the boundaries. RAM loss
+clears the fallback. Rights restrictions withhold values before fetch/serialization.
+No accounts, execution, database, continuous collector or application-level
+persistent browser snapshots/preferences are added by Capital flows.
+
+Source receipts and `sources[].definition.rights` carry the scoped reuse evidence:
+
+- [FiscalData API terms](https://fiscaldata.treasury.gov/api-documentation/) permit
+  copying, adaptation and redistribution, including commercial use.
+- [ECB reuse conditions](https://www.ecb.europa.eu/services/disclaimer/html/index.en.html)
+  require attribution and disclosure of modifications. **These data are available
+  free of charge from the ECB**; CashLoom does not charge for access. Selection,
+  normalization and derived nets are disclosed in the receipts.
+- TIC reuse relies on the [US government-work/public-data basis](https://www.copyright.gov/title17/92chap1.html#105)
+  for Treasury's [official SLT aggregate provenance](https://home.treasury.gov/data/treasury-international-capital-tic-system-home-page/tic-forms-instructions/tic-slt-form-and-instructions),
+  not blanket permission for government-hosted third-party files, vendor or
+  branding rights, or confidential reports.
+
+The new API is discoverable through local `/v1/orientation` and `/v1/guide`, but
+is **not** one of XENIA Surface's three deterministic resources. Cold partial
+responses, single-flight caching and cache fall-through are not themselves a
+Surface-conformance result. Hosted INFO remains process-wide non-custodial;
+local sovereign public reads remain a route-scoped boundary alongside its
+separate private wallet. Fixture tests and source suitability are not live
+adapter or deployment verification.
 
 ## Historical proposals — not shipped capabilities
 

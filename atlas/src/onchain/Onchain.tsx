@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useBodyLock } from "../lib/hooks";
+import { PublicHeader } from "../components/PublicHeader";
 import {
   fetchOnchain,
   loadPersistedOnchainSnapshot,
@@ -329,26 +330,18 @@ function SkeletonGrid({ count = 4 }: { count?: number }) {
 
 function OnchainNav({ sourceState }: { sourceState: string }) {
   return (
-    <nav className="onchain-nav" aria-label="CashLoom Onchain">
-      <a className="onchain-brand" href="/onchain" aria-label="CashLoom Onchain home">
-        <svg viewBox="0 0 38 38" aria-hidden="true">
-          <path d="M19 3.5 32.4 11v16L19 34.5 5.6 27V11L19 3.5Z" />
-          <path d="m5.6 11 13.4 8 13.4-8M19 19v15.5" />
-          <circle cx="19" cy="19" r="2.8" />
-        </svg>
-        <span>CashLoom</span>
-        <em>Onchain</em>
-      </a>
-      <div className="onchain-nav__links">
+    <PublicHeader current="onchain">
+      <div className="module-toolbar">
+      <nav className="onchain-nav__links" aria-label="Network insight sections">
         {SECTION_LINKS.map(([id, label]) => <a href={`#${id}`} key={id}>{label}</a>)}
-      </div>
+      </nav>
       <div className="onchain-nav__right">
         <span className={`onchain-nav__state onchain-nav__state--${stateTone(sourceState)}`}>
           <i />{sourceState.replaceAll("_", " ")}
         </span>
-        <a href="/world">World <span aria-hidden="true">↗</span></a>
       </div>
-    </nav>
+      </div>
+    </PublicHeader>
   );
 }
 
@@ -393,9 +386,9 @@ function Hero({
         <svg viewBox="0 0 1120 720" preserveAspectRatio="xMidYMid slice">
           <defs>
             <radialGradient id="onchain-node" cx="35%" cy="25%">
-              <stop offset="0" stopColor="#fff2cf" />
-              <stop offset=".35" stopColor="#d8a24a" />
-              <stop offset="1" stopColor="#6f391f" />
+              <stop offset="0" stopColor="var(--cl-accent-soft)" />
+              <stop offset=".35" stopColor="var(--cl-accent)" />
+              <stop offset="1" stopColor="var(--cl-primary)" />
             </radialGradient>
           </defs>
           {[
@@ -415,11 +408,11 @@ function Hero({
         </svg>
       </div>
       <div className="onchain-hero__copy">
-        <p className="onchain-hero__kicker"><span /> Settlement, liquidity &amp; trust boundaries</p>
-        <h1>Liquidity moves<br />across <em>boundaries.</em></h1>
+        <p className="onchain-hero__kicker"><span /> Network insights</p>
+        <h1>Understand the networks<br /><em>money moves through.</em></h1>
         <p className="onchain-hero__lede">
-          A read-only map of major chains, native stable money, DeFi credit, concentrated-liquidity pools,
-          and bridge routes—each observation pinned to the evidence that produced it.
+          Explore selected crypto networks, native USDC supply, lending markets, liquidity pools,
+          and bridge routes. Read the source evidence and coverage before drawing a conclusion.
         </p>
         <div className="onchain-hero__actions">
           <a href="#pulse">Read the latest state <span aria-hidden="true">↓</span></a>
@@ -427,7 +420,7 @@ function Hero({
         </div>
       </div>
       <aside className="onchain-hero__scope">
-        <p className="onchain-kicker">What this instrument sees</p>
+        <p className="onchain-kicker">What this page covers</p>
         <dl>
           <div><dt>{data?.chains.length ?? "—"}</dt><dd>network references</dd></div>
           <div><dt>{data?.stablecoins.length ?? "—"}</dt><dd>native USDC supplies</dd></div>
@@ -1003,7 +996,7 @@ function ReceiptDrawer({
 
   useEffect(() => {
     const background = Array.from(document.querySelectorAll<HTMLElement>(
-      ".onchain-shell > .onchain-skip, .onchain-nav, .onchain-main, .onchain-footer",
+      ".onchain-shell > .onchain-skip, .onchain-shell > header, .onchain-main, .onchain-footer",
     ));
     const hidden = background.map((element) => element.getAttribute("aria-hidden"));
     background.forEach((element) => {
@@ -1089,8 +1082,8 @@ function Footer({ generatedAt }: { generatedAt?: string }) {
     <footer className="onchain-footer">
       <div aria-hidden="true"><span /><i /><span /></div>
       <p>State moves. Receipts hold the reference.</p>
-      <span>{dateTimeText(generatedAt, true) ? `Onchain snapshot assembled ${dateTimeText(generatedAt, true)}` : "Snapshot assembly time unavailable"}</span>
-      <nav aria-label="Onchain footer"><a href="#pulse">Back to pulse ↑</a><a href="/world">CashLoom World ↗</a><a href="/atlas">Wallet code atlas — advanced</a></nav>
+      <span>{dateTimeText(generatedAt, true) ? `Network snapshot assembled ${dateTimeText(generatedAt, true)}` : "Snapshot assembly time unavailable"}</span>
+      <nav aria-label="Network insights footer"><a href="#pulse">Back to pulse ↑</a><a href="/world">Money insights ↗</a><a href="/atlas">How it works</a></nav>
     </footer>
   );
 }
@@ -1113,14 +1106,6 @@ export default function Onchain() {
   const [displayNow, setDisplayNow] = useState(Date.now);
   const [receipt, setReceipt] = useState<ReceiptSelection>();
   const lastAttemptAt = useRef(0);
-
-  useEffect(() => {
-    document.title = "Onchain — CashLoom";
-    document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute(
-      "content",
-      "CashLoom Onchain maps major networks, native stable money, DeFi credit, curated liquidity pools, and bridge routes with pinned evidence receipts.",
-    );
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
