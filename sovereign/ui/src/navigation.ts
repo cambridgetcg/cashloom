@@ -7,6 +7,7 @@ export const WALLET_VIEWS = [
   { id: "receive", label: "Receive money", path: "receive", group: "Your money" },
   { id: "trades", label: "Agreements", path: "trades", group: "Your money" },
   { id: "connections", label: "Connections", path: "connections", group: "Setup" },
+  { id: "assist", label: "Agent access", path: "assist", group: "Setup" },
   { id: "keys", label: "Signing keys", path: "keys", group: "Setup" },
   { id: "zerone", label: "Zerone network", path: "zerone", group: "Advanced" },
 ] as const;
@@ -30,7 +31,7 @@ export function readWalletRoute(): WalletRoute {
   return { view: walletViewFromHash(typeof window === "undefined" ? "" : window.location.hash) };
 }
 
-export const PUBLIC_WORLD_URL = "https://cashloom.io/";
+export const PUBLIC_WORLD_URL = "https://cashloom.io/world";
 
 /** A build-time destination only; never probe a service or attach private context. */
 export function publicPlanUrlForOrigin(value: unknown): string | null {

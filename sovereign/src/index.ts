@@ -71,6 +71,7 @@ import { createBaseReconciliationScheduler } from "./wallet/base-reconciliation-
 import { buildWalletIntegrationCatalog } from "./wallet/integration-catalog.ts";
 import { createConnectRoutes } from "./connect/routes.ts";
 import { createPlaidSandboxService, PlaidError } from "./connect/plaid.ts";
+import { createAssistRoutes } from "./assist/routes.ts";
 
 export const app = new Hono();
 
@@ -306,6 +307,8 @@ const sessionScopeSchema = z.enum([
   "payments:quote",
   "payments:confirm",
   "agent:authorize",
+  "assist:read",
+  "assist:propose",
   "trades:read",
   "trades:write",
   "trades:simulate",
@@ -350,6 +353,13 @@ export const requiredScopeForLocalRoute = (
 ): vault.VaultSessionScope | "valid-session" | undefined => {
   const verb = method.toUpperCase();
   if (pathname === "/api/vault/session") return verb === "GET" ? "valid-session" : undefined;
+  if (pathname === "/api/assist/access") return verb === "GET" || verb === "POST" ? "keys:manage" : undefined;
+  if (/^\/api\/assist\/access\/[^/]+\/revoke$/.test(pathname)) return verb === "POST" ? "keys:manage" : undefined;
+  if (pathname === "/api/assist/context") return verb === "GET" ? "assist:read" : undefined;
+  if (pathname === "/api/assist/proposals") return verb === "GET" ? "assist:read" : verb === "POST" ? "assist:propose" : undefined;
+  if (pathname === "/api/assist/review") return verb === "GET" ? "accounts:read" : undefined;
+  if (/^\/api\/assist\/proposals\/[^/]+\/(accept|reject)$/.test(pathname)) return verb === "POST" ? "accounts:write" : undefined;
+  if (pathname === "/api/assist" || pathname.startsWith("/api/assist/")) return undefined;
 
   if (pathname === "/api/connections" || pathname === "/api/transfers" || pathname === "/api/transactions/export") {
     return verb === "GET" || verb === "HEAD" ? "accounts:read" : undefined;
@@ -482,6 +492,7 @@ app.get("/api/vault/session", (c) => {
 });
 
 /* ----------------------- unified read connections ----------------------- */
+app.route("/api/assist", createAssistRoutes({ db, authority: vault }));
 const canManageConnections = (token: string | undefined): boolean =>
   vault.isValidSession(token, "accounts:write") && vault.getSessionInfo(token)?.principal.kind === "owner";
 const plaidSandbox = createPlaidSandboxService({

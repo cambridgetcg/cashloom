@@ -109,6 +109,12 @@ Different assets and networks retain their own units.
   this UI does not create a new transaction or automatically retry recovery.
 - **Agreements:** trade records and the separate escrow rehearsal link back to account
   activity. A trade record does not establish payment or authorize settlement.
+- **Agent access:** share selected saved accounts with a local MCP client for
+  a short period, optionally allow category suggestions, then review each change.
+  Access can be revoked individually; it also ends on expiry, a successful
+  node-wide lock or restart. This does not connect a model or authorise payments.
+  Follow the [agent setup and limits](../docs/agent-layer-2026-09-29.md) before
+  supplying a credential to a client.
 
 The **World** link opens public information without passing account or key
 identifiers. The public `/wallet` page explains local setup and does not probe

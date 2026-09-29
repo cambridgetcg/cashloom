@@ -6,6 +6,7 @@ export type {
 } from "../../src/tcg/domain";
 export type { SimulationRun, SimulationCommand } from "../../src/tcg/simulation";
 export type { ReadAccountView, ReadConnectionView, TransferCandidate, TransferLink, TransferRecord } from "../../src/connect/contracts";
+export type { AssistAccess, AssistAccessInput, AssistAccessList, AssistAccessCreated, AssistProposal, AssistProposalList, AssistProposalResult } from "../../src/assist/contracts";
 
 export interface PlaidItem {
   id: string;

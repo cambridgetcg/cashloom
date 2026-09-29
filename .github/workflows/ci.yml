@@ -72,6 +72,9 @@ jobs:
               PLAID_SANDBOX_SECRET \
               createPlaidSandboxService \
               installConnectSchema \
+              installAssistSchema \
+              createAssistAccess \
+              CASHLOOM_ASSIST_TOKEN \
               AmbiguousBroadcastError \
               CASHLOOM_DATA_DIR \
               sovereign.db \

@@ -487,7 +487,7 @@ try {
     const geometry = await page.getByRole('navigation', { name: 'Views', exact: true }).locator('button').evaluateAll((buttons) => buttons.map((button) => {
       const r = button.getBoundingClientRect(); return { label: button.textContent, left: r.left, right: r.right, height: r.height };
     }));
-    assert.equal(geometry.length, 9);
+    assert.equal(geometry.length, 10);
     for (const rect of geometry) assert(rect.left >= 0 && rect.right <= width && rect.height >= 44, `${width}px navigation target clipped: ${JSON.stringify(rect)}`);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
   }
@@ -496,7 +496,8 @@ try {
   for (const [label, selector] of [
     ['Overview', '.workspace-intro'], ['Accounts', '.account-rows'], ['Activity', '.ledger-toolbar'],
     ['Send money', '.pay-form'], ['Receive money', '.receive-list'], ['Agreements', '.trade-toolbar'],
-    ['Connections', '.money-source-grid'], ['Signing keys', '.key-forms'], ['Zerone network', '.zerone-view .grid2'],
+    ['Connections', '.money-source-grid'], ['Agent access', '.assist-view'],
+    ['Signing keys', '.key-forms'], ['Zerone network', '.zerone-view .grid2'],
   ]) {
     await navigate(label);
     await page.locator(selector).first().waitFor();

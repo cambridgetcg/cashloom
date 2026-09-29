@@ -85,6 +85,13 @@ JSON, and review matching transfers between accounts you own. These actions
 organise records and do not move money. Connected accounts cannot receive CSV
 imports until cross-source duplicate review is implemented.
 
+**Setup → Agent access** lets a chosen local MCP client read selected saved
+accounts and, if permitted, submit category suggestions. Review and apply or
+reject each suggestion yourself. Start with synthetic records and follow the
+[agent setup guide](agent-layer-2026-09-29.md) for the child-process credential,
+expiry and client data-handling boundaries. CashLoom does not start a model or
+give this access payment authority.
+
 ## Returning, locking, and interrupted connections
 
 The wallet checks its session when opening or returning to the tab and schedules

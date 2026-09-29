@@ -28,6 +28,7 @@ freshness: manually verified 2026-09-29
 - service rebuild, purpose, naming and delivery: docs/service-rebuild-2026-09-29.md
 - US-first money layer and implementation boundaries: docs/unified-money-layer-2026-09-29.md
 - daily use and recovery: docs/local-pilot.md
+- local MCP access and owner-reviewed categories: docs/agent-layer-2026-09-29.md
 
 ## can
 - declare its state via STATE.md

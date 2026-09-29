@@ -164,6 +164,22 @@ try {
   await page.getByRole("link", { name: "Understand local payments" }).first().click();
   await page.locator("#payments").waitFor();
   assert.equal(new URL(page.url()).hash, "#payments");
+  await page.waitForFunction(() => {
+    const target = document.getElementById("payments")?.getBoundingClientRect();
+    return target && target.top >= 0 && target.top < innerHeight / 2;
+  });
+  await page.goto(`${origin}/connections`);
+  await page.getByRole("link", { name: "Understand agent access" }).click();
+  await page.waitForFunction(() => {
+    const target = document.getElementById("agents")?.getBoundingClientRect();
+    return target && target.top >= 0 && target.top < innerHeight / 2;
+  });
+  assert.equal(new URL(page.url()).hash, "#agents");
+  await page.goto(`${origin}/connections`);
+  await page.locator("h1").waitFor();
+  await page.goto(`${origin}/wallet#not-a-guide-section`);
+  await page.locator("#workspace-main").waitFor();
+  assert.equal(await page.evaluate(() => scrollY), 0);
   checkpoint("connection filters and handoff anchors lead to honest local setup guidance");
 
   for (const width of [1440, 390, 320]) {

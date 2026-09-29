@@ -83,6 +83,8 @@ app.get("/api/vault/session", (c) => c.json({ serverTime: new Date().toISOString
 // Read-only presentation fixtures. These never connect a provider or network.
 app.get("/api/connections", (c) => c.json({ schema_version: "cashloom.connections/1", generated_at: stamp, can_manage: false, sources: [], plaid: { environment: "sandbox", configured: false, items: [] } }));
 app.get("/api/transfers", (c) => c.json({ can_manage: false, candidates: [], links: [] }));
+app.get("/api/assist/access", (c) => c.json({ access: [] }));
+app.get("/api/assist/review", (c) => c.json({ proposals: [], has_more: false }));
 app.get("/api/wallet/v3/integrations", (c) => c.json({ generated_at: stamp, integrations: [
   { id: "fixture-device", family: "hardware", label: "Synthetic device wallet", configuration_state: "ready", execution_enabled: false, interaction: "owner_device", persisted_connections: "0", capabilities: ["Review a prepared request"], limitations: ["Execution remains disabled in this fixture"] },
   { id: "fixture-bank", family: "bank-data", label: "Synthetic bank reader", configuration_state: "credentials_required", execution_enabled: false, interaction: "owner_redirect", persisted_connections: "0", capabilities: ["Read configured account information"], limitations: ["No bank authorization is started"] },

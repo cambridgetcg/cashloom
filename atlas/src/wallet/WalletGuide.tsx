@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { PublicHeader } from "../components/PublicHeader";
 import { WORKSPACE_SOURCE } from "../workspace-source";
 import "./wallet-guide.css";
@@ -8,8 +9,17 @@ const USES = [
   { title: "For self-employed work", text: "Keep work accounts distinct from personal accounts and record incoming money and expenses." },
   { title: "For a small team", text: "Let one local operator organise accounts and supporting records to review together." },
 ];
+const GUIDE_ANCHORS = new Set(["workspace-main", "first-steps", "statements", "connections", "payments", "agents", "setup"]);
 
 export default function WalletGuide() {
+  useEffect(() => {
+    // The route arrives after the browser's initial fragment navigation.
+    // Only known guide destinations can request this one-time scroll.
+    const id = window.location.hash.slice(1);
+    if (!GUIDE_ANCHORS.has(id)) return;
+    const frame = window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   return <div className="wallet-guide">
     <a className="skip-link" href="#workspace-main">Skip to your workspace guide</a>
     <PublicHeader current="wallet">
@@ -39,7 +49,7 @@ export default function WalletGuide() {
       </header>
 
       <nav className="wallet-guide-sections" aria-label="Workspace guide sections">
-        <a href="#setup">Setup requirements</a><a href="#first-steps">First account</a><a href="#statements">Import &amp; export</a><a href="#connections">Connections &amp; payments</a>
+        <a href="#setup">Setup requirements</a><a href="#first-steps">First account</a><a href="#statements">Import &amp; export</a><a href="#agents">Agent access</a><a href="#connections">Connections &amp; payments</a>
       </nav>
 
       <section className="wallet-guide-section" aria-labelledby="workspace-fit-title">
@@ -79,6 +89,19 @@ export default function WalletGuide() {
           <article id="payments"><span className="wallet-guide-tag">Local keys required</span><h3>Send &amp; receive</h3><p>Supported local-key payments are Base ETH, Base USDC and Bitcoin. Choose an account and recipient, review a quote, then confirm signing and broadcast.</p><p>Receiving uses a public address. Payment records retain the available evidence and any uncertain outcome.</p></article>
           <article><span className="wallet-guide-tag">Records &amp; rehearsal</span><h3>Trade agreements</h3><p>This development checkout includes card-trade terms and supporting records. Its separate escrow simulation holds no money and provides no real payment protection.</p></article>
         </div>
+      </section>
+
+      <section id="agents" className="wallet-guide-section" aria-labelledby="workspace-agents-title">
+        <p className="wallet-guide-eyebrow">Help within boundaries you choose</p>
+        <h2 id="workspace-agents-title">Let an agent help sort your records.</h2>
+        <p>In your local workspace, open Agent access. Select accounts, choose an expiry, and decide whether the agent may suggest activity categories. A separate local MCP adapter gives a compatible agent client access to those saved records.</p>
+        <ol className="wallet-guide-steps">
+          <li><span aria-hidden="true">01</span><div><h3>Choose what to share</h3><p>Only your selected accounts are exposed, including names, saved balances and recent activity descriptions. The snapshot includes dates and test-data labels. It is a bounded view, not a complete financial report.</p></div></li>
+          <li><span aria-hidden="true">02</span><div><h3>Review each suggestion</h3><p>Compare the original activity category with the agent’s proposed category and reason. You apply or reject it. A changed record needs a new suggestion; accepting changes a category only.</p></div></li>
+          <li><span aria-hidden="true">03</span><div><h3>End access when you choose</h3><p>Revoke access individually, let it expire, or lock the workspace. Existing suggestions remain yours to review. Ending access cannot retrieve information an agent client has already read.</p></div></li>
+        </ol>
+        <p className="wallet-guide-hint">CashLoom does not include a hosted model or chat service. Your chosen agent client may send records to its model provider and retain them under its own settings. This access cannot refresh providers, change balances, approve suggestions or send money.</p>
+        <a className="wallet-guide-button wallet-guide-button--secondary" href={`${WORKSPACE_SOURCE}/docs/agent-layer-2026-09-29.md`} target="_blank" rel="noopener noreferrer">Read agent setup · repository access required ↗</a>
       </section>
 
       <section id="setup" className="wallet-guide-start" aria-labelledby="workspace-start-title">

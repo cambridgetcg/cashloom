@@ -1,4 +1,9 @@
 import type {
+  AssistAccessInput,
+  AssistAccessList,
+  AssistAccessCreated,
+  AssistProposalList,
+  AssistProposalResult,
   AgreementTerms,
   EvidenceInput,
   TradeRecord,
@@ -247,6 +252,12 @@ export const api = {
   walletIntegrations: () =>
     request<WalletIntegrationCatalog>("/api/wallet/v3/integrations"),
   connections: () => request<ConnectionsResponse>("/api/connections"),
+  assistAccess: () => request<AssistAccessList>("/api/assist/access"),
+  createAssistAccess: (body: AssistAccessInput) => request<AssistAccessCreated>("/api/assist/access", body),
+  revokeAssistAccess: (id: string) => request<{ ok: true }>(`/api/assist/access/${encodeURIComponent(id)}/revoke`, {}),
+  assistProposals: () => request<AssistProposalList>("/api/assist/review"),
+  acceptAssistProposal: (id: string, expectedRecordVersion: string) => request<AssistProposalResult>(`/api/assist/proposals/${encodeURIComponent(id)}/accept`, { expected_record_version: expectedRecordVersion }),
+  rejectAssistProposal: (id: string) => request<AssistProposalResult>(`/api/assist/proposals/${encodeURIComponent(id)}/reject`, {}),
   plaidLink: () => request<PlaidLinkStart>("/api/connections/plaid/link", {}),
   plaidExchange: (attemptId: string, publicToken: string) =>
     request<{ item_id: string; account_count: number; state: string; replayed: boolean }>("/api/connections/plaid/exchange", { attempt_id: attemptId, public_token: publicToken }),

@@ -36,6 +36,10 @@ The [US-first unified money layer](docs/unified-money-layer-2026-09-29.md) now
 connects the private records view to a Plaid sandbox flow, existing Stripe and
 crypto readers, reviewed manual-account imports, and transfer review. Live bank
 access and direct PayPal/Cash App connections remain future work.
+The [local agent layer](docs/agent-layer-2026-09-29.md) adds selected-account
+reads through MCP and category suggestions for owner review. **Setup → Agent
+access** controls scope, expiry and revocation. It does not start a model,
+refresh providers or grant payment authority.
 Both public and private interfaces share colors, fonts, and control tokens from
 [`ui/theme.css`](ui/theme.css). Public pages use `PublicHeader`; module styles
 own their layouts and reuse these tokens for new screens and states.

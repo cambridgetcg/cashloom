@@ -171,11 +171,35 @@ try {
     if (!/repository access|source access|access to (?:the |this )?(?:source|repository)|private repository|source repository.{0,40}private|invitation/i.test(copy)) gap("Source access restriction is not explicitly disclosed in the workspace guide");
   });
 
+  await check("agent setup handoff keeps local scope and owner review explicit", async () => {
+    await page.goto(`${origin}/connections`, { waitUntil: "domcontentloaded" });
+    const link = page.getByRole("link", { name: "Understand agent access", exact: true });
+    if (baseline && !(await link.count())) { gap("Local agent setup guide is not deployed"); return; }
+    await link.click();
+    await page.getByRole("heading", { name: "Let an agent help sort your records.", exact: true }).waitFor();
+    assert.equal(new URL(page.url()).pathname, "/wallet");
+    assert.equal(new URL(page.url()).hash, "#agents");
+    await page.waitForFunction(() => {
+      const top = document.getElementById("agents")?.getBoundingClientRect().top;
+      return top !== undefined && top >= -1 && top < innerHeight / 2;
+    });
+    const copy = await page.locator("#agents").innerText();
+    assert.match(copy, /You apply or reject it/);
+    assert.match(copy, /does not include a hosted model/);
+    assert.match(copy, /may send records to its model provider/);
+    assert.match(copy, /cannot refresh providers, change balances, approve suggestions or send money/);
+    for (const width of [1365, 320]) {
+      await page.setViewportSize({ width, height: 950 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    }
+    await page.setViewportSize({ width: 1365, height: 950 });
+  });
+
   await check("public API identifies the INFO process", async () => {
     const result = await publicRequest("/api/meta"); report.api.meta = result;
     assert.equal(result.status, 200); assert.equal(result.json?.mode, "info"); assert.equal(result.json?.name, "cashloom-info");
   });
-  for (const endpoint of ["/api/accounts", "/api/connections", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status"]) await check(`private route absent: ${endpoint}`, async () => {
+  for (const endpoint of ["/api/accounts", "/api/connections", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status", "/api/assist/access", "/api/assist/context", "/api/assist/proposals", "/api/assist/review"]) await check(`private route absent: ${endpoint}`, async () => {
     const result = await publicRequest(endpoint); report.api[endpoint] = { status: result.status, type: result.type };
     assert.equal(result.status, 404); assert.ok(result.json && typeof result.json === "object", "Private route must return a JSON refusal, never the SPA or private data.");
   });

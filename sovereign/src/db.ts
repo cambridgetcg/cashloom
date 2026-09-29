@@ -15,6 +15,7 @@ import { installWalletKernelSchema } from "./wallet/infrastructure/sqlite/schema
 import { installTradeSchema } from "./tcg/schema.ts";
 import { installConnectSchema } from "./connect/schema.ts";
 import { installPlaidSchema } from "./connect/plaid-schema.ts";
+import { installAssistSchema } from "./assist/schema.ts";
 
 const dataDir = process.env.CASHLOOM_DATA_DIR ?? join(homedir(), ".cashloom");
 // New data directories and database files are owner-only. Do not chmod an
@@ -136,5 +137,6 @@ installTradeSchema(db);
 // tokens live in a separate sealed table and are never account attributes.
 installConnectSchema(db);
 installPlaidSchema(db);
+installAssistSchema(db);
 
 export const newId = (): string => crypto.randomUUID();

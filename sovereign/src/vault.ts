@@ -23,6 +23,9 @@ import * as ed25519 from "@noble/ed25519";
 import { db, newId } from "./db.ts";
 import { canonicalizeJson, type JsonValue } from "./wallet/domain/intent.ts";
 import { WalletKernelStore } from "./wallet/infrastructure/sqlite/index.ts";
+import type { AssistAccess, AssistAccessCreated, AssistAccessInput } from "./assist/contracts.ts";
+import { AssistError } from "./assist/errors.ts";
+import { accessInputSchema } from "./assist/validation.ts";
 
 const walletKernelStore = new WalletKernelStore(db);
 
@@ -41,6 +44,8 @@ export type VaultSessionScope =
   | "payments:quote"
   | "payments:confirm"
   | "agent:authorize"
+  | "assist:read"
+  | "assist:propose"
   | "trades:read"
   | "trades:write"
   | "trades:simulate";
@@ -49,6 +54,7 @@ interface VaultSession {
   expiresAtMs: number;
   scopes: ReadonlySet<VaultSessionScope>;
   principal: VaultSessionPrincipal;
+  assist?: AssistAccess;
 }
 
 export type VaultSessionPrincipal = Readonly<
@@ -70,6 +76,8 @@ const ALL_SESSION_SCOPES: readonly VaultSessionScope[] = [
   "payments:quote",
   "payments:confirm",
   "agent:authorize",
+  "assist:read",
+  "assist:propose",
   "trades:read",
   "trades:write",
   "trades:simulate",
@@ -319,6 +327,65 @@ export const createDelegatedAgentSession = (
     principal: { kind: "agent", ref: delegateKeyId },
   });
   return { token, session: getSessionInfo(token)! };
+};
+
+const copyAssistAccess = (access: AssistAccess): AssistAccess => ({ ...access, account_ids: [...access.account_ids], permissions: [...access.permissions] });
+const assistOwner = (token: string, requireRead = false): VaultSession => {
+  const session = sessions.get(token);
+  if (!isValidSession(token, "keys:manage") || session?.principal.kind !== "owner" ||
+      requireRead && !isValidSession(token, "accounts:read")) {
+    throw new AssistError("assist_owner_required", "An owner session with the required management access is needed.", 403);
+  }
+  return session;
+};
+
+/** Record access is a bearer permission, not a signed claim about agent identity.
+ * It lives only in the existing session map and never receives general scopes. */
+export const createAssistAccess = (ownerToken: string, input: AssistAccessInput): AssistAccessCreated => {
+  const owner = assistOwner(ownerToken, true);
+  const body = accessInputSchema.parse(input);
+  if (listAssistAccess(ownerToken).length >= 20) throw new AssistError("assist_access_limit", "Revoke an existing access before creating another. At most 20 can be active.", 409);
+  const account = db.query("SELECT status FROM accounts WHERE id=?");
+  if (body.account_ids.some((id) => (account.get(id) as { status: string } | null)?.status !== "ACTIVE")) {
+    throw new AssistError("assist_account_unavailable", "Choose only active accounts that exist in this workspace.", 409);
+  }
+  const now = Date.now();
+  if (owner.expiresAtMs <= now) throw new AssistError("assist_owner_required", "The owner session expired. Unlock again before granting access.", 403);
+  const access: AssistAccess = {
+    id: crypto.randomUUID(), label: body.label, account_ids: [...body.account_ids].sort(),
+    permissions: body.allow_proposals ? ["read", "propose_categories"] : ["read"],
+    created_at: new Date(now).toISOString(), expires_at: new Date(Math.min(owner.expiresAtMs, now + body.ttl_minutes * 60_000)).toISOString(),
+  };
+  const token = crypto.randomUUID();
+  sessions.set(token, { expiresAtMs: Date.parse(access.expires_at),
+    scopes: new Set<VaultSessionScope>(body.allow_proposals ? ["assist:read", "assist:propose"] : ["assist:read"]),
+    principal: { kind: "agent", ref: access.id }, assist: access });
+  return { access: copyAssistAccess(access), token };
+};
+
+export const listAssistAccess = (ownerToken: string): AssistAccess[] => {
+  assistOwner(ownerToken);
+  const active: AssistAccess[] = [];
+  for (const [token, session] of sessions) {
+    if (session.assist && isValidSession(token)) active.push(copyAssistAccess(session.assist));
+  }
+  return active.sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
+};
+
+export const revokeAssistAccess = (ownerToken: string, id: string): boolean => {
+  assistOwner(ownerToken);
+  for (const [token, session] of sessions) {
+    if (session.assist?.id === id) { sessions.delete(token); return true; }
+  }
+  return false;
+};
+
+export const getAssistAccess = (token: string | undefined, permission: "assist:read" | "assist:propose" = "assist:read"): AssistAccess => {
+  const session = token ? sessions.get(token) : undefined;
+  if (!isValidSession(token, permission) || session?.principal.kind !== "agent" || !session.assist) {
+    throw new AssistError("assist_access_required", "Active agent access with the required permission is needed.", 403);
+  }
+  return copyAssistAccess(session.assist);
 };
 
 const requireKey = (): CryptoKey => {

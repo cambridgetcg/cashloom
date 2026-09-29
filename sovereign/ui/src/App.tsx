@@ -13,6 +13,7 @@ import { Pay } from "./views/Pay";
 import { Receive } from "./views/Receive";
 import { Zerone } from "./views/Zerone";
 import { Trades } from "./views/Trades";
+import { AgentAccess } from "./views/AgentAccess";
 import { PUBLIC_WORLD_URL, WALLET_NAV_GROUPS, WALLET_VIEWS, readWalletRoute, walletViewHash, type WalletNavigate, type WalletRoute, type WalletView } from "./navigation";
 import { createSessionLifecycle, type SessionStatus } from "./session-lifecycle";
 
@@ -261,6 +262,7 @@ export default function App() {
         {view === "ledger" && <Ledger initialAccountId={context?.accountId} onGoto={goto} />}
         {view === "accounts" && <Accounts initialAccountId={context?.accountId} initialKeyId={context?.keyId} onGoto={goto} />}
         {view === "connections" && <Connections onGoto={goto} />}
+        {view === "assist" && <AgentAccess visible={privateVisible} onGoto={goto} />}
         {view === "keys" && <Keys onGoto={goto} />}
         {view === "zerone" && <Zerone />}
       </main>
