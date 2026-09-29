@@ -7,13 +7,15 @@ not a hosted workspace sign-in. Start with a small manual account and recorded
 activity. Public sources and connected-account refreshes can use external
 providers; the manual steps below do not require them.
 
-Release status on 29 September 2026: the source branch is pushed and the website
-is deployed at [cashloom.io](https://cashloom.io). Production and the
-[final preview](https://449cf6c3.cashloom-atlas.pages.dev) each passed 19 checks
-with zero failures. The hosted Capital flows API (404) is the sole capability
-gap; its separate rollout remains incomplete and `releaseReady` remains false.
-Fly access was unavailable, so INFO is unchanged. The workspace remains a local
-developer pilot; this release does not activate live banks or private payments.
+Release status on 29 September 2026: the source branch includes local agent
+access, and its public setup guide is deployed at [cashloom.io](https://cashloom.io).
+Production and preview each passed 24 checks with zero failures. See the
+[current release record](release-agent-layer-2026-09-29.md) for source and
+deployment evidence. The hosted Capital flows API still returns 404; its
+separate rollout remains incomplete and `releaseReady` remains false. Fly
+authentication is still missing, so INFO is unchanged. The workspace remains
+a local developer pilot; this release activates no live banks, hosted model or
+private payments.
 
 ## Install, build, and start
 

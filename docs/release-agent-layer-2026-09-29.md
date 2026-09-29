@@ -40,7 +40,7 @@ authority is added.
   the money-sources browser journey. All passed; source fingerprints still
   matched when the run ended. Agent review screenshots at 1280 and 320 pixels
   were visually inspected after disabling entrance animations.
-- Public UI: 237 tests, TypeScript/build and the compiled service browser suite.
+- Public UI: 237 tests, TypeScript/build and 18 compiled service browser checks.
 - Public-only Linux/amd64 INFO image rebuilt and checked at 256 MiB / one CPU:
   metadata responds, all four Assist routes return 404, runtime contains only
   the bundled INFO program and rights documents, and private custody/Assist
@@ -57,7 +57,34 @@ and `/tmp/cashloom-agent-integration-final-20260929.log`.
 Release branch: `release/service-workspace-20260929` in the existing private
 repository. The original development worktree and inherited edits remain
 preserved. Source publication does not deploy the local node or connect a model.
-Deployment evidence is recorded separately after preview and production checks.
+Published source: `b89cbb2bae5008084339b057497c7ea3a711a252`.
+
+| Surface | Verified deployment | Result |
+| --- | --- | --- |
+| Cloudflare preview | https://0f31568b.cashloom-atlas.pages.dev | 24 checks, zero failures |
+| Production | https://cashloom.io, deployment `fec97b1f-54f3-4e59-8cf1-6337b3e672d1` | 24 checks, zero failures |
+
+Both deployed checks cover all eight human routes, narrow layouts, local planner
+behaviour, guide access disclosure, the Agent access fragment handoff, public
+INFO metadata, four absent Assist APIs and the other private-route/write
+refusals. There were no page/asset errors, external-resource attempts or
+unintended writes. Entry JavaScript/CSS plus Connections and agent-guide assets
+match the verified build byte for byte. `www.cashloom.io` returns 308 to the
+canonical site.
+
+The runner exits 2 and retains `releaseReady: false` solely for the existing
+Capital flows API gap below. The website-only release accepts that disclosed
+gap; it does not mark the separate API rollout complete.
+
+Reports: `/tmp/cashloom-agent-release-preview-20260929/result.json`,
+`/tmp/cashloom-agent-release-production-20260929/result.json` and
+`/tmp/cashloom-agent-release-production-20260929/asset-verification.json`.
+
+Rollback target for the website is the previous production Pages deployment
+`4fe327f3-de34-44c5-b280-464dbd91fb4e` (source `932bdc5`). Use the existing
+`cashloom-atlas` project. Pages' `main` deployment environment does not require
+changing the Git main branch. The original development branch and its local
+edits remain uncommitted; release checkpoints are in the separate worktree.
 
 The hosted Capital flows API remains a separate incomplete rollout. A
 `fly status --app cashloom-api --json` check still reports no access token and
