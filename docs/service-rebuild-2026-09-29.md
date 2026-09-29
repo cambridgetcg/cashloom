@@ -1,8 +1,20 @@
 # CashLoom: a service for sorting your money
 
-Local implementation, 29 September 2026. Builds on the existing Capital flows,
-wallet, and TCG work in `feature/capital-flows-20260909`. This is a development
-checkout, not a production-release record.
+Implementation and preview status, 29 September 2026. Builds on the existing
+Capital flows, wallet, and TCG work in `feature/capital-flows-20260909`; that
+original development worktree and its edits remain preserved. The current source
+is pushed on `release/service-workspace-20260929` in the private CashLoom
+repository. The Cloudflare preview passed 19 checks with zero failures; the
+hosted Capital flows API (404) is its sole capability gap. Production deployment
+is pending. Historical implementation checks below are dated separately from
+this preview verification.
+
+The [current release source](https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929)
+requires private repository access. Use the
+[current clone and local INFO instructions](../README.md#run-the-existing-information-tools-locally)
+or the [private workspace pilot guide](local-pilot.md). Public Money insights is
+at [`/world`](https://cashloom.io/world); the origin root is the new service
+overview in the preview.
 
 ## Purpose
 
@@ -63,8 +75,8 @@ There are three deliberate data locations:
    pages do not probe localhost or attach to it. A link from the private overview
    to the public planner sends no account or balance context. The link is enabled
    only when the private UI build names an available service origin with
-   `VITE_CASHLOOM_SERVICE_ORIGIN`; unconfigured builds do not link to the
-   unpublished hosted planner.
+   `VITE_CASHLOOM_SERVICE_ORIGIN`; unconfigured builds do not assume a hosted
+   planner is available.
 3. **Public insights:** existing read APIs, bounded caches, source receipts, and
    partial-coverage behavior. These observations are not used to invent a personal
    balance or a spending recommendation.
@@ -106,7 +118,7 @@ dark mode. This is a shared light theme, not a dark-mode implementation.
 
 ## Delivery and next decisions
 
-This local rebuild implements the service entry, monthly planning module,
+This release implements the service entry, monthly planning module,
 capability guide, purpose-led public navigation, workspace setup guide, and
 private workspace navigation/onboarding. Verification results are recorded below
 after implementation checks.
@@ -125,13 +137,19 @@ The next releases should address these concrete jobs in order:
 5. **Payment expansion:** finish the relevant owner coordinator and provider
    activation before offering new signing or bank-payment routes.
 
-Publishing requires a separate release decision after reviewing this local
-result. No deployment, credential activation, bank connection, or real payment
-is part of the verification.
+Publication was authorized for this release. The private source branch is
+published and the Cloudflare preview is verified; production deployment remains
+pending. The preview checks use synthetic planner values and public INFO reads.
+They do not activate credentials, connect real banks, or make payments. The new
+Capital flows API needs a separate hosted INFO deployment; its preview page
+discloses the current 404 instead of claiming available data.
 
-## Verification
+## Verification history
 
-Final local checks passed:
+### Initial implementation checks — 29 September 2026, before release preparation
+
+These counts record the earlier shared-UI implementation pass. Later release
+and preview checks are recorded below; this table is not a current-suite total.
 
 | Check | Result |
 |---|---|
@@ -149,7 +167,7 @@ amounts, shortfalls, opt-in persistence, import review, export, clearing, cross-
 change/removal handling, navigation, assets, shared typography/color scheme, the
 Atlas source viewer, and responsive layouts. No uncaught
 client errors or failed page assets were observed. Desktop and mobile screenshots
-were inspected. Latest artifacts: `/tmp/cashloom-ui-consistency/`.
+were inspected. Artifacts for that pass: `/tmp/cashloom-ui-consistency/`.
 Separate populated research checks covered Money insights, Network insights,
 and Capital flows at 390 and 1280 pixels, including receipt focus and dismissal.
 
@@ -167,7 +185,30 @@ shared-theme implementation, alongside 119 UI tests, TypeScript, and build.
 The fixture preserves the repository's shared theme/font layout and verifies
 source hashes; it does not substitute a separate test palette.
 
-To repeat the public checks from `atlas/`:
+### Release preparation and Cloudflare preview — 29 September 2026
+
+The Cloudflare preview of `release/service-workspace-20260929` passed 19 checks
+with zero failures. Checks covered the primary pages, navigation, desktop/mobile
+layouts, synthetic monthly-plan arithmetic without automatic saving or network
+data requests, repository-access disclosure, page assets, and no external fonts.
+The public metadata endpoint identified INFO; private endpoints returned JSON
+404 responses and the public edge refused the private POST probe with 405.
+
+The sole reported capability gap was hosted `GET /v1/capital-flows` returning
+404. The release runner therefore retained `releaseReady: false`; a successful
+preview does not establish that API's availability or production deployment.
+
+Separately, 713 public INFO tests passed (one optional live test skipped). The
+public-only Linux/amd64 image ran with one CPU and a hard 256 MiB memory limit
+without swap. Its exercised public-read workload peaked at 149.69 MiB with no
+OOM events; 100 cached Capital flows reads at concurrency 20 returned identical
+bytes. Conditional 304, HEAD and gzip checks passed. Local Capital flows showed
+three current sources and an explicit TIC adapter-deadline gap. This local image
+verification is not a hosted INFO deployment claim.
+
+### Repeat local checks
+
+From `atlas/`:
 
 ```sh
 bun --no-env-file run typecheck
@@ -192,7 +233,8 @@ the operator's wallet. See the earlier
 [integration report](experience-integration-2026-09-23.md) for the inherited
 backend work; its historical full-backend counts were not rerun for this UI rebuild.
 
-The review session leaves the public development preview at
-`http://127.0.0.1:5181/`, connected to the read-only INFO process at port 4757.
-These are temporary local processes, not installed background services or a
-deployment. The default production build continues to use same-origin public APIs.
+During the earlier implementation review on 29 September 2026, a temporary
+preview used `http://127.0.0.1:5181/` with INFO on port 4757. These historical
+addresses are not a claim that either process remains running. Start the local
+processes explicitly when repeating checks. The production build uses
+same-origin public APIs.

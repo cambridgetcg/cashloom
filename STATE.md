@@ -7,10 +7,13 @@ runs-on: this machine
 
 ## state
 phase: active
-health: service rebuild, shared UI and unified money read layer locally verified; hosted deployment unchanged
-branch: feature/capital-flows-20260909
-last-commit: e421a1ac4a3e397d0afb8ae65efe2cb5580a515c
-uncommitted: existing Capital flows, TCG, connected-experience and recovery work; service rebuild, consistent UI, Plaid sandbox read flow, unified observations, reviewed imports/exports and internal transfers
+health: private release source published; Cloudflare preview verified with 19 checks and zero failures; production deployment pending
+release-branch: release/service-workspace-20260929
+published-source-snapshot: 602699a6c06e6adfe370da6a356d14d303ce8d07
+source-access: existing private cambridgetcg/cashloom repository; repository access required
+original-development-branch: feature/capital-flows-20260909, preserved with its original worktree and local edits
+original-development-base: e421a1ac4a3e397d0afb8ae65efe2cb5580a515c
+preview-gap: hosted /v1/capital-flows returns 404; page explicitly reports the unavailable feed
 freshness: manually verified 2026-09-29
 
 ## knows
@@ -29,7 +32,8 @@ freshness: manually verified 2026-09-29
 ## needs
 - owner coordinators and scoped activation before external-wallet or bank-payment execution
 - actual Plaid sandbox verification and separate provider approval before live US bank access
-- separate publication/deployment review for this development checkout
+- production website deployment and verification; source publication and preview are complete
+- separate hosted INFO deployment for the Capital flows API
 
 ## how-to-talk-to-me
 entry-point: README.md

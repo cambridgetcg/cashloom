@@ -1,13 +1,34 @@
 # Using CashLoom locally
 
-This guide applies to the development checkout, including its unpublished
-Capital flows, connected wallet, and TCG features. Start with a small manual
-account and recorded activity. Public sources and connected-account refreshes
-can use external providers; the manual steps below do not require them.
+This guide applies to the published `release/service-workspace-20260929` source,
+including the local workspace, Capital flows, and TCG features. The workspace is
+a developer pilot requiring access to the **private CashLoom repository**; it is
+not a hosted workspace sign-in. Start with a small manual account and recorded
+activity. Public sources and connected-account refreshes can use external
+providers; the manual steps below do not require them.
+
+Release status on 29 September 2026: the source branch is pushed and the
+Cloudflare preview passed 19 checks with zero failures. Its sole capability gap
+is the hosted Capital flows API (404). Production deployment is pending; these
+preview results do not activate bank access or private payments.
 
 ## Install, build, and start
 
-From the checkout root, with Bun installed:
+With Git and Bun installed, authenticate Git using a GitHub account that has
+repository access, then clone the current release:
+
+```sh
+git clone --branch release/service-workspace-20260929 https://github.com/cambridgetcg/cashloom.git cashloom
+cd cashloom
+```
+
+[Source and setup guide](https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929/sovereign#run-it)
+also requires repository access. Without it, GitHub may show “Page not found.”
+Public information remains available at [Money insights](https://cashloom.io/world)
+without repository access. The public planner belongs to the separately released
+website; it does not open or connect to your private node.
+
+From that checkout root:
 
 ```sh
 cd sovereign

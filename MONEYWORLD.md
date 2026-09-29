@@ -1,9 +1,11 @@
 # CashLoom World — product guide
 
-**[Open World at cashloom.io](https://cashloom.io/)** to read public money
-observations with source receipts. No account or wallet is required. This opening
-describes the shipped World release and separately labels the unpublished Capital
-flows implementation in this checkout. The original framework below is design
+**[Open World at cashloom.io/world](https://cashloom.io/world)** to read public
+money observations with source receipts. No account or wallet is required.
+The current service/workspace source is published in the private repository on
+`release/service-workspace-20260929`. On 29 September 2026, its Cloudflare preview
+passed 19 checks with zero failures; the hosted Capital flows API still returned
+404. Production deployment is pending. The original framework below is design
 history, not a list of current capabilities.
 
 ## What you can read
@@ -40,7 +42,10 @@ also keeps bounded public snapshots locally for reloads and labels saved data.
 
 The hosted World website reads the public INFO service; that service's entrypoint
 has no wallet vault, ledger, or transaction signers. You can run the same read-only
-path with the [Run World locally guide](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally).
+path with the [local INFO and frontend guide](README.md#run-the-existing-information-tools-locally).
+Cloning or reading the source requires access to the private GitHub repository;
+without access, GitHub may show “Page not found.” Public World use needs no
+repository access.
 It still uses upstream public data services and RPC endpoints, not an offline copy
 of the money world. The [advanced local wallet](sovereign/README.md) is a separate
 entrypoint with owner-controlled custody and signing capabilities.
@@ -54,19 +59,23 @@ application scope and external-layer unknowns: no account requirement is not an
 anonymity guarantee, and hosting, networks, browsers, and upstream providers have
 their own practices.
 
-[Published release source](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823)
-identifies the World source branch, not the exact deployed revision.
+[Published release source](https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929)
+requires private repository access and identifies the service/workspace source
+branch, not the exact deployed revision.
 
-## Capital flows — this checkout, not yet published
+## Capital flows — source and deployment status
 
-`feature/capital-flows-20260909` adds a separate, lazy `/capital-flows` page and
-`GET /v1/capital-flows` API, with conditional GET/HEAD. **Publication and deployment
-verification are separate and have not happened.** Use this feature checkout with
-the [local INFO and frontend instructions](README.md#run-world-locally), then open
-`/capital-flows` on the local frontend and
-`http://127.0.0.1:4747/v1/capital-flows` for JSON. The published World release clone
-in those instructions does not yet contain this feature. INFO serves the API;
-Atlas's World frontend serves the human route. Neither requires a wallet.
+`release/service-workspace-20260929` includes the separate, lazy `/capital-flows`
+page and `GET /v1/capital-flows` API, with conditional GET/HEAD. The source is
+published privately and the Cloudflare preview is verified. **The existing
+hosted INFO service still returns 404 for this API**, as checked on
+29 September 2026; the page shows the unavailable-feed boundary explicitly.
+The public-only INFO image passed local Linux verification, which does not
+establish hosted deployment. To run it locally, use the current release and the
+[local INFO and frontend instructions](README.md#run-the-existing-information-tools-locally),
+then open `/capital-flows` on the frontend and
+`http://127.0.0.1:4747/v1/capital-flows` for JSON. INFO serves the API; Atlas serves
+the human route. Neither path requires a wallet.
 
 ### What the selected flows mean
 

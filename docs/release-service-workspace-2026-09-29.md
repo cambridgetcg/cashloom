@@ -1,8 +1,8 @@
 # Service and workspace release — 29 September 2026
 
-Status: release candidate under verification. Publication authorization was
-given for CashLoom in this session; deployment results are recorded below once
-verified.
+Status: source published to the existing private repository; public preview
+verified. Production publication is pending the final copy corrections below.
+The website can be released independently of the pending Fly API update.
 
 ## Scope and source
 
@@ -42,14 +42,16 @@ The public page states that gap explicitly instead of repeatedly retrying.
 
 - Public: 237 unit tests, TypeScript, build and 18 desktop/mobile browser
   checkpoints, including page-load recovery and a missing Capital flows feed.
-- Private: 68 read-layer tests and 133 UI tests, TypeScript/build checks, and
-  an isolated actual-node import journey. Provider requests use synthetic fixtures.
+- Private: 68 read-layer tests and 133 UI tests, TypeScript/build checks,
+  22 fixture journeys and 10 isolated actual-node checks. Provider requests use
+  synthetic fixtures. The final 390-pixel import review keeps row selection and
+  references visible without horizontal scrolling.
 - Public INFO: 713 tests passed, one optional live test skipped. The build
   context contains 46 allowlisted files; runtime contains only the INFO bundle
   and the two public rights documents. Custody/private route probes return 404.
 - Linux/amd64 image tested with one CPU, a hard 256 MiB memory limit and no
   swap. Cold Capital flows, World and network reads returned 200. One hundred
-  concurrent cached Capital flows reads returned identical bytes; HEAD,
+  cached Capital flows reads at concurrency 20 returned identical bytes; HEAD,
   conditional 304 and gzip behavior passed. Peak cgroup memory was 149.69 MiB,
   with zero OOM events; this describes the exercised workload, not every
   possible upstream response. TIC's adapter deadline remained an explicit
@@ -70,4 +72,18 @@ Previous production Pages deployment:
 rollback target. Cloudflare Pages production branch is `main`; this identifies
 the deployment environment and does not require changing the Git main branch.
 
-New deployment IDs, source commit and live verification: pending.
+The initial source checkpoint is `71066a5`; it was pushed only to the new release
+branch. Its public preview, `0e857a10-9190-4b28-b7de-0524c61a7cf2`, passed all
+19 deployed-site checks with zero assertion, page, asset, external-request or
+unintended-write failures. The one recorded capability gap was
+`GET /v1/capital-flows` returning 404 from the unchanged hosted API. The smoke
+runner correctly exits 2 and reports `releaseReady: false` for that incomplete
+API rollout. The website-only release decision accepts the clearly disclosed
+gap; it does not mark the full API release complete.
+
+Final review replaced unsafe single-file live-database backup advice with the
+consistent snapshot command and clarified the architecture guide's limits.
+Native publisher CSV/TIC fixture whitespace was preserved; the staged source
+whitespace check passes when those fixtures are excluded.
+
+Final deployment IDs, source commit and production verification: pending.

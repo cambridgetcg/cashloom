@@ -15,10 +15,13 @@ private wallet and public information tools.
 - **Money insights, `/world`:** public rates, currencies, and source receipts;
   Capital flows and Network insights remain available as deeper research views.
 
-**Local development, not yet published.** The hosted website still needs a
-separate release. Existing account, payment, Capital flows, and TCG work is
-preserved. Household/group planning is one person's editable plan with an
-export, not shared accounts or joint payment authority.
+**Release status — 29 September 2026:** source is published on
+`release/service-workspace-20260929` in the private CashLoom repository.
+The Cloudflare preview passed 19 checks with zero failures; its sole capability
+gap is the hosted Capital flows API, which returns 404. Production deployment
+and its verification are still pending. Existing account, payment, Capital flows,
+and TCG work is preserved. Household/group planning is one person's editable
+plan with an export, not shared accounts or joint payment authority.
 
 Read the [purpose, naming, architecture, and delivery plan](docs/service-rebuild-2026-09-29.md).
 The [US-first unified money layer](docs/unified-money-layer-2026-09-29.md) now
@@ -45,7 +48,7 @@ in the [local pilot guide](docs/local-pilot.md).
 
 ## Existing public information service
 
-**[Open CashLoom World at cashloom.io](https://cashloom.io/)** — public,
+**[Open CashLoom World at cashloom.io/world](https://cashloom.io/world)** — public,
 read-only money information. No account or wallet required.
 
 Read policy and cash rates, available sovereign yields, currency and crypto
@@ -54,18 +57,21 @@ to inspect a source, its timestamps, method, and limitations. Coverage is partia
 stale observations keep their labels and timestamps; unavailable and rights-withheld
 data remain explicit gaps, not estimates.
 
-- **[Product guide](https://github.com/cambridgetcg/cashloom/blob/release/moneyworld-wallet-kernel-v2-20260823/MONEYWORLD.md)** — what World shows, currency references, and local Watching filters.
+- **[Product guide](https://github.com/cambridgetcg/cashloom/blob/release/service-workspace-20260929/MONEYWORLD.md)** — what World shows, currency references, and local Watching filters; private repository access required.
 - **[Machine orientation](https://cashloom-api.fly.dev/v1/orientation)** — existing public read-only API doors and their boundaries.
 - **[Onchain](https://cashloom.io/onchain)** — a secondary view of selected network, stablecoin, credit, pool, and bridge observations; no wallet connection or execution.
 
 ## Run the existing information tools locally
 
-Prerequisites: Git, a current [Bun](https://bun.sh/) release, a browser, and
-internet access. The following clone command retrieves the **earlier published
-World release**, without this checkout's service rebuild:
+Prerequisites: Git, a current [Bun](https://bun.sh/) release, a browser,
+internet access, and access to the **private CashLoom GitHub repository**.
+Authenticate Git with a GitHub account that has repository access before cloning.
+Without access, GitHub may show “Page not found.” The following command retrieves
+the current service/workspace release, including the local INFO and Capital flows
+implementation. Public website use does not require repository access.
 
 ```bash
-git clone --branch release/moneyworld-wallet-kernel-v2-20260823 https://github.com/cambridgetcg/cashloom.git cashloom
+git clone --branch release/service-workspace-20260929 https://github.com/cambridgetcg/cashloom.git cashloom
 cd cashloom
 (cd sovereign && bun install --frozen-lockfile)
 (cd atlas && bun install --frozen-lockfile)
@@ -80,7 +86,7 @@ cd sovereign
 CASHLOOM_BIND=127.0.0.1 CASHLOOM_PORT=4747 bun run src/info-server.ts
 ```
 
-**Terminal 2 — World frontend:**
+**Terminal 2 — public service frontend:**
 
 ```bash
 cd atlas
@@ -98,15 +104,18 @@ services and RPC endpoints; their availability and usage terms still apply.
 Provider failures can leave partial coverage. For local machine discovery, read
 `http://127.0.0.1:4747/v1/orientation`.
 
-## Capital flows — this checkout, not yet published
+## Capital flows — source and deployment status
 
-The `feature/capital-flows-20260909` checkout adds a separate, lazy human route
-`/capital-flows` and read-only API `GET /v1/capital-flows` (also conditional
-GET/HEAD). These are **not yet published or deployment-verified**; cloning the
-World release above does not include this feature. With this feature checkout,
-use the same INFO/frontend commands above, then open the local frontend's
-`/capital-flows` and `http://127.0.0.1:4747/v1/capital-flows`.
-[Checkout guide](MONEYWORLD.md#capital-flows--this-checkout-not-yet-published) ·
+The published private release includes the lazy human route `/capital-flows`
+and read-only API `GET /v1/capital-flows` (also conditional GET/HEAD).
+As verified on 29 September 2026, the Cloudflare preview serves the page but the
+existing hosted INFO service returns **404 for the new API**. The page discloses
+that gap; source publication and a working preview do not establish hosted data
+availability. The public-only INFO image passed local Linux verification, and its
+hosted deployment remains separate. To use the implemented API locally, clone
+the release above, run the INFO/frontend commands, then open `/capital-flows`
+on the local frontend and `http://127.0.0.1:4747/v1/capital-flows`.
+[Product guide](MONEYWORLD.md#capital-flows--source-and-deployment-status) ·
 [API contract code](sovereign/src/info/capital-flows/model.ts).
 
 - **Scope:** US Treasury published daily cash debt issues/redemptions/net;
@@ -128,28 +137,32 @@ use the same INFO/frontend commands above, then open the local frontend's
   clears that cache. Capital reads never enter World's critical path. No accounts,
   execution, alerts, continuous collector or persistent browser snapshot storage.
 
-## Connected experience — this checkout
+## Connected experience — release source
 
 World, Capital flows, Onchain, Atlas, and a new `/wallet` introduction share
 navigation. The introduction explains how to run the separate local wallet;
 the public website does not connect to a private node.
 
-Inside the wallet, Keys → Accounts → Pay / Receive / Ledger carries the selected
-account or key. Overview shows saved balance evidence, manual accounts can record
+Inside the workspace, Signing keys → Accounts → Send money / Receive money /
+Activity carries the selected account or key. Overview shows saved balance evidence, manual accounts can record
 a balance observation, and eligible signed Base payments offer reviewed recovery.
 Trades remains a records-and-simulation feature. The public MCP adapter now
 exposes World, Onchain, and Capital flows alongside its existing read tools.
 
-These changes are locally verified development work, not a hosted-release claim.
+These changes are published in the private release branch. The public preview
+was verified on 29 September 2026; production deployment is still pending.
 See the [integration report and verification](docs/experience-integration-2026-09-23.md)
 and the [earlier implementation survey](docs/current-map-2026-09-23.md).
 For daily use, setup, and recovery, see the [local pilot guide](docs/local-pilot.md).
 
 ## Source and advanced paths
 
-[Published World source](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823)
-is on `release/moneyworld-wallet-kernel-v2-20260823`. Release links identify
-published source, not the exact revision running on the hosted service.
+[Current release source](https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929)
+is on `release/service-workspace-20260929` in the **private repository**.
+Repository access is required to read or clone it. Release links identify
+published source, not the exact revision running on the hosted service. The
+original `feature/capital-flows-20260909` development worktree and its edits
+are preserved separately.
 
 - **[Advanced: local wallet](sovereign/README.md)** — separate owner-controlled custody, signing, and connector setup, with activation boundaries.
 - **[Wallet code atlas — advanced](https://cashloom.io/atlas)** — the interactive local-wallet/code explainer in `atlas/`, which also contains the World frontend.
