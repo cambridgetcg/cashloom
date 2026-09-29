@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, ApiError, errorMessage } from "../api";
+import { api, ApiError, currentSessionGuard, errorMessage } from "../api";
 import {
   Amount,
   Badge,
@@ -14,6 +14,7 @@ import { toast } from "../toast";
 import type { WalletNavigate } from "../navigation";
 import { isLiveSendingAccount, type Asset } from "./Pay";
 import { AccountBalances } from "../components/AccountBalances";
+import { WatchedWalletDetails, watchedBaseAddress } from "./WatchWallet";
 import {
   BasePositionPanel,
   isObservableBaseAccount,
@@ -236,6 +237,12 @@ export function ManualBalanceEditor({ account, onSaved, onCancel }: {
   );
 }
 
+/** A late local GET cannot replace evidence returned by a newer explicit check. */
+export function mergeSavedBasePositions(previous: BaseAccountPositionView[], received: BaseAccountPositionView[], atRead: ReadonlyMap<string, number>, current: ReadonlyMap<string, number>): BaseAccountPositionView[] {
+  const newer = new Set([...current].filter(([id, revision]) => revision !== (atRead.get(id) ?? 0)).map(([id]) => id));
+  return [...received.filter(view => !newer.has(view.account_id)), ...previous.filter(view => newer.has(view.account_id))];
+}
+
 export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAccountId?: string; initialKeyId?: string; onGoto?: WalletNavigate } = {}) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [keys, setKeys] = useState<VaultKey[]>([]);
@@ -244,6 +251,10 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
   const [err, setErr] = useState<string | null>(null);
   const loadGeneration = useRef(0);
   const appliedInitialKey = useRef(false);
+  const live = useRef(true);
+  const [canManage, setCanManage] = useState(false);
+  const [managementError, setManagementError] = useState(false);
+  const baseObservationVersions = useRef(new Map<string, number>());
 
   // create form
   const [rail, setRail] = useState<Rail>("CASH");
@@ -276,25 +287,27 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
 
   async function load() {
     const generation = ++loadGeneration.current;
+    const session = currentSessionGuard();
+    const baseVersionsAtRead = new Map(baseObservationVersions.current);
     setErr(null);
     setBaseLoadError(null);
     const cycle = beginAccountsLoad(api, {
       essentialsLoaded(nextAccounts, nextKeys) {
-        if (loadGeneration.current !== generation) return;
+        if (!live.current || !session() || loadGeneration.current !== generation) return;
         setAccounts(nextAccounts);
         setKeys(nextKeys);
       },
       essentialsFailed(message) {
-        if (loadGeneration.current !== generation) return;
+        if (!live.current || !session() || loadGeneration.current !== generation) return;
         setErr(message);
       },
       positionsLoaded(positions) {
-        if (loadGeneration.current !== generation) return;
-        setBasePositions(positions);
+        if (!live.current || !session() || loadGeneration.current !== generation) return;
+        setBasePositions(previous => mergeSavedBasePositions(previous, positions, baseVersionsAtRead, baseObservationVersions.current));
         setBaseLoadError(null);
       },
       positionsFailed(message) {
-        if (loadGeneration.current !== generation) return;
+        if (!live.current || !session() || loadGeneration.current !== generation) return;
         setBaseLoadError(message);
       },
     });
@@ -306,8 +319,11 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
   }
 
   useEffect(() => {
+    live.current = true;
+    const session = currentSessionGuard();
     void load();
-    return () => { loadGeneration.current++; };
+    void api.connections().then(result => { if (live.current && session()) { setCanManage(result.can_manage === true); setManagementError(false); } }, () => { if (live.current && session()) { setCanManage(false); setManagementError(true); } });
+    return () => { live.current = false; loadGeneration.current++; };
   }, []);
 
   useEffect(() => {
@@ -578,7 +594,8 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
   }
 
   async function refreshBasePositions(account: Account) {
-    if (refreshingBaseNow.current.has(account.id)) return;
+    const session = currentSessionGuard();
+    if (!live.current || !session() || refreshingBaseNow.current.has(account.id) || watchedBaseAddress(account) !== null && !canManage) return;
     refreshingBaseNow.current.add(account.id);
     setRefreshingBase((current) =>
       updateRefreshingAccounts(current, account.id, true)
@@ -587,6 +604,8 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
     setBaseMessages((current) => ({ ...current, [account.id]: "" }));
     try {
       const result = await api.refreshBasePositions(account.id);
+      if (!live.current || !session()) return;
+      baseObservationVersions.current.set(account.id, (baseObservationVersions.current.get(account.id) ?? 0) + 1);
       setBasePositions((current) => {
         const remaining = current.filter((entry) => entry.account_id !== account.id);
         return [...remaining, result.account];
@@ -604,12 +623,10 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
               : "Finalized Base balances updated from two-provider evidence.";
       setBaseMessages((current) => ({ ...current, [account.id]: message }));
     } catch (ex) {
-      setBaseErrors((current) => ({ ...current, [account.id]: errorMessage(ex) }));
+      if (live.current && session()) setBaseErrors((current) => ({ ...current, [account.id]: `${errorMessage(ex)} Any previously loaded finalized snapshot remains visible.` }));
     } finally {
       refreshingBaseNow.current.delete(account.id);
-      setRefreshingBase((current) =>
-        updateRefreshingAccounts(current, account.id, false)
-      );
+      if (live.current && session()) setRefreshingBase((current) => updateRefreshingAccounts(current, account.id, false));
     }
   }
 
@@ -640,7 +657,7 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
 
   return (
     <div className="stagger">
-      <SectionTitle>Accounts</SectionTitle>
+      <SectionTitle aside={canManage && onGoto ? <button className="link-btn" onClick={() => onGoto("connections")}>Watch a wallet in Connections</button> : undefined}>Accounts</SectionTitle>
       <p className="journey-note">Keep a record of where your money lives. Add cash or a bank account manually, or use a configured connection to read a supported balance.</p>
       {initialAccountId && !accounts.some((account) => account.id === initialAccountId) && <p role="status">That account is no longer available. Your current accounts are below.</p>}
 
@@ -655,6 +672,7 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
             const archived = a.status.toUpperCase() === "ARCHIVED";
             const key = a.vault_key_id ? keyById.get(a.vault_key_id) : undefined;
             const baseView = basePositions.find((entry) => entry.account_id === a.id) ?? null;
+            const watched = watchedBaseAddress(a) !== null;
             return (
               <article aria-label={a.display_name} className={`card account-row${archived ? " is-archived" : ""}${a.id === initialAccountId ? " is-selected" : ""}`} key={a.id}>
                 <div className="account-row-main">
@@ -693,15 +711,17 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
                   </div>
                 </div>
                 {!isObservableBaseAccount(a) && baseView?.status !== "identity_invalid" && <AccountBalances account={a} />}
+                {watched && <WatchedWalletDetails account={a} />}
+                {watched && !canManage && <p className="journey-note">{managementError ? "Connection permissions could not be loaded. Reopen Accounts to retry." : "The workspace owner can check balances."}</p>}
                 {!archived && (
                   <div className="account-row-actions">
                     {canRecordManualBalance(a) && <button className="btn btn-ghost" onClick={() => setBalanceAccount(a)}>Record balance</button>}
                     {onGoto && <>
-                      {(["ETH", "USDC", "BTC"] as string[]).includes(a.currency.trim().toUpperCase()) && isLiveSendingAccount(a, a.currency.trim().toUpperCase() as Asset, keyById) && <>
+                      {!watched && (["ETH", "USDC", "BTC"] as string[]).includes(a.currency.trim().toUpperCase()) && isLiveSendingAccount(a, a.currency.trim().toUpperCase() as Asset, keyById) && <>
                         <button className="btn btn-ghost" onClick={() => onGoto("pay", { accountId: a.id })}>Send money</button>
                         <button className="btn btn-ghost" onClick={() => onGoto("receive", { accountId: a.id })}>Receive money</button>
                       </>}
-                      <button className="link-btn" onClick={() => onGoto("ledger", { accountId: a.id })}>Activity</button>
+                      <button className="link-btn" onClick={() => onGoto("ledger", { accountId: a.id })}>{watched ? "Recorded activity" : "Activity"}</button>
                     </>}
                     {a.connector_type && !a.read_connection_id && (
                       <button
@@ -737,6 +757,8 @@ export function Accounts({ initialAccountId, initialKeyId, onGoto }: { initialAc
                     refreshing={refreshingBase.has(a.id)}
                     message={baseMessages[a.id] ?? null}
                     error={baseErrors[a.id] ?? baseLoadError ?? null}
+                    refreshLabel={watched ? "Check balances" : undefined}
+                    actionDisabled={watched && !canManage}
                     onRefresh={() => void refreshBasePositions(a)}
                   />
                 )}

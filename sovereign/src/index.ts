@@ -73,6 +73,7 @@ import { createConnectRoutes } from "./connect/routes.ts";
 import { createPlaidSandboxService, PlaidError } from "./connect/plaid.ts";
 import { createAssistRoutes } from "./assist/routes.ts";
 import { ActivityQueryError, readActivityPage } from "./activity/history.ts";
+import { createCryptoWatchRoutes } from "./connect/crypto-watch.ts";
 
 export const app = new Hono();
 
@@ -365,7 +366,7 @@ export const requiredScopeForLocalRoute = (
   if (pathname === "/api/connections" || pathname === "/api/transfers" || pathname === "/api/transactions/export") {
     return verb === "GET" || verb === "HEAD" ? "accounts:read" : undefined;
   }
-  if (["/api/connections/plaid/link", "/api/connections/plaid/exchange", "/api/transfers/link",
+  if (["/api/connections/plaid/link", "/api/connections/plaid/exchange", "/api/connections/crypto/watch", "/api/transfers/link",
     "/api/transactions/import", "/api/transactions/import/preview"].includes(pathname) ||
     /^\/api\/connections\/plaid\/[^/]+\/(sync|disconnect)$/.test(pathname) ||
     /^\/api\/transfers\/[^/]+\/unlink$/.test(pathname)) {
@@ -496,6 +497,9 @@ app.get("/api/vault/session", (c) => {
 app.route("/api/assist", createAssistRoutes({ db, authority: vault }));
 const canManageConnections = (token: string | undefined): boolean =>
   vault.isValidSession(token, "accounts:write") && vault.getSessionInfo(token)?.principal.kind === "owner";
+app.route("/api/connections/crypto", createCryptoWatchRoutes({
+  db, canManage: (c) => canManageConnections(c.req.header("Authorization")?.replace(/^Bearer\s+/i, "")),
+}));
 const plaidSandbox = createPlaidSandboxService({
   db,
   assertOwner: (token) => {

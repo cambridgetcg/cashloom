@@ -1,0 +1,14 @@
+.watch-wallet-form { margin: 20px 0; }
+.watch-wallet-form > p, .watched-wallet-details > p { font-size: 14px; line-height: 1.65; }
+.watch-wallet-form fieldset { min-width: 0; border: 0; padding: 0; margin: 20px 0; display: grid; gap: 16px; }
+.watch-wallet-form fieldset:disabled { opacity: .8; }
+.watch-wallet-form .watch-wallet-limit { margin: 16px 0 0; color: var(--cl-muted); font-size: 13px; }
+.watched-wallet-details { min-width: 0; padding: 16px; margin-top: 16px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius); background: var(--cl-surface-soft); }
+.watched-wallet-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.watched-wallet-details > code { display: block; font-family: var(--cl-font-mono); overflow-wrap: anywhere; word-break: break-word; line-height: 1.7; }
+.watched-wallet-details > p { margin: 12px 0 0; color: var(--cl-muted); }
+@media (max-width: 540px) {
+  .watch-wallet-form .btn-row { align-items: stretch; }
+  .watch-wallet-form .btn-row > button { width: 100%; }
+  .watched-wallet-details { padding: 12px; }
+}

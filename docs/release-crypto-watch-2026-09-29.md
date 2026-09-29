@@ -1,0 +1,81 @@
+# Base wallet watching — 29 September 2026
+
+The local workspace now saves a public Base address through **Connections →
+Add crypto wallet** and opens its account. **Check balances** explicitly reads
+finalized ETH and native USDC evidence from two distinct HTTPS RPC providers.
+Accounts and Overview reuse saved evidence without background RPC requests.
+Watching neither establishes ownership nor creates signing or spending authority.
+There is no transaction-history import, token discovery, or WalletConnect flow.
+
+Creation is owner-only, bounded, and transactional. Repeated requests reuse an
+active account for the same Base address while preserving its name and custody.
+An uncertain response offers a retry of the original address. Archived accounts
+remain intact; incompatible active identities produce a conflict. Creation does
+not call providers, generate keys, or populate observed balances.
+
+Agent context adds scoped `base_holdings` for selected active accounts. It reads
+saved immutable finalized evidence without RPC, migrations, or projection writes.
+Exact atomic amounts remain strings; legacy crypto scalar balances remain null.
+Missing or contradictory evidence has no holdings. A failed later check retains
+dated evidence with its failed-check status. The projection omits public addresses,
+provider URLs, raw snapshots, and unselected account IDs. MCP validates this shape
+and cannot create watched accounts, refresh balances, or spend funds.
+
+The public website adds a Base wallet card and a `/wallet#crypto` guide. The
+guide explains the local flow and provider disclosure; it collects no addresses.
+Private source remains in the existing private repository, with access required.
+
+## Provider compatibility
+
+Balance observations now default to `https://mainnet.base.org` and
+`https://base.drpc.org`. Operators may explicitly override the existing scoped
+RPC environment variables. Transaction-evidence defaults are unchanged.
+
+The former confirmation provider, PublicNode, returned HTTP 403 and RPC -32602
+for numeric finalized-block balance requests, requesting a personal archive token.
+Basic chain/header requests still worked. LlamaRPC returned HTTP 525 at chain ID.
+The [documented dRPC Base endpoint](https://drpc.org/docs/base-api/accountinfo/eth_getBalance)
+passed the existing production observer with two-provider finalized agreement,
+including ETH, native USDC, and a numbered-block header recheck. No fallback,
+weaker block binding, or weaker quorum was introduced. Public-provider availability
+can change; the UI preserves unknown or dated evidence when a check cannot settle.
+These diagnostics used only the public zero address and no database or credentials.
+The final probe using the actual defaults settled with quorum two in 1,204 ms;
+all 12 requests returned HTTP 200. This verifies compatibility at the recorded
+time, not continuous availability.
+
+## Verification
+
+- Watch creation and route tests: 62 passed, 523 assertions.
+- Assist tests: 37 passed; MCP tests: 91 passed.
+- Finalized position observer: eight passed, 47 assertions.
+- Private UI: 158 tests, TypeScript and production build passed.
+- Isolated browser rehearsal: 22 workspace checks, six real-node/MCP agent checks,
+  five crypto groups, 15 real-node daily-use groups, and money-sources checks.
+  The crypto run exercises the real API, SQLite, observer, UI, and MCP with a
+  synthetic two-provider transport. It covers lost-response retry, deduplication,
+  exact amounts, saved reads without RPC, failed refreshes, contradictory evidence,
+  lock, restart, selected agent scope and refused financial authority. Temporary
+  datasets and OS network restrictions keep operator state outside the rehearsal.
+- Public UI: 238 tests, TypeScript/build, and 21 compiled browser checkpoints
+  passed. Desktop and 320px layouts fit, including the actual crypto guide handoff.
+
+Local evidence: `/tmp/cashloom-crypto-integration-final-20260929.log`,
+`/tmp/cashloom-crypto-observer-tests-20260929.log`, and
+`/tmp/cashloom-crypto-public-review-20260929/result.json`.
+The final actual-default live probe is
+`/tmp/cashloom-crypto-live-default-20260929.json`; isolated browser artifacts are
+`/private/var/folders/69/4qnq5h3j1095bfs9psqv13100000gn/T/cashloom-tcg-browser-_hxpsajs`.
+
+## Delivery
+
+Private changes ship as local-workspace source. The website receives the
+Connections card and guide. The public INFO source graph is unchanged and needs
+no Fly redeployment. This release activates no hosted private wallet, bank, or
+payment provider. The original development checkout and inherited edits remain
+preserved.
+
+Publication and deployment verification will be recorded here after delivery.
+Website rollback target: Pages deployment
+`fa81b155-a70d-4a3e-828c-3079bfc66eda`, source
+`d27378ae2a7debfa313cff46b7869cd14b096892`.

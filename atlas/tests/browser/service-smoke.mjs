@@ -194,6 +194,52 @@ try {
   assert.equal(new URL(page.url()).hash, "#setup");
   checkpoint("connection requirements lead to local setup, sandbox instructions and scoped source guidance without a return loop");
 
+  for (const width of [1440, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${origin}/connections`);
+    const watchCard = page.locator(".service-connection").filter({ has: page.getByRole("heading", { name: "Watch a Base wallet", exact: true }) });
+    assert.ok((await watchCard.innerText()).includes("Public address · local workspace"));
+    await watchCard.getByRole("link", { name: "See crypto setup", exact: true }).click();
+    await page.waitForFunction(() => {
+      const target = document.getElementById("crypto")?.getBoundingClientRect();
+      return target && target.top >= 0 && target.top < innerHeight / 2;
+    });
+    await page.evaluate(() => document.fonts.ready);
+    // Observe the real handoff until smooth scrolling settles. Font reflow may
+    // shift the final target slightly; do not force a second scroll for the test.
+    assert.ok(await page.evaluate(() => new Promise(resolve => {
+      let previous = scrollY, stable = 0, frames = 0;
+      const settled = () => {
+        stable = scrollY === previous ? stable + 1 : 0;
+        previous = scrollY;
+        if (stable >= 5) resolve(true);
+        else if (++frames >= 120) resolve(false);
+        else requestAnimationFrame(settled);
+      };
+      requestAnimationFrame(settled);
+    })), "crypto handoff scrolling settles");
+    assert.ok(await page.locator("#crypto").evaluate(target => {
+      const top = target.getBoundingClientRect().top;
+      return top >= 0 && top < innerHeight / 2;
+    }), "crypto target stays visible after font and scroll settling");
+    assert.equal(new URL(page.url()).hash, "#crypto");
+    const cryptoGuide = page.locator("#crypto");
+    await cryptoGuide.getByRole("heading", { name: "Watch a wallet. See what it holds.", exact: true }).waitFor();
+    const guideText = await cryptoGuide.innerText();
+    for (const boundary of ["local workspace", "ETH and native USDC", "no seed phrase, private key or signature", "configured RPC providers",
+      "missing evidence stays unknown", "previous dated snapshot", "does not establish ownership or authorize spending", "Base transaction-history import",
+      "without giving the client refresh or payment authority"]) assert.ok(guideText.includes(boundary), `crypto guide scope: ${boundary}`);
+    assert.equal(await page.locator("input, textarea, select").count(), 0, "public crypto handoff must not collect wallet or credential data");
+    assert.equal(await cryptoGuide.getByRole("link", { name: "Read crypto setup · repository access required ↗", exact: true }).getAttribute("href"),
+      "https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929/sovereign#watch-a-base-wallet");
+    await page.evaluate(() => document.fonts.ready);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `crypto handoff overflow at ${width}`);
+    assert.equal(await page.evaluate(() => document.activeElement?.classList.contains("skip-link")), false);
+    await page.screenshot({ path: path.join(output, `workspace-crypto-${width}.png`), animations: "disabled" });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  checkpoint("Base watch handoff lands on bounded local-only guidance without public inputs at desktop and 320px");
+
   await page.goto(`${origin}/connections`);
   await page.getByRole("button", { name: "Send money", exact: true }).click();
   assert.equal(await page.locator(".service-connection").count(), 5);

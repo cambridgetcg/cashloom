@@ -149,6 +149,7 @@ def main():
         if not args.build_only:
             commands.append([node, str(copied_harness / 'journeys.mjs')])
             commands.append([node, str(copied_harness / 'agent-access.mjs')])
+            commands.append([node, str(copied_harness / 'crypto-watch.mjs')])
             commands.append([node, str(copied_harness / 'daily-use.mjs')])
             commands.append([node, str(ui / 'tests/browser/money-sources.mjs')])
         for command in commands:

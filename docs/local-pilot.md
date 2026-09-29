@@ -98,6 +98,14 @@ JSON, and review matching transfers between accounts you own. These actions
 organise records and do not move money. Connected accounts cannot receive CSV
 imports until cross-source duplicate review is implemented.
 
+**Connections → Add crypto wallet** adds a watched Base address with a label.
+No key or signature is needed. Then choose **Check balances** in Accounts to
+read ETH and native USDC from the configured RPC providers. Opening Accounts
+or Overview reads saved evidence only. Missing balances stay unknown; a failed
+check keeps the dated previous snapshot. Watching grants no spending authority
+and does not import Base transaction history. See
+[crypto setup](../sovereign/README.md#watch-a-base-wallet).
+
 **Setup → Agent access** lets a chosen local MCP client read selected saved
 accounts and, if permitted, submit category suggestions. Review and apply or
 reject each suggestion yourself. Start with synthetic records and follow the

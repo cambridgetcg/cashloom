@@ -896,6 +896,107 @@ describe("archived ledger account identity", () => {
   });
 });
 
+describe("owner-controlled Base watch onboarding", () => {
+  const path = "/api/connections/crypto/watch";
+  const input = () => ({ network: "base", address: `0x${newId().replace(/-/g, "").padEnd(40, "0")}`, display_name: "Synthetic Base watch" });
+  const post = (token: string, body = input()) => app.request(path, authorized(token, { method: "POST", body: JSON.stringify(body) }));
+
+  it("maps only the explicit POST and requires owner account-write authority", async () => {
+    expect(requiredScopeForLocalRoute("POST", path)).toBe("accounts:write");
+    for (const verb of ["GET", "HEAD", "PUT", "DELETE"]) expect(requiredScopeForLocalRoute(verb, path)).toBeUndefined();
+    expect(requiredScopeForLocalRoute("POST", "/api/connections/crypto/watch/extra")).toBeUndefined();
+    expect((await app.request(path, { method: "POST" })).status).toBe(401);
+    expect((await post(readToken)).status).toBe(403);
+    const delegated = vault.createDelegatedAgentSession(ownerToken, { delegateKeyId: `sha256:${"c".repeat(64)}`, scopes: ["accounts:read"] });
+    expect((await post(delegated.token)).status).toBe(403);
+    expect(() => vault.createDelegatedAgentSession(ownerToken, { delegateKeyId: `sha256:${"c".repeat(64)}`, scopes: ["accounts:write"] })).toThrow();
+    const narrowOwner = await vault.unlock(PASSPHRASE, { scopes: ["accounts:write"] });
+    const created = await post(narrowOwner);
+    expect(created.status).toBe(201);
+    const account = (await created.json()).account;
+    const grant = vault.createAssistAccess(ownerToken, { label: "Watch boundary fixture", account_ids: [account.id], ttl_minutes: 5, allow_proposals: true });
+    try { expect((await post(grant.token)).status).toBe(403); }
+    finally { vault.revokeAssistAccess(ownerToken, grant.access.id); }
+    const hostile = await app.request(path, authorized(ownerToken, { method: "POST", body: JSON.stringify(input()), headers: { Origin: "https://attacker.example", "Sec-Fetch-Site": "cross-site" } }));
+    expect(hostile.status).toBe(403);
+    expect((await hostile.json()).error).toBe("origin_not_allowed");
+  });
+
+  it("saves only the watched account and returns the same account after a lost-response retry", async () => {
+    const snapshot = () => JSON.stringify({
+      transactions: db.query("SELECT * FROM transactions ORDER BY id").all(),
+      payments: db.query("SELECT * FROM payments ORDER BY id").all(),
+      keys: db.query("SELECT id,kind,address FROM vault_keys ORDER BY id").all(),
+      connections: db.query("SELECT id,status FROM read_connections ORDER BY id").all(),
+      kernel: (db.query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'wk_%' ORDER BY name").all() as { name: string }[])
+        .map(({ name }) => ({ name, rows: db.query(`SELECT * FROM "${name}"`).all() })),
+    });
+    const before = snapshot(), body = input(), originalFetch = globalThis.fetch;
+    let networkCalls = 0;
+    globalThis.fetch = (async () => { networkCalls++; throw new Error("Watch onboarding cannot contact a provider"); }) as unknown as typeof fetch;
+    try {
+      const first = await post(ownerToken, body);
+      expect(first.status).toBe(201);
+      expect(first.headers.get("cache-control")).toBe("private, no-store");
+      const saved = await first.json();
+      expect(saved.account).toMatchObject({ rail: "CRYPTO", currency: "ETH", decimals: 18, chain_id: BASE_CHAIN_ID,
+        asset_id: BASE_ETH_ASSET_ID, account_ref: `${BASE_CHAIN_ID}:${body.address}`, balance_as_of: null,
+        vault_key_id: null, connector_type: null, credential_ref: null, read_environment: "live" });
+      const replay = await post(ownerToken, { ...body, display_name: "Preserve existing name" });
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toEqual({ account: saved.account, created: false });
+      expect(snapshot()).toBe(before);
+      expect(networkCalls).toBe(0);
+    } finally { globalThis.fetch = originalFetch; }
+  });
+
+  it("refuses a request whose owner session expires while its body is arriving", async () => {
+    const token = await vault.unlock(PASSPHRASE, { scopes: ["accounts:write"], ttlMs: 40 });
+    let requested!: () => void, finish!: () => void;
+    const reading = new Promise<void>(resolve => { requested = resolve; });
+    const body = new TextEncoder().encode(JSON.stringify(input()));
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        requested();
+        return new Promise<void>(resolve => { finish = () => { controller.enqueue(body); controller.close(); resolve(); }; });
+      },
+    }, { highWaterMark: 0 });
+    const before = db.query("SELECT COUNT(*) AS n FROM accounts").get();
+    const pending = app.request(path, authorized(token, { method: "POST", body: stream }));
+    await reading;
+    await Bun.sleep(50);
+    finish();
+    const response = await pending;
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("crypto_watch_owner_required");
+    expect(db.query("SELECT COUNT(*) AS n FROM accounts").get()).toEqual(before);
+  });
+
+  it("refuses an in-flight watch request after lock even if a new owner session replaces it", async () => {
+    let requested!: () => void, finish!: () => void;
+    const reading = new Promise<void>(resolve => { requested = resolve; });
+    const body = new TextEncoder().encode(JSON.stringify(input()));
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        requested();
+        return new Promise<void>(resolve => { finish = () => { controller.enqueue(body); controller.close(); resolve(); }; });
+      },
+    }, { highWaterMark: 0 });
+    const before = db.query("SELECT COUNT(*) AS n FROM accounts").get();
+    const pending = app.request(path, authorized(ownerToken, { method: "POST", body: stream }));
+    await reading;
+    vault.lock();
+    try {
+      ownerToken = await vault.unlock(PASSPHRASE);
+      finish();
+      const response = await pending;
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toBe("crypto_watch_owner_required");
+      expect(db.query("SELECT COUNT(*) AS n FROM accounts").get()).toEqual(before);
+    } finally { readToken = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"] }); }
+  });
+});
+
 describe("Activity search and older pages", () => {
   function fixture() {
     const accountId = newId();

@@ -75,6 +75,7 @@ export function OverviewContent({
                   <Badge tone={wallet.state === "conflicted" || wallet.state === "identity_invalid" ? "ember" : "gold"}>Base</Badge>
                 </header>
                 <p className="card-asof" title={wallet.id}>{shortAddress(wallet.id.replace(/^eip155:8453:/, ""))}</p>
+                {wallet.accounts.every((account) => !account.vault_key_id) && <p className="section-note">Watched address · Base ETH and native USDC. Watching does not establish ownership or permit spending.</p>}
                 {wallet.accounts.length > 1 && (
                   <p className="section-note">One wallet · {wallet.accounts.length} account records: {wallet.accounts.map((account) => account.display_name).join(", ")}</p>
                 )}

@@ -27,7 +27,7 @@ export function AccessForm({ accounts, busy, onCreate }: { accounts: Account[]; 
   }
   return <form className="card assist-create" onSubmit={submit} autoComplete="off" aria-label="Create agent access">
     <h3>Choose what to share</h3>
-    <p className="journey-note">Access lets a client read the selected accounts’ names, currencies, saved balances and observation dates, plus latest activity including titles and categories. It cannot refresh providers, change balances, manage keys or send money.</p>
+    <p className="journey-note">Access lets a client read the selected accounts’ names, currencies, saved balances and observation dates, plus latest activity including titles and categories. Selected Base wallets also share saved finalized ETH and native USDC holdings when evidence is available, with block dates and the last check outcome. These are dated observations; watching a wallet does not establish ownership or spending authority. It cannot refresh providers, change balances, manage keys or send money.</p>
     <fieldset disabled={busy}>
       <legend>Access settings</legend>
       <div className="field-row"><Field label="Access label" hint="Your label for this permission, not a verified agent identity."><input value={label} maxLength={80} required onChange={event => setLabel(event.target.value)} placeholder="e.g. My local money assistant" /></Field>

@@ -45,12 +45,16 @@ export function BasePositionPanel({
   message,
   error,
   onRefresh,
+  refreshLabel = "Refresh finalized balances",
+  actionDisabled = false,
 }: {
   view: BaseAccountPositionView | null;
   refreshing: boolean;
   message?: string | null;
   error?: string | null;
   onRefresh(): void;
+  refreshLabel?: string;
+  actionDisabled?: boolean;
 }) {
   const finalized = view?.status.toLowerCase() === "finalized" && view.snapshot !== null;
   const conflicted = view?.status.toLowerCase() === "conflicted";
@@ -184,10 +188,10 @@ export function BasePositionPanel({
         <button
           type="button"
           className="btn btn-ghost"
-          disabled={refreshing || conflicted || identityInvalid || view?.actions.refresh === false}
+          disabled={actionDisabled || refreshing || conflicted || identityInvalid || view?.actions.refresh === false}
           onClick={onRefresh}
         >
-          {refreshing ? "Checking finalized Base…" : "Refresh finalized balances"}
+          {refreshing ? "Checking finalized Base…" : refreshLabel}
         </button>
         <small>Explicit read only · never signs, submits, or retries a payment.</small>
       </div>

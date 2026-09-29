@@ -81,7 +81,7 @@ passphrase. The CLI never starts or overwrites a wallet.
 | `CASHLOOM_ALLOWED_ORIGINS` | Optional extra browser origins for a loopback-only development setup. This is not an access-control or TLS boundary. |
 | `CASHLOOM_DATA_DIR` | Where the SQLite files + keys live (default `~/.cashloom`). |
 | `CASHLOOM_BASE_RPC_URL` | Primary Base RPC for quotes, sending, and evidence (default public `mainnet.base.org`). API-bearing URLs are accepted but never returned in receipts/errors. |
-| `CASHLOOM_BASE_CONFIRMATION_RPC_URL` | Independent Base evidence provider (default public `base-rpc.publicnode.com`). Must be a distinct endpoint; two-provider finalized agreement is required to settle. |
+| `CASHLOOM_BASE_CONFIRMATION_RPC_URL` | Independent Base evidence provider. Balance observations default to public `base.drpc.org`; transaction evidence retains `base-rpc.publicnode.com`. Must be a distinct endpoint; two-provider finalized agreement is required to settle. |
 | `CASHLOOM_BASE_RECONCILIATION_ENABLED` | Set to exactly `1` to start the bounded background checker for already-signed Base transactions. Off by default; it can observe/settle but cannot sign, submit, recover, or rebroadcast. |
 | `STRIPE_* / GOCARDLESS_* / ALCHEMY_* / AGENTTOOL_*` | Read-only connector keys, **only** if you connect those rails. Each is an env-var **pointer** named on an account; the value is never stored in the DB. |
 
@@ -196,6 +196,43 @@ wallet or move money; public INFO reads can contact upstream data providers.
 - **Connections view** — the local, networkless page and
   `GET /api/wallet/v3/integrations` distinguish built adapters, configuration,
   and live execution without exposing secrets or starting a provider request.
+
+## Watch a Base wallet
+
+In an unlocked owner workspace, open **Connections → Add crypto wallet**.
+Keep the network set to **Base**, paste a public EVM address and give it a
+label. This creates one watched account for Base ETH and native Circle USDC.
+It needs no seed phrase, private key, signature, API key or manual CAIP fields.
+Adding an already tracked active Base address opens its existing account and
+preserves its label and custody settings. Archived records remain archived.
+
+Adding a watch is a local record operation. In **Accounts**, choose **Check
+balances** to send the public address to the node's two configured RPC
+endpoints. The existing observer requires matching finalized block and balance
+evidence before saving exact ETH and native USDC holdings. **Accounts** and
+**Overview** normally read those saved observations without making RPC requests.
+Missing evidence stays unknown; a failed check retains a clearly dated snapshot,
+while contradictory evidence freezes the view for review. A confirmed zero
+balance and an unchecked address are different states.
+
+Balance checks default to `mainnet.base.org` and `base.drpc.org`. Operators
+can configure distinct HTTPS endpoints through `CASHLOOM_BASE_RPC_URL` and
+`CASHLOOM_BASE_CONFIRMATION_RPC_URL` in the node's scoped environment. Provider
+availability and rate limits still apply. The providers receive the watched
+address and request metadata when you explicitly check it; storing an address
+locally does not make that later provider request private from the provider.
+
+Watching an address does not prove ownership or authorize spending. The new
+flow does not add signing keys, wallet permissions, transaction history, token
+discovery, price conversion or automatic refresh. ETH/USDC balances retain
+their own units. Bitcoin, Ethereum-mainnet readers and local-key payment paths
+retain their existing separate setup.
+
+**Agent access** can share selected saved Base holdings. It keeps legacy crypto
+scalar balances unknown and uses a separate `base_holdings` projection with
+exact units, network, evidence status, block time and observation time. Agents
+cannot refresh the providers or spend from a watched address. See the
+[agent contract and limits](../docs/agent-layer-2026-09-29.md).
 
 ## Unified money view (local pilot)
 

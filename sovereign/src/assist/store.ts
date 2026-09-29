@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { AssistAccess, AssistAccount, AssistContext, AssistProposal, AssistProposalInput, AssistProposalList, AssistProposalResult, AssistTransaction } from "./contracts";
 import { AssistError } from "./errors";
 import { proposalInputSchema } from "./validation";
+import { selectedBaseHoldings } from "./base-holdings";
 
 const digest = (value: unknown): string => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const accountFields = `a.id,a.display_name,a.currency,a.decimals,a.rail,a.read_environment,a.status,
@@ -65,8 +66,8 @@ export class AssistStore {
       return {
         schema_version: "cashloom.assist-context/1", generated_at: new Date().toISOString(), access,
         accounts: accounts.map((account): AssistAccount => {
-          // Crypto needs the kernel's stronger evidence projection. This first
-          // record-only layer deliberately leaves legacy crypto balances unknown.
+          // Crypto uses the separate saved Base evidence projection below.
+          // A legacy single-asset scalar is never a wallet balance.
           const observed = account.rail !== "CRYPTO" && account.balance_as_of !== null;
           return { id: account.id, display_name: account.display_name, currency: account.currency, decimals: account.decimals,
             rail: account.rail, environment: account.read_environment, balance_minor: observed ? account.balance_minor : null,
@@ -74,6 +75,7 @@ export class AssistStore {
             pending_minor: observed ? account.pending_minor : null, held_minor: observed ? account.held_minor : null,
             balance_kind: account.balance_kind, account_type: account.account_type, connection_status: account.connection_status };
         }),
+        base_holdings: selectedBaseHoldings(this.db, accounts),
         transactions: raw.slice(0, limit).map((row) => projectRecord(row, byId.get(row.account_id)!)),
         activity_window: { limit, returned: Math.min(raw.length, limit), has_more: raw.length > limit, order: "date_desc_id_desc" },
       };

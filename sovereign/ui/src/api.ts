@@ -44,6 +44,9 @@ export interface ActivityPage {
   next_cursor: string | null;
 }
 
+export interface WatchWalletInput { network: "base"; address: string; display_name: string }
+export interface WatchWalletResult { account: Account; created: boolean }
+
 /**
  * Session token lives in module memory + sessionStorage: a refresh survives,
  * a closed tab forgets. Any 401 drops the session and returns you to the gate.
@@ -188,6 +191,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 
 export const api = {
   meta: () => request<Meta>("/api/meta"),
+  watchWallet: (body: WatchWalletInput) => request<WatchWalletResult>("/api/connections/crypto/watch", body),
 
   vaultInit: (passphrase: string) =>
     request<{ ok: boolean; token: string }>("/api/vault/init", { passphrase }),

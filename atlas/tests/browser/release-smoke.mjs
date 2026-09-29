@@ -45,7 +45,7 @@ function endpointPath(raw) { const parsed = new URL(raw); return `${parsed.origi
 function isApi(pathname) { return pathname.startsWith("/api/") || pathname.startsWith("/v1/"); }
 
 /** Separate, unauthenticated requests: no cookies, auth headers, redirect following
- * or user-supplied bodies. The sole POST is an empty private-route refusal probe. */
+ * or user-supplied bodies. POSTs are empty private-route refusal probes. */
 async function publicRequest(pathname, method = "GET", headers = {}) {
   const target = new URL(pathname, origin);
   assert.equal(target.origin, origin);
@@ -190,6 +190,23 @@ try {
     assert.ok(await guide.locator('a[href$="/sovereign#unified-money-view-local-pilot"]').count());
   });
 
+  await check("crypto handoff explains address-only Base watching and explicit balance checks", async () => {
+    await page.goto(`${origin}/connections`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("link", { name: "See crypto setup", exact: true }).click();
+    await page.getByRole("heading", { name: "Watch a wallet. See what it holds.", exact: true }).waitFor();
+    assert.equal(new URL(page.url()).pathname, "/wallet");
+    assert.equal(new URL(page.url()).hash, "#crypto");
+    await page.waitForFunction(() => {
+      const top = document.getElementById("crypto")?.getBoundingClientRect().top;
+      return top !== undefined && top >= -1 && top < innerHeight / 2;
+    });
+    const guide = page.locator("#crypto");
+    assert.match(await guide.innerText(), /Check balances/);
+    assert.match(await guide.innerText(), /Base transaction-history import/);
+    assert.match(await guide.innerText(), /does not establish ownership or authorize spending/);
+    assert.equal(await guide.locator("input,form").count(), 0);
+  });
+
   await check("agent setup handoff keeps local scope and owner review explicit", async () => {
     await page.goto(`${origin}/connections`, { waitUntil: "domcontentloaded" });
     const link = page.getByRole("link", { name: "Understand agent access", exact: true });
@@ -218,13 +235,17 @@ try {
     const result = await publicRequest("/api/meta"); report.api.meta = result;
     assert.equal(result.status, 200); assert.equal(result.json?.mode, "info"); assert.equal(result.json?.name, "cashloom-info");
   });
-  for (const endpoint of ["/api/accounts", "/api/transactions?q=synthetic", "/api/connections", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status", "/api/assist/access", "/api/assist/context", "/api/assist/proposals", "/api/assist/review"]) await check(`private route absent: ${endpoint}`, async () => {
+  for (const endpoint of ["/api/accounts", "/api/transactions?q=synthetic", "/api/connections", "/api/connections/crypto/watch", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status", "/api/assist/access", "/api/assist/context", "/api/assist/proposals", "/api/assist/review"]) await check(`private route absent: ${endpoint}`, async () => {
     const result = await publicRequest(endpoint); report.api[endpoint] = { status: result.status, type: result.type };
     assert.equal(result.status, 404); assert.ok(result.json && typeof result.json === "object", "Private route must return a JSON refusal, never the SPA or private data.");
   });
   await check("public edge refuses a private POST", async () => {
     const result = await publicRequest("/api/pay/confirm", "POST"); report.api.privatePost = { status: result.status, type: result.type };
     assert.equal(result.status, 405); assert.ok(result.json, "POST refusal must be JSON.");
+  });
+  await check("public edge refuses watch creation", async () => {
+    const result = await publicRequest("/api/connections/crypto/watch", "POST"); report.api.cryptoWatchPost = { status: result.status, type: result.type };
+    assert.equal(result.status, 405); assert.ok(result.json, "Watch creation must stay on the local node.");
   });
   await check("capital-flow API availability is reported truthfully", async () => {
     const result = await publicRequest("/v1/capital-flows");

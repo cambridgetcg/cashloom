@@ -26,6 +26,8 @@ test("access begins with no accounts or proposal permission selected", () => {
   expect(html).toContain("not a verified agent identity");
   expect(html).toContain("client or model provider may retain records");
   expect(html).toContain("cannot outlast the issuing owner session");
+  expect(html).toContain("saved finalized ETH and native USDC holdings");
+  expect(html).toContain("watching a wallet does not establish ownership or spending authority");
 });
 
 test("only pending suggestions for the current record can be applied", () => {

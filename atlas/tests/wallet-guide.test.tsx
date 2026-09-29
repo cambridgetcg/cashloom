@@ -32,7 +32,7 @@ describe("public workspace handoff", () => {
 
   it("keeps setup and capability handoff anchors available without changing the install commands", () => {
     const html = renderToStaticMarkup(<WalletGuide />);
-    for (const anchor of ["first-steps", "setup", "connections", "payments", "statements"]) expect(html).toContain(`id="${anchor}"`);
+    for (const anchor of ["first-steps", "setup", "connections", "payments", "statements", "crypto"]) expect(html).toContain(`id="${anchor}"`);
     expect(html).toContain("bun install --frozen-lockfile");
     expect(html).toContain("(cd ui &amp;&amp; bun install --frozen-lockfile)");
     expect(html).toContain("bun run build:ui\nbun start");

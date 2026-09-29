@@ -20,6 +20,7 @@ const DATE = "2026-09-29T12:00:00.000Z";
 const transportEnv = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "BUN_CONFIG_VERBOSE_FETCH"];
 const context = (): AssistContext => ({
   schema_version: "cashloom.assist-context/1", generated_at: DATE,
+  base_holdings: [],
   access: { id: GRANT, label: "Synthetic review", account_ids: [ACCOUNT], permissions: ["read", "propose_categories"], created_at: DATE, expires_at: "2026-09-29T13:00:00.000Z" },
   accounts: [{ id: ACCOUNT, display_name: "Synthetic bank", currency: "USD", decimals: 2, rail: "BANK", environment: "sandbox",
     balance_minor: null, balance_as_of: null, available_minor: "90071992547409931234", pending_minor: null, held_minor: null,
@@ -28,6 +29,15 @@ const context = (): AssistContext => ({
     date: DATE, category: null, status: "pending", source: "MANUAL", is_internal_transfer: false, record_version: VERSION }],
   activity_window: { limit: 30, returned: 1, has_more: true, order: "date_desc_id_desc" },
 });
+const baseContext = (): AssistContext => {
+  const value = context();
+  value.accounts[0] = { ...value.accounts[0]!, rail: "CRYPTO", currency: "ETH", decimals: 18, environment: "live", available_minor: null };
+  value.base_holdings = [{ account_ids: [ACCOUNT], chain_id: "eip155:8453", network: "Base mainnet", authority: "observation_only",
+    status: "retained_after_check", finality: "finalized", as_of: "2026-09-29T11:59:00.000Z", observed_at: DATE, block_number: "9007199254740993",
+    holdings: [{ asset: "ETH", decimals: 18, observed_atomic: "900719925474099312345678" }, { asset: "USDC", decimals: 6, observed_atomic: "0" }],
+    last_check: { attempted_at: "2026-09-29T12:05:00.000Z", outcome: "partial" } }];
+  return value;
+};
 const proposal = (): AssistProposal => ({
   id: PROPOSAL, grant_id: GRANT, access_label: "Synthetic review", account_id: ACCOUNT, transaction_id: TRANSACTION,
   before: context().transactions[0]!, category: "Food", reason: "Synthetic suggestion", status: "pending", review_state: "current", created_at: DATE, decided_at: null,
@@ -207,6 +217,53 @@ describe("Assist tools through the MCP protocol with synthetic HTTP", () => {
       transactions: [{ ...value.transactions[0], external_id: "private" }], access: { ...value.access, token: "unexpected" } }));
     const result = await client.callTool({ name: "cashloom_read_context", arguments: {} });
     expect(body(result)).toEqual(context());
+  });
+  it("preserves exact separate Base holdings and strips private evidence fields recursively", async () => {
+    const value = baseContext();
+    fetchMock.mockResolvedValue(Response.json({ ...value, base_holdings: [{ ...value.base_holdings[0], address: "unadvertised-address", evidence: { provider_url: "https://not-requested.invalid" },
+      holdings: value.base_holdings[0]!.holdings.map(item => ({ ...item, token_address: "unadvertised-contract" })),
+      last_check: { ...value.base_holdings[0]!.last_check, raw_error: "unadvertised-error" } }] }));
+    const result = await client.callTool({ name: "cashloom_read_context", arguments: {} });
+    expect(body(result)).toEqual(value);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  it("treats absent Base holdings on an older v1 node as unknown", async () => {
+    const { base_holdings: _omitted, ...legacy } = context();
+    fetchMock.mockResolvedValue(Response.json(legacy));
+    expect(body(await client.callTool({ name: "cashloom_read_context", arguments: {} })).base_holdings).toEqual([]);
+  });
+  it.each(["wrong_chain", "wrong_precision", "unsupported_asset", "partial_pair", "duplicate_asset", "malformed_atomic", "negative_atomic", "overflow_atomic", "numeric_atomic", "unknown_with_amount", "false_freshness", "outside_account", "duplicate_alias", "duplicate_group", "noncrypto", "legacy_crypto_balance"])("refuses malformed Base holdings: %s", async kind => {
+    const value = baseContext();
+    const group = value.base_holdings[0] as any;
+    if (kind === "wrong_chain") group.chain_id = "eip155:1";
+    if (kind === "wrong_precision") group.holdings[1].decimals = 18;
+    if (kind === "unsupported_asset") group.holdings[1].asset = "USDC.e";
+    if (kind === "partial_pair") group.holdings.pop();
+    if (kind === "duplicate_asset") group.holdings[1] = { ...group.holdings[0] };
+    if (kind === "malformed_atomic") group.holdings[0].observed_atomic = "not-an-integer";
+    if (kind === "negative_atomic") group.holdings[0].observed_atomic = "-1";
+    if (kind === "overflow_atomic") group.holdings[0].observed_atomic = (2n ** 256n).toString();
+    if (kind === "numeric_atomic") group.holdings[0].observed_atomic = 12;
+    if (kind === "unknown_with_amount") group.status = "not_checked";
+    if (kind === "false_freshness") group.status = "saved_finalized";
+    if (kind === "outside_account") group.account_ids = [OTHER];
+    if (kind === "duplicate_alias") group.account_ids = [ACCOUNT, ACCOUNT];
+    if (kind === "duplicate_group") value.base_holdings.push({ ...group });
+    if (kind === "noncrypto") value.accounts[0]!.rail = "BANK";
+    if (kind === "legacy_crypto_balance") value.accounts[0]!.balance_minor = "999";
+    fetchMock.mockResolvedValue(Response.json(value));
+    const result = await client.callTool({ name: "cashloom_read_context", arguments: {} });
+    expect(body(result).error).toBe("assist_response_invalid");
+    expect(result.isError).toBe(true);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  it("enforces the requested account filter even within a broader valid grant", async () => {
+    const value = baseContext();
+    value.access.account_ids.push(OTHER);
+    value.accounts.push({ ...value.accounts[0]!, id: OTHER });
+    fetchMock.mockResolvedValue(Response.json(value));
+    const result = await client.callTool({ name: "cashloom_read_context", arguments: { account_id: ACCOUNT } });
+    expect(body(result).error).toBe("assist_response_invalid");
   });
   it.each(["outside_account", "bad_count", "numeric_money", "credential_echo"])("rejects invalid selected context: %s", async kind => {
     const value = context();

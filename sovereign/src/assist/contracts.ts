@@ -49,11 +49,38 @@ export interface AssistTransaction {
   record_version: string;
 }
 
+export type AssistBaseHolding =
+  | { asset: "ETH"; decimals: 18; observed_atomic: string }
+  | { asset: "USDC"; decimals: 6; observed_atomic: string };
+
+/** Saved observations, never a spendable balance or proof of ownership.
+ * Aliases are deduplicated only within this request's selected active accounts. */
+export interface AssistBaseHoldings {
+  account_ids: string[];
+  chain_id: "eip155:8453";
+  network: "Base mainnet";
+  authority: "observation_only";
+  status: "not_checked" | "saved_finalized" | "retained_after_check" | "conflicted" | "identity_invalid" | "evidence_invalid";
+  finality: "finalized" | null;
+  /** Timestamp of the saved finalized block, not this API response. */
+  as_of: string | null;
+  /** Time the saved snapshot was observed/decided locally. */
+  observed_at: string | null;
+  block_number: string | null;
+  /** Complete ETH/18 and native USDC/6 pair, or empty when evidence is unavailable. */
+  holdings: AssistBaseHolding[];
+  last_check: {
+    attempted_at: string;
+    outcome: "applied" | "replayed" | "stale" | "superseded" | "conflict" | "partial" | "rejected" | "cancelled";
+  } | null;
+}
+
 export interface AssistContext {
   schema_version: "cashloom.assist-context/1";
   generated_at: string;
   access: AssistAccess;
   accounts: AssistAccount[];
+  base_holdings: AssistBaseHoldings[];
   transactions: AssistTransaction[];
   activity_window: {
     limit: number;

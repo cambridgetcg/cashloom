@@ -9,7 +9,7 @@ const USES = [
   { title: "For self-employed work", text: "Keep work accounts distinct from personal accounts and record incoming money and expenses." },
   { title: "For a small team", text: "Let one local operator organise accounts and supporting records to review together." },
 ];
-const GUIDE_ANCHORS = new Set(["workspace-main", "first-steps", "statements", "connections", "payments", "agents", "setup"]);
+const GUIDE_ANCHORS = new Set(["workspace-main", "first-steps", "statements", "connections", "payments", "agents", "crypto", "setup"]);
 
 export default function WalletGuide() {
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function WalletGuide() {
       </header>
 
       <nav className="wallet-guide-sections" aria-label="Workspace guide sections">
-        <a href="#setup">Setup requirements</a><a href="#first-steps">First account</a><a href="#statements">Import &amp; export</a><a href="#agents">Agent access</a><a href="#connections">Connections &amp; payments</a>
+        <a href="#setup">Setup requirements</a><a href="#first-steps">First account</a><a href="#statements">Import &amp; export</a><a href="#crypto">Watch a wallet</a><a href="#agents">Agent access</a><a href="#connections">Connections &amp; payments</a>
       </nav>
 
       <section className="wallet-guide-section" aria-labelledby="workspace-fit-title">
@@ -79,6 +79,19 @@ export default function WalletGuide() {
           <article><span className="wallet-guide-tag">Activity → Review internal transfers</span><h3>Recognise your own transfers</h3><p>Review a suggested outgoing and incoming pair, then confirm that both accounts belong to you before linking them. Only equal amounts without fee or currency differences are suggested.</p><p>Linking records marks your own movement between accounts. It does not send money. You can review and unlink a match.</p></article>
         </div>
         <p className="wallet-guide-hint">Activity and observed balances stay separate. Importing records does not update a saved balance. Identical activity on the same day can be a separate transaction; review skipped matches before confirming.</p>
+      </section>
+
+      <section id="crypto" className="wallet-guide-section" aria-labelledby="workspace-crypto-title">
+        <p className="wallet-guide-eyebrow">Crypto, in the same account view</p>
+        <h2 id="workspace-crypto-title">Watch a wallet. See what it holds.</h2>
+        <p className="wallet-guide-connection-intro">Start in your <a href="#setup">local workspace</a>. A public Base address is enough to watch ETH and native USDC; no seed phrase, private key or signature is needed.</p>
+        <ol className="wallet-guide-steps">
+          <li><span aria-hidden="true">01</span><div><h3>Add a watched address</h3><p>Open Connections → Add crypto wallet. Check that the network is Base, paste the public address and choose a label. Adding an already tracked address opens its existing account.</p></div></li>
+          <li><span aria-hidden="true">02</span><div><h3>Choose when to check</h3><p>In Accounts, choose Check balances. This sends the address to the node’s configured RPC providers. Matching finalized evidence establishes ETH and native USDC balances; missing evidence stays unknown.</p></div></li>
+          <li><span aria-hidden="true">03</span><div><h3>Read the saved evidence</h3><p>Accounts and Overview show the holdings and observation time. Opening these views does not refresh the network. A failed check keeps the previous dated snapshot; conflicting evidence needs review.</p></div></li>
+        </ol>
+        <p className="wallet-guide-hint">Watching an address does not establish ownership or authorize spending. This flow reads balances only; Base transaction-history import, other token discovery and WalletConnect are not included. Agent access can share selected saved Base holdings, with their dates and evidence status, without giving the client refresh or payment authority.</p>
+        <a className="wallet-guide-button wallet-guide-button--secondary" href={`${WORKSPACE_SOURCE}/sovereign#watch-a-base-wallet`} target="_blank" rel="noopener noreferrer">Read crypto setup · repository access required ↗</a>
       </section>
 
       <section id="connections" className="wallet-guide-section" aria-labelledby="workspace-tools-title">
@@ -122,7 +135,7 @@ export default function WalletGuide() {
           <p>From your CashLoom checkout, with Bun installed:</p>
           <pre><code>{"cd sovereign\nbun install --frozen-lockfile\n(cd ui && bun install --frozen-lockfile)\nbun run build:ui\nbun start"}</code></pre>
           <p>Open the local address printed by your node. On first use, create a passphrase, then add an account. Keep your passphrase separately; CashLoom has no passphrase recovery service.</p>
-          <p>For crypto, create or import a key in Signing keys and choose “Use in an account.” Keep a secure backup of your key. Bank payments and external-wallet execution are still in development.</p>
+          <p>To watch Base ETH and USDC, open Connections → Add crypto wallet and use a public address. For supported local-key payments, create or import a key in Signing keys and choose “Use in an account.” Keep a secure backup of that key. Bank payments and external-wallet execution are still in development.</p>
           <p>The vault encrypts key material. Account and activity records are local data, and the whole database is not encrypted.</p>
         </details>
       </section>

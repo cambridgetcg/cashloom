@@ -5,6 +5,8 @@ import { AccountBalances } from "../components/AccountBalances";
 import { isObservableBaseAccount } from "../components/BasePositionPanel";
 import { formatDateTime } from "../format";
 import { loadPlaidLink, type PlaidLinkHandler } from "../integrations/plaid-link";
+import { toast } from "../toast";
+import { WatchWallet, watchedBaseAddress, watchResultMessage } from "./WatchWallet";
 import type { WalletNavigate } from "../navigation";
 import type {
   WalletIntegrationCatalog,
@@ -105,12 +107,13 @@ export function MoneySource({ source, onGoto, management }: { source: ReadConnec
 }
 
 export function SavedMoneySource({ account, onGoto }: { account: Account; onGoto?: WalletNavigate }) {
+  const watched = watchedBaseAddress(account) !== null;
   const kind = account.rail === "CRYPTO" ? "Crypto" : account.connector_type ? "Processor / connector" : "Manual record";
   return <article className="card money-source">
-    <div className="money-source-head"><div><p className="integration-family">{kind}</p><h3>{account.display_name}</h3></div><Badge tone="dim">{account.connector_type || "Updated by you"}</Badge></div>
-    <p className="journey-note">{account.rail === "CRYPTO" ? "Use Accounts to check supported chain balances and review available wallet actions. A saved wallet record alone does not authorize payments." : account.connector_type ? "Use Accounts to check this configured connector. Saved settings alone do not confirm provider access." : "Record balances and activity yourself or import a statement. No provider is connected."}</p>
+    <div className="money-source-head"><div><p className="integration-family">{kind}</p><h3>{account.display_name}</h3></div><Badge tone="dim">{watched ? "Watch only · Base" : account.connector_type || "Updated by you"}</Badge></div>
+    <p className="journey-note">{watched ? "A public address saved for watching, with no ownership claim or signing key. Open Accounts to check ETH and native USDC balances explicitly. Base transaction history is not imported." : account.rail === "CRYPTO" ? "Use Accounts to check supported chain balances and review available wallet actions. A saved wallet record alone does not authorize payments." : account.connector_type ? "Use Accounts to check this configured connector. Saved settings alone do not confirm provider access." : "Record balances and activity yourself or import a statement. No provider is connected."}</p>
     {isObservableBaseAccount(account) ? <p className="journey-note">Review finalized Base balances and their evidence in Accounts.</p> : <AccountBalances account={account} />}
-    {onGoto && <div className="btn-row"><button className="btn btn-ghost" onClick={() => onGoto("accounts", { accountId: account.id })}>Manage account</button><button className="link-btn" onClick={() => onGoto("ledger", { accountId: account.id })}>Activity / import</button></div>}
+    {onGoto && <div className="btn-row"><button className="btn btn-ghost" onClick={() => onGoto("accounts", { accountId: account.id })}>{watched ? "View watched wallet" : "Manage account"}</button>{!watched && <button className="link-btn" onClick={() => onGoto("ledger", { accountId: account.id })}>Activity / import</button>}</div>}
   </article>;
 }
 
@@ -144,6 +147,8 @@ export function Connections({ onGoto }: { onGoto?: WalletNavigate } = {}) {
   const [notice, setNotice] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showWatch, setShowWatch] = useState(false);
+  const watchTrigger = useRef<HTMLButtonElement | null>(null);
   const pending = useRef(false);
   const live = useRef(true);
   const handler = useRef<PlaidLinkHandler | null>(null);
@@ -151,28 +156,30 @@ export function Connections({ onGoto }: { onGoto?: WalletNavigate } = {}) {
 
   const load = useCallback(async () => {
     const read = ++generation.current;
+    const session = currentSessionGuard();
     setReading(true);
     try {
       const [connections, saved] = await Promise.all([api.connections(), api.accounts()]);
-      if (!live.current || read !== generation.current) return;
+      if (!live.current || !session() || read !== generation.current) return;
       setData(connections); setAccounts(saved.accounts); setError(null);
     } catch (reason) {
-      if (live.current && read === generation.current) setError(errorMessage(reason));
+      if (live.current && session() && read === generation.current) setError(errorMessage(reason));
     } finally {
-      if (live.current && read === generation.current) setReading(false);
+      if (live.current && session() && read === generation.current) setReading(false);
     }
   }, []);
 
   useEffect(() => {
     live.current = true;
+    const session = currentSessionGuard();
     void load();
     void api.walletIntegrations().then(
       (result) => {
-        if (!live.current) return;
+        if (!live.current || !session()) return;
         setCatalog(result);
       },
       (reason) => {
-        if (!live.current) return;
+        if (!live.current || !session()) return;
         setCatalogError(errorMessage(reason));
       },
     );
@@ -250,10 +257,23 @@ export function Connections({ onGoto }: { onGoto?: WalletNavigate } = {}) {
           {data.can_manage && data.plaid.configured ? <button className="btn btn-primary" disabled={busy !== null} onClick={() => void connectBank()}>{busy === "link" ? "Connecting…" : "Connect a test bank"}</button>
             : <p className="journey-note">{!data.can_manage ? "The workspace owner can manage connections." : "Plaid sandbox is not configured on this node. Add its sandbox configuration on the server to enable test linking."}</p>}
         </div>
-        {onGoto && <div className="btn-row journey-actions"><button className="btn btn-ghost" onClick={() => onGoto("accounts")}>Add Stripe, crypto or a manual account</button><button className="link-btn" onClick={() => onGoto("ledger")}>Import or review activity</button></div>}
+        <div className="card connection-start"><h3>Watch a public wallet</h3><p>Save a Base address, then choose when to check its ETH and native USDC balances. No wallet signature or key is needed.</p>
+          {data.can_manage ? <button ref={watchTrigger} className="btn btn-primary" disabled={busy !== null || reading || showWatch} onClick={() => { setShowWatch(true); setNotice(null); }}>Add crypto wallet</button> : <p className="journey-note">The workspace owner can add watched wallets.</p>}
+        </div>
+        {showWatch && <WatchWallet canManage={data.can_manage === true} disabled={reading || busy !== null && busy !== "watch"}
+          onBusyChange={value => { if (live.current) { pending.current = value; setBusy(value ? "watch" : null); } }}
+          onCancel={() => { setShowWatch(false); requestAnimationFrame(() => watchTrigger.current?.focus()); }}
+          onReviewAccounts={onGoto ? () => onGoto("accounts") : undefined}
+          onSaved={result => {
+            if (!live.current) return;
+            const message = watchResultMessage(result); setNotice(message); toast(message, result.created ? "ok" : "info");
+            setAccounts(current => [result.account, ...current.filter(account => account.id !== result.account.id)]);
+            setShowWatch(false); onGoto?.("accounts", { accountId: result.account.id });
+          }} />}
+        {onGoto && <div className="btn-row journey-actions"><button className="btn btn-ghost" onClick={() => onGoto("accounts")}>Add Stripe or a manual account</button><button className="link-btn" onClick={() => onGoto("ledger")}>Import or review activity</button></div>}
         {orphanItems.length > 0 && <section className="bank-items" aria-label="Banks waiting for account data"><h3>Banks waiting for account data</h3>{orphanItems.map((item) => itemControls(item))}</section>}
         <div className="money-source-grid">{data.sources.map((source) => { const item = data.plaid.items.find((candidate) => candidate.id === source.id); return <MoneySource key={source.id} source={source} onGoto={onGoto} management={item ? itemControls(item, true) : undefined} />; })}{standalone.map((account) => <SavedMoneySource key={account.id} account={account} onGoto={onGoto} />)}</div>
-        {data.sources.length === 0 && standalone.length === 0 && <p className="empty-state">No money sources yet. Add a manual account to start, or connect a configured test bank.</p>}
+        {data.sources.length === 0 && standalone.length === 0 && <p className="empty-state">No money sources yet. Add a manual account, watch a Base wallet, or connect a configured test bank.</p>}
         <p className="journey-note">PayPal and Cash App connections are not implemented here. Record or import their activity manually for now.</p>
       </>}
 
