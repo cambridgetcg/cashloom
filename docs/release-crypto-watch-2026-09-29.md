@@ -173,3 +173,29 @@ evidence.
 Final local evidence: `/tmp/cashloom-wallet-standards-integration-20260929.log`,
 `/tmp/cashloom-wallet-standards-public-review-20260929/result.json`, and
 `/private/var/folders/69/4qnq5h3j1095bfs9psqv13100000gn/T/cashloom-tcg-browser-7lkjzdyk`.
+
+### Browser wallet delivery
+
+Implementation source: `637a0a8ac1886fce11630e374be13e889d3001f2`, published on
+the private `release/service-workspace-20260929` branch. The release public build
+matched the checked original across all 30 artifacts, and the original private
+UI matched the final isolated browser build across all six artifacts.
+
+| Environment | Deployment | Verification |
+| --- | --- | --- |
+| Preview | https://502dca43.cashloom-atlas.pages.dev | 30 passed, zero failures or API availability gaps |
+| Production | https://cashloom.io, Pages ID `97f32df2-a623-4622-966f-63b8b245fa38` | 30 passed, zero failures or API availability gaps |
+
+Seven deployed entry, planner, guide and Connections asset hashes matched the
+verified build. The `www` redirect returned 308. Private wallet routes remained
+absent, and the public guide collected no wallet addresses. The unchanged INFO
+service returned Capital flows with partial source coverage; no Fly redeployment
+was performed. The original development checkout and inherited edits are preserved.
+
+Final reports: `/tmp/cashloom-wallet-standards-preview-20260929/result.json`,
+`/tmp/cashloom-wallet-standards-production-20260929/result.json`, and its adjacent
+`asset-verification.json`.
+
+Rollback for this increment: Pages deployment
+`54999b6f-899e-4037-a233-f96100c562be`, source
+`3c188b1efa71384896e47ccdaa4f52b73f5e6e3d`.

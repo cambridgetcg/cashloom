@@ -28,15 +28,18 @@ Household/group planning is one person's editable plan with an export, not share
 accounts or joint payment authority. The private workspace remains a local
 developer pilot; this website release activates no live banks or private payments.
 
-Website source checkpoint: `3c188b1efa71384896e47ccdaa4f52b73f5e6e3d`.
+Website source checkpoint: `637a0a8ac1886fce11630e374be13e889d3001f2`.
 Preview and production each passed all 30 release checks with no failures or
 API availability gaps. The `www` redirect returned 308, and deployed entry,
 planner, guide and Connections assets matched the verified build. Setup links
 now reach useful instructions, and clearing a plan retains currency and purpose.
-The local workspace now watches a public Base address with explicit ETH/native
-USDC balance checks and selected saved holdings for agents. Watching needs no
-key or signature and grants no spending authority. The final live default-provider
-check settled with two-provider finalized agreement. See the
+The local workspace now accepts a pasted Base address or one explicitly selected
+from a compatible browser wallet using EIP-6963/EIP-1193. It keeps address sharing,
+saving a watch, and checking ETH/native USDC balances separate. Watching needs no
+key or signature and grants no spending authority. Agents can read selected saved
+holdings. The browser-wallet increment passed 195 UI tests and nine actual-node
+journeys with synthetic providers; individual wallet brands are not certified.
+The prior live balance-provider check settled with two-provider finalized agreement. See the
 [crypto release record](docs/release-crypto-watch-2026-09-29.md) for verification,
 delivery and rollback details. Activity search, older-history browsing and
 draft/account handling remain verified in the separate local workspace; the
