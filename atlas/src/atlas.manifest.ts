@@ -286,7 +286,7 @@ export const DECISIONS: Decision[] = [
     question: "What database?",
     options: [
       { label: "MongoDB / Postgres server", verdict: "rejected", note: "Infra to install, run, and host — friction against 'everyone runs their own'." },
-      { label: "bun:sqlite — one file, built into the runtime", verdict: "chosen", note: "Nothing to provision. The whole data plane is a single file you can back up by copying it." },
+      { label: "bun:sqlite — embedded in the runtime", verdict: "chosen", note: "No separate database server. Use the local-data backup command for a consistent snapshot; copying a live database file alone can miss committed records in its write-ahead log." },
     ],
     because: "The zero-infra promise had to be literal. If running your own node needs a database server, most people never will.",
     livesIn: "the-ledger",
