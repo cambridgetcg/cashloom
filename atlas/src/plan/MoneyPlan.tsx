@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { PublicHeader } from "../components/PublicHeader";
 import {
   CATEGORIES, CURRENCIES, MAX_IMPORT_BYTES, MAX_ITEMS, STORAGE_KEY, PlanStorageConflict, calculatePlan, clearSavedPlan,
-  emptyPlan, exportPlan, formatMoney, importPlan, parseAmount, planForAudience, planIssue, readSavedPlan, savePlan,
+  exportPlan, formatMoney, importPlan, parseAmount, planForAudience, planIssue, readSavedPlan, savePlan,
   type Category, type Currency, type MoneyPlan as PlanData, type Purpose, type SavedPlanResult,
 } from "./model";
 import "./money-plan.css";
@@ -148,12 +148,12 @@ export default function MoneyPlan() {
     try { clearSavedPlan(window.localStorage, storageSnapshot.current); storageSnapshot.current = null; setStorageConflict(""); }
     catch (failure) { removalError = failure instanceof PlanStorageConflict ? "Your open plan is cleared. Another tab changed the saved copy, so that copy was left untouched." : "Your open plan is cleared, but this browser blocked removal of the saved copy. A saved copy may still be present in this browser."; }
     setSaveEnabled(false);
-    setPlan(emptyPlan());
+    setPlan((current) => ({ ...current, items: [] }));
     setSaveMessage("");
     setError(removalError);
     setConfirmClear(false);
-    setNotice(removalError ? "Browser saving is off." : "Plan cleared. Browser saving is off.");
-    document.getElementById("plan-purpose-personal")?.focus();
+    setNotice(removalError ? "Browser saving is off." : "Entries cleared. Your currency and plan type are kept in this tab. Browser saving is off.");
+    document.getElementById("plan-add-income")?.focus();
   }
 
   function downloadPlan() {
@@ -326,7 +326,7 @@ export default function MoneyPlan() {
           <p className="plan-help">Export creates a readable JSON file. Keep it private. Import accepts CashLoom monthly plan files up to 64 KB and asks before replacing your plan.</p>
         </div>
         {storageConflict && <div className="plan-conflict" role="status"><h3>Choose which plan to keep</h3><p>{storageConflict} Loading the saved plan replaces your current draft. Export first if you want to keep both.</p><div><button type="button" className="plan-button" onClick={loadLatestSavedPlan}>Load latest saved plan</button><button type="button" className="plan-button" onClick={() => { setSaveEnabled(false); setNotice("Your current draft is kept in this tab. Saving stays paused until you review saving it again."); }}>Keep my current draft</button><button type="button" className="plan-button" onClick={reviewSaving}>Review saving this draft</button></div></div>}
-        {confirmClear && <div className="plan-confirmation" role="alertdialog" aria-labelledby="plan-clear-title" aria-describedby="plan-clear-description"><h3 id="plan-clear-title">Clear this plan?</h3><p id="plan-clear-description">This removes all entries and the saved copy in this browser. Export first if you want to keep a copy. Files you have already exported stay on your device.</p><div><button ref={confirmationCancel} type="button" className="plan-button" onClick={() => { setConfirmClear(false); document.querySelector<HTMLButtonElement>(".plan-clear")?.focus(); }}>Keep my plan</button><button type="button" className="plan-button plan-button-danger" onClick={clearPlan}>Yes, clear plan</button></div></div>}
+        {confirmClear && <div className="plan-confirmation" role="alertdialog" aria-labelledby="plan-clear-title" aria-describedby="plan-clear-description"><h3 id="plan-clear-title">Clear this plan?</h3><p id="plan-clear-description">This removes all entries and the saved copy in this browser. Your currency and who you’re planning for stay selected in this tab. Export first if you want to keep a copy. Files you have already exported stay on your device.</p><div><button ref={confirmationCancel} type="button" className="plan-button" onClick={() => { setConfirmClear(false); document.querySelector<HTMLButtonElement>(".plan-clear")?.focus(); }}>Keep my plan</button><button type="button" className="plan-button plan-button-danger" onClick={clearPlan}>Yes, clear plan</button></div></div>}
         {pendingImport && <div className="plan-confirmation" role="alertdialog" aria-labelledby="plan-import-title" aria-describedby="plan-import-description"><h3 id="plan-import-title">Replace your current plan?</h3><p id="plan-import-description">The file contains {pendingImport.items.length} monthly {pendingImport.currency} {pendingImport.items.length === 1 ? "entry" : "entries"}. Importing replaces your open plan{saveEnabled ? " and its saved browser copy" : ""}. Export your current plan first if you want to keep it.</p><div><button ref={confirmationCancel} type="button" className="plan-button" onClick={() => { setPendingImport(null); document.getElementById("plan-import-button")?.focus(); }}>Keep current plan</button><button type="button" className="plan-button plan-button-primary" onClick={() => { setPlan(pendingImport); setPendingImport(null); setError(""); setNotice("Plan imported. Review your entries below the introduction."); document.getElementById("plan-purpose-personal")?.focus(); }}>Replace with imported plan</button></div></div>}
         {pendingSave && <div className="plan-confirmation" role="alertdialog" aria-labelledby="plan-save-review-title" aria-describedby="plan-save-review-description"><h3 id="plan-save-review-title">Save this draft as the browser plan?</h3><p id="plan-save-review-description">{pendingSave.description} Automatic saving will then resume in this tab.</p><div><button ref={confirmationCancel} type="button" className="plan-button" onClick={() => setPendingSave(null)}>Keep saving paused</button><button type="button" className="plan-button plan-button-primary" onClick={confirmSavingDraft}>Save this draft and resume</button></div></div>}
         {error && <p className="plan-feedback plan-feedback-error" role="alert">{error}</p>}

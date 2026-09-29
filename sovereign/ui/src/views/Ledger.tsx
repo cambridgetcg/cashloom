@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, currentSessionGuard, errorMessage } from "../api";
+import { api, currentSessionGuard, errorMessage, type ActivityPage } from "../api";
 import {
   Amount,
   Badge,
@@ -15,6 +15,7 @@ import type { WalletNavigate } from "../navigation";
 import { ActivityImport } from "./ActivityImport";
 import { TransferReview } from "./TransferReview";
 import { downloadFile } from "../money-data";
+import "./ledger.css";
 
 const LIMIT = 200;
 
@@ -65,14 +66,53 @@ export function LedgerHistory({ transactions, accounts, filter }: { transactions
 
 export interface LedgerReadState {
   filter: string;
+  query: string;
   transactions: Tx[] | null;
   loading: boolean;
+  loadingMore: boolean;
   error: string | null;
+  moreError: string | null;
+  hasMore: boolean;
+  nextCursor: string | null;
+  requestId: number;
 }
 
-/** Keep a readable snapshot only for the filter that produced it. */
-export function beginLedgerRead(previous: LedgerReadState, filter: string): LedgerReadState {
-  return { filter, transactions: previous.filter === filter ? previous.transactions : null, loading: true, error: null };
+export function emptyLedgerRead(filter = "", query = ""): LedgerReadState {
+  return { filter, query, transactions: null, loading: true, loadingMore: false, error: null, moreError: null,
+    hasMore: false, nextCursor: null, requestId: 0 };
+}
+
+/** Only the exact criteria that produced a snapshot may retain its rows/cursor. */
+export function beginLedgerRead(previous: LedgerReadState, filter: string, query = "", requestId = previous.requestId + 1, append = false): LedgerReadState {
+  const same = previous.filter === filter && previous.query === query;
+  return { filter, query, requestId, transactions: same ? previous.transactions : null,
+    loading: !append, loadingMore: append, error: null, moreError: null,
+    hasMore: same ? previous.hasMore : false, nextCursor: same ? previous.nextCursor : null };
+}
+
+export function finishLedgerRead(previous: LedgerReadState, requestId: number, page: ActivityPage, append: boolean): LedgerReadState {
+  if (previous.requestId !== requestId) return previous;
+  // A provider may move a record across a page boundary between reads. Keep
+  // one row per ID and use the newly read version without fabricating totals.
+  const rows = new Map<string, Tx>((append ? previous.transactions ?? [] : []).map(row => [row.id, row]));
+  for (const row of page.transactions) rows.set(row.id, row);
+  return { ...previous, transactions: [...rows.values()], loading: false, loadingMore: false, error: null, moreError: null,
+    hasMore: page.has_more, nextCursor: page.has_more ? page.next_cursor : null };
+}
+
+export function failLedgerRead(previous: LedgerReadState, requestId: number, message: string, append: boolean): LedgerReadState {
+  if (previous.requestId !== requestId) return previous;
+  return { ...previous, loading: false, loadingMore: false, error: append ? null : message, moreError: append ? message : null };
+}
+
+/** An archived/missing filter never silently selects a different account. */
+export function freshLedgerAccount(accounts: Account[], filter: string): string {
+  const eligible = (account: Account) => account.status.toUpperCase() === "ACTIVE";
+  return (filter ? accounts.find(account => account.id === filter && eligible(account)) : accounts.find(eligible))?.id ?? "";
+}
+
+export function hasLedgerDraft(draft: { title: string; amount: string; category: string; date: string; initialDate: string; direction: "in" | "out"; accountChosen: boolean }): boolean {
+  return draft.title !== "" || draft.amount !== "" || draft.category !== "" || draft.date !== draft.initialDate || draft.direction !== "out" || draft.accountChosen;
 }
 
 export function LedgerReadNotice({ error, loading, retained, onRetry }: {
@@ -97,15 +137,19 @@ export function ledgerDateToIso(day: string): string | undefined {
   return date.toISOString();
 }
 
-export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string; onGoto?: WalletNavigate } = {}) {
+export interface LedgerCriteria { accountId?: string; query: string }
+
+export function Ledger({ initialAccountId, initialQuery = "", onCriteriaChange, onGoto }: {
+  initialAccountId?: string; initialQuery?: string; onCriteriaChange?(criteria: LedgerCriteria): void; onGoto?: WalletNavigate;
+} = {}) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
-  const [history, setHistory] = useState<LedgerReadState>({ filter: initialAccountId ?? "", transactions: null, loading: true, error: null });
+  const [history, setHistory] = useState<LedgerReadState>(() => emptyLedgerRead(initialAccountId ?? "", initialQuery.trim()));
   const [filter, setFilter] = useState(initialAccountId ?? "");
+  const [query, setQuery] = useState(initialQuery.trim());
+  const [searchDraft, setSearchDraft] = useState(initialQuery.trim());
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [reloadTick, setReloadTick] = useState(0);
-  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
-  const selectedInitially = useRef(false);
   const [canManage, setCanManage] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showTransfers, setShowTransfers] = useState(false);
@@ -113,20 +157,30 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
   const [exportError, setExportError] = useState<string | null>(null);
   const live = useRef(true);
   const exporting = useRef(false);
+  const readGeneration = useRef(0);
+  const reading = useRef(false);
+  const entrySubmitting = useRef(false);
+  const activeCriteria = useRef({ filter, query });
+  activeCriteria.current = { filter, query };
 
   useEffect(() => {
     live.current = true;
-    void api.connections().then((result) => { if (live.current) setCanManage(result.can_manage === true); }, () => { if (live.current) setCanManage(false); });
-    return () => { live.current = false; };
+    const session = currentSessionGuard();
+    void api.connections().then((result) => { if (live.current && session()) setCanManage(result.can_manage === true); }, () => { if (live.current && session()) setCanManage(false); });
+    return () => { live.current = false; readGeneration.current++; };
   }, []);
 
   async function exportActivity() {
     if (exporting.current) return;
     exporting.current = true; setExportBusy(true); setExportError(null);
     const current = currentSessionGuard();
+    const accountScope = filter;
     try {
       const data = await api.exportTransactions(filter || undefined);
-      if (live.current && current()) downloadFile("cashloom-activity.json", JSON.stringify(data, null, 2), "application/json");
+      if (live.current && current()) {
+        if (activeCriteria.current.filter !== accountScope) setExportError("The selected account changed. Export again for your current selection.");
+        else downloadFile("cashloom-activity.json", JSON.stringify(data, null, 2), "application/json");
+      }
     } catch (reason) { if (live.current && current()) setExportError(errorMessage(reason)); }
     finally { exporting.current = false; if (live.current && current()) setExportBusy(false); }
   }
@@ -138,64 +192,97 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
   const [entryTitle, setEntryTitle] = useState("");
   const [entryAmount, setEntryAmount] = useState("");
   const [entryDate, setEntryDate] = useState(todayISO());
+  const entryInitialDate = useRef(entryDate);
+  const [entryAccountChosen, setEntryAccountChosen] = useState(false);
   const [entryCategory, setEntryCategory] = useState("");
   const [entryBusy, setEntryBusy] = useState(false);
   const [entryErr, setEntryErr] = useState<string | null>(null);
+  const [entryNotice, setEntryNotice] = useState<string | null>(null);
+  const entryHasDraft = hasLedgerDraft({ title: entryTitle, amount: entryAmount, category: entryCategory,
+    date: entryDate, initialDate: entryInitialDate.current, direction: entryDir, accountChosen: entryAccountChosen });
 
   useEffect(() => {
-    let live = true;
+    let active = true;
+    const session = currentSessionGuard();
     setAccountsError(null);
     setAccountsLoading(true);
     void (async () => {
       try {
         const r = await api.accounts({ includeArchived: true });
-        if (!live) return;
+        if (!active || !live.current || !session()) return;
         setAccounts(r.accounts);
-        if (selectedInitially.current) return;
-        selectedInitially.current = true;
-        const selected = initialAccountId ? r.accounts.find((a) => a.id === initialAccountId) : undefined;
-        const first = r.accounts.find((a) => a.status.toUpperCase() === "ACTIVE");
-        if (initialAccountId && (!selected || selected.status.toUpperCase() !== "ACTIVE")) {
-          setEntryAccount("");
-          setSelectionNotice("The selected account is no longer active. Choose an active account before adding an entry.");
-          if (!selected) setFilter("");
-        } else setEntryAccount(selected?.id ?? first?.id ?? "");
       } catch (ex) {
-        if (live) setAccountsError(errorMessage(ex));
+        if (active && live.current && session()) setAccountsError(errorMessage(ex));
       } finally {
-        if (live) setAccountsLoading(false);
+        if (active && live.current && session()) setAccountsLoading(false);
       }
     })();
     return () => {
-      live = false;
+      active = false;
     };
   }, [reloadTick]);
 
-  useEffect(() => {
-    let live = true;
-    setHistory((current) => beginLedgerRead(current, filter));
-    void (async () => {
-      try {
-        const r = await api.transactions({
-          accountId: filter || undefined,
-          limit: LIMIT,
-        });
-        if (live) setHistory({ filter, transactions: r.transactions, loading: false, error: null });
-      } catch (ex) {
-        if (live) setHistory((current) => ({ ...current, loading: false, error: errorMessage(ex) }));
+  async function readHistory(append: boolean, cursor?: string) {
+    if (append && reading.current) return;
+    const requestId = ++readGeneration.current;
+    const session = currentSessionGuard();
+    reading.current = true;
+    setHistory(previous => beginLedgerRead(previous, filter, query, requestId, append));
+    try {
+      const page = await api.transactions({ accountId: filter || undefined, limit: LIMIT, q: query || undefined, cursor });
+      if (!Array.isArray(page.transactions) || typeof page.has_more !== "boolean" ||
+        (page.has_more && (typeof page.next_cursor !== "string" || !page.next_cursor || page.next_cursor === cursor))) {
+        throw new Error("Saved history could not be continued. Reload saved history to try again.");
       }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [filter, reloadTick]);
+      if (live.current && session() && readGeneration.current === requestId) {
+        setHistory(previous => finishLedgerRead(previous, requestId, page, append));
+      }
+    } catch (reason) {
+      if (live.current && session() && readGeneration.current === requestId) {
+        setHistory(previous => failLedgerRead(previous, requestId, errorMessage(reason), append));
+      }
+    } finally { if (readGeneration.current === requestId) reading.current = false; }
+  }
+
+  useEffect(() => {
+    void readHistory(false);
+    return () => { readGeneration.current++; reading.current = false; };
+  }, [filter, query, reloadTick]);
+
+  useEffect(() => {
+    if (showEntry && !entryHasDraft && !entryBusy) setEntryAccount(freshLedgerAccount(accounts ?? [], filter));
+  }, [accounts, filter, showEntry, entryHasDraft, entryBusy]);
 
   const byId = new Map((accounts ?? []).map((a) => [a.id, a]));
-  const txs = history.filter === filter ? history.transactions : null;
-  const retryReads = () => setReloadTick((tick) => tick + 1);
+  const txs = history.filter === filter && history.query === query ? history.transactions : null;
+  const retryReads = () => { readGeneration.current++; reading.current = false; setReloadTick((tick) => tick + 1); };
+  function changeCriteria(nextFilter: string, nextQuery: string) {
+    readGeneration.current++; reading.current = false;
+    setFilter(nextFilter); setQuery(nextQuery);
+    onCriteriaChange?.({ accountId: nextFilter || undefined, query: nextQuery });
+  }
+  function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const next = searchDraft.trim();
+    setSearchDraft(next);
+    if (next === query) retryReads(); else changeCriteria(filter, next);
+  }
+  function clearSearch() {
+    setSearchDraft("");
+    if (query) changeCriteria(filter, "");
+  }
+  function toggleEntry() {
+    if (!showEntry && !entryHasDraft) {
+      setEntryAccount(freshLedgerAccount(accounts ?? [], filter));
+      const today = todayISO(); entryInitialDate.current = today; setEntryDate(today);
+      setEntryAccountChosen(false); setEntryErr(null);
+    }
+    setShowEntry(value => !value);
+  }
 
   async function submitEntry(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (entrySubmitting.current) return;
     setEntryErr(null);
     const acct = byId.get(entryAccount);
     if (!acct || acct.status.toUpperCase() !== "ACTIVE") {
@@ -211,7 +298,9 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
       setEntryErr(`Amount doesn't parse at ${acct.decimals} decimals.`);
       return;
     }
-    setEntryBusy(true);
+    const session = currentSessionGuard();
+    if (!session()) return;
+    entrySubmitting.current = true; setEntryBusy(true); setEntryNotice(null);
     try {
       await api.createTransaction({
         account_id: acct.id,
@@ -220,23 +309,29 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
         date: ledgerDateToIso(entryDate),
         category: entryCategory.trim() || undefined,
       });
+      if (!live.current || !session()) return;
       toast("Entry saved in Activity.", "ok");
       setEntryTitle("");
       setEntryAmount("");
       setEntryCategory("");
-      setReloadTick((t) => t + 1);
+      setEntryDir("out"); setEntryAccountChosen(false);
+      const today = todayISO(); entryInitialDate.current = today; setEntryDate(today);
+      const selection = activeCriteria.current;
+      setEntryNotice(`Entry saved for ${acct.display_name}.${selection.query || selection.filter && selection.filter !== acct.id ? " Your current Activity filters may hide it." : ""}`);
+      retryReads();
     } catch (ex) {
-      setEntryErr(errorMessage(ex));
+      if (live.current && session()) setEntryErr(`${errorMessage(ex)} Reload saved history before trying again if the outcome is uncertain.`);
     } finally {
-      setEntryBusy(false);
+      entrySubmitting.current = false;
+      if (live.current && session()) setEntryBusy(false);
     }
   }
 
   return (
-    <div className="stagger">
+    <div className="stagger ledger-view">
       <SectionTitle
         aside={
-          <button className="link-btn" onClick={() => setShowEntry((s) => !s)}>
+          <button className="link-btn" disabled={entryBusy} onClick={toggleEntry}>
             {showEntry ? "close entry form" : "+ record an entry"}
           </button>
         }
@@ -247,7 +342,8 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
       <p className="journey-note">Recorded activity is separate from a balance check. Adding an entry does not move money or change a saved account balance.</p>
       {accountsError && <p className="journey-note" role="status">Account details could not be loaded. {accountsError}{" "}<button className="link-btn" onClick={retryReads}>Retry account details</button></p>}
       {accountsLoading && !accounts && <p className="journey-note" role="status">Loading account details…</p>}
-      {selectionNotice && <p role="status">{selectionNotice}</p>}
+      {entryNotice && <p className="journey-note" role="status">{entryNotice}</p>}
+      {!showEntry && entryHasDraft && filter && entryAccount !== filter && <p className="journey-note" role="status">Your draft is still for <strong>{byId.get(entryAccount)?.display_name ?? "its selected account"}</strong>. <button className="link-btn" onClick={toggleEntry}>Continue draft</button></p>}
       {onGoto && <div className="btn-row journey-actions">
         <button className="link-btn" onClick={() => onGoto("accounts", filter ? { accountId: filter } : undefined)}>View accounts and balances</button>
         <button className="link-btn" onClick={() => onGoto("trades")}>Open agreements</button>
@@ -257,16 +353,21 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
         <button className="btn btn-ghost" onClick={() => setShowTransfers((value) => !value)}>{showTransfers ? "Close transfer review" : "Review internal transfers"}</button>
         <button className="btn btn-ghost" disabled={exportBusy} onClick={() => void exportActivity()}>{exportBusy ? "Preparing export…" : filter ? "Export this account (JSON)" : "Export all activity (JSON)"}</button>
       </div>
+      <p className="ledger-export-note">JSON export includes all saved entries {filter ? "for the selected account" : "across all accounts"}, regardless of the search or loaded pages.</p>
       {exportError && <p className="form-error" role="alert">{exportError}</p>}
       {showImport && canManage && accounts && <ActivityImport accounts={accounts} initialAccountId={filter || undefined} onImported={retryReads} />}
       {showTransfers && <TransferReview onChanged={retryReads} />}
 
       {showEntry && (
-        <form className="card entry-form" onSubmit={(e) => void submitEntry(e)}>
+        <form className="card entry-form" aria-label="Record activity" onSubmit={(e) => void submitEntry(e)}>
+          {entryHasDraft && filter && entryAccount !== filter && <p className="notice" role="status">Your draft is still for <strong>{byId.get(entryAccount)?.display_name ?? "the account selected below"}</strong>. The Activity account filter does not change this draft’s destination.</p>}
+          {filter && accounts && byId.get(filter)?.status.toUpperCase() !== "ACTIVE" && <p className="journey-note">The selected Activity account is no longer active. Choose an active account below before adding an entry.</p>}
+          <fieldset className="ledger-entry-fields" disabled={entryBusy}>
           <div className="field-row">
             <Field label="Account">
-              <select value={entryAccount} onChange={(e) => setEntryAccount(e.target.value)}>
+              <select value={entryAccount} onChange={(e) => { setEntryAccount(e.target.value); setEntryAccountChosen(true); }}>
                 <option value="">choose an active account…</option>
+                {entryAccount && byId.get(entryAccount)?.status.toUpperCase() !== "ACTIVE" && <option value={entryAccount} disabled>{byId.get(entryAccount)?.display_name ?? "Account unavailable"} · unavailable for new entries</option>}
                 <LedgerAccountOptions accounts={accounts ?? []} />
               </select>
             </Field>
@@ -293,6 +394,7 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
             <Field label="Title">
               <input
                 value={entryTitle}
+                maxLength={200}
                 onChange={(e) => setEntryTitle(e.target.value)}
                 placeholder="what was it?"
               />
@@ -318,46 +420,60 @@ export function Ledger({ initialAccountId, onGoto }: { initialAccountId?: string
             <Field label="Category (optional)">
               <input
                 value={entryCategory}
+                maxLength={60}
                 onChange={(e) => setEntryCategory(e.target.value)}
                 placeholder="groceries, rent…"
               />
             </Field>
           </div>
-          {entryErr && <p className="form-error">{entryErr}</p>}
+          {entryErr && <p className="form-error" role="alert">{entryErr}</p>}
           <div className="btn-row">
             <button className="btn btn-primary" type="submit" disabled={entryBusy || accountsLoading || accountsError !== null}>
               {entryBusy ? "Recording…" : "Record"}
             </button>
           </div>
+          </fieldset>
         </form>
       )}
 
       <div className="ledger-toolbar">
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(e) => changeCriteria(e.target.value, query)}
           aria-label="Filter by account"
         >
           <option value="">All accounts</option>
+          {filter && accounts && !byId.has(filter) && <option value={filter}>Selected account unavailable</option>}
           <LedgerAccountOptions accounts={accounts ?? []} history />
         </select>
-        {txs && txs.length >= LIMIT && (
-          <span className="ledger-cap">showing the latest {LIMIT}</span>
-        )}
-        <button className="link-btn" onClick={retryReads} disabled={accountsLoading || history.loading}>Reload saved history</button>
+        <button className="link-btn" onClick={retryReads} disabled={accountsLoading || history.loading || history.loadingMore}>Reload saved history</button>
       </div>
+      <form className="ledger-search" aria-label="Search activity" onSubmit={search}>
+        <label htmlFor="activity-search">Search titles and categories</label>
+        <div className="ledger-search-controls"><input id="activity-search" aria-label="Search titles and categories" type="search" value={searchDraft} maxLength={120} autoComplete="off" spellCheck={false} placeholder="Search saved activity…" onChange={event => setSearchDraft(event.target.value)} />
+          <button className="btn btn-primary" type="submit">Search</button>
+          <button className="btn btn-ghost" type="button" disabled={!searchDraft && !query} onClick={clearSearch}>Clear search</button>
+        </div>
+        <p>Search all saved history for the selected accounts. Press Search to apply your text.</p>
+      </form>
+      <p className="ledger-results-summary" role="status">{filter ? byId.get(filter)?.display_name ?? "Selected account" : "All accounts"}{query ? <> · Matching “{query}”</> : " · All titles and categories"}{txs && <> · {txs.length} {query ? "matching " : ""}{txs.length === 1 ? "entry" : "entries"} loaded</>}</p>
 
       <LedgerReadNotice error={history.error} loading={history.loading} retained={txs !== null} onRetry={retryReads} />
       {!txs ? (
         history.loading ? <LoadingThreads /> : null
       ) : txs.length === 0 ? (
         <EmptyState>
-          No entries {filter ? "for this account " : ""}yet. Record an entry above,
-          or sync a supported account to read its activity.
+          {query ? <>No matching entries {filter ? "for this account" : "across your saved accounts"}. Try different text or <button className="link-btn" onClick={clearSearch}>clear the search</button>.</>
+            : <>No entries {filter ? "for this account " : ""}yet. Record an entry above, or sync a supported account to read its activity.</>}
         </EmptyState>
       ) : (
         <LedgerHistory transactions={txs} accounts={accounts ?? []} filter={filter} />
       )}
+      {txs && txs.length > 0 && <div className="ledger-pagination">
+        {history.moreError && <p className="form-error" role="alert">{history.moreError} Your loaded entries are still shown.</p>}
+        {history.hasMore && history.nextCursor ? <button className="btn btn-ghost" disabled={history.loading || history.loadingMore} onClick={() => { if (history.nextCursor) void readHistory(true, history.nextCursor); }}>{history.loadingMore ? "Loading older entries…" : history.moreError ? "Retry older entries" : "Load older"}</button>
+          : !history.loading && <p>No older matches in saved history.</p>}
+      </div>}
     </div>
   );
 }

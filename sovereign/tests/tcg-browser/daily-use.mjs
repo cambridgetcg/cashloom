@@ -19,6 +19,9 @@ const { chromium } = await import(pathToFileURL(process.env.TCG_BROWSER_DRIVER).
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let server, browser, context, page, origin, output = '';
 let failSessionRead = false;
+let failOlderRead = false;
+let delaySearch = '';
+let releaseSearch = null;
 function pass(name) { checks.push(name); console.log(`PASS ${name}`); }
 
 async function start(data, port = '0') {
@@ -91,6 +94,16 @@ try {
     }
     if (failSessionRead && url.pathname === '/api/vault/session') {
       failSessionRead = false; return route.abort('failed');
+    }
+    if (url.pathname === '/api/transactions' && request.method() === 'GET') {
+      if (failOlderRead && url.searchParams.has('cursor')) {
+        failOlderRead = false; return route.abort('failed');
+      }
+      if (delaySearch && url.searchParams.get('q') === delaySearch) {
+        delaySearch = '';
+        const response = await route.fetch();
+        return new Promise((resolve) => { releaseSearch = async () => { await route.fulfill({ response }); resolve(); }; });
+      }
     }
     return route.continue();
   });
@@ -284,6 +297,117 @@ try {
   });
   await page.screenshot({ path: join(root, 'daily-restored.png'), fullPage: true });
   pass('Verified backup restores into a separate directory, unlocks with the existing passphrase and preserves both databases');
+
+  // A larger synthetic history checks the actual read endpoint and native UI.
+  // It is added after the recovery assertions, in the restored fixture only.
+  const travel = (await api('/api/accounts', { display_name: 'Searchable travel pocket', rail: 'CASH', currency: 'USD', decimals: 2 })).data.account;
+  const household = (await api('/api/accounts', { display_name: 'Separate household pocket', rail: 'CASH', currency: 'USD', decimals: 2 })).data.account;
+  const seeded = await page.evaluate(async ({ travelId, householdId }) => {
+    const token = sessionStorage.getItem('cashloom.session');
+    const entries = Array.from({ length: 205 }, (_, index) => ({
+      account_id: travelId, title: index === 204 ? 'Deep history 100%_' : `Synthetic travel ${String(index).padStart(3, '0')}`,
+      amount_minor: '-1', category: index === 204 ? 'Archived receipt search' : 'Travel',
+      date: index === 204 ? '2020-01-01T00:00:00.000Z' : '2026-01-01T00:00:00.000Z',
+    }));
+    entries.push({ account_id: householdId, title: 'Other account 100%_', amount_minor: '-1', category: 'Household', date: '2026-01-02T00:00:00.000Z' });
+    for (const entry of entries) {
+      const response = await fetch('/api/transactions', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(entry) });
+      if (response.status !== 201) return false;
+    }
+    return true;
+  }, { travelId: travel.id, householdId: household.id });
+  assert(seeded, 'Synthetic activity setup failed');
+  await navigate('Activity');
+  const filter = page.getByRole('combobox', { name: 'Filter by account', exact: true });
+  const search = page.getByRole('form', { name: 'Search activity', exact: true });
+  const query = search.getByLabel('Search titles and categories', { exact: true });
+  const rows = page.locator('.ledger-table tbody tr');
+  async function selectAccount(id) {
+    const loaded = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/transactions' && new URL(r.url()).searchParams.get('accountId') === id && r.request().method() === 'GET');
+    await filter.selectOption(id); await loaded;
+    await page.getByRole('button', { name: 'Reload saved history', exact: true }).waitFor();
+  }
+  async function searchFor(value) {
+    const loaded = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/transactions' && new URL(r.url()).searchParams.get('q') === value && r.request().method() === 'GET');
+    await query.fill(value); await search.getByRole('button', { name: 'Search', exact: true }).click(); await loaded;
+  }
+  await selectAccount(travel.id);
+  await page.getByRole('button', { name: 'Load older', exact: true }).waitFor();
+  assert.equal(await rows.count(), 200);
+  assert.equal(await rows.filter({ hasText: 'Deep history 100%_' }).count(), 0);
+  failOlderRead = true;
+  await page.getByRole('button', { name: 'Load older', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry older entries', exact: true }).waitFor();
+  assert.equal(await rows.count(), 200, 'A failed older-page read must retain loaded rows');
+  await page.getByRole('button', { name: 'Retry older entries', exact: true }).click();
+  await rows.filter({ hasText: 'Deep history 100%_' }).waitFor();
+  assert.equal(await rows.count(), 205);
+  assert.equal(new Set(await rows.locator('.td-title').allTextContents()).size, 205);
+  pass('Older Activity pages are reachable beyond 200 entries; failed pagination retains rows and retries without duplicates');
+
+  await searchFor('100%_');
+  await rows.filter({ hasText: 'Deep history 100%_' }).waitFor();
+  assert.equal(await rows.count(), 1);
+  assert.equal(await rows.filter({ hasText: 'Other account' }).count(), 0);
+  await navigate('Activity'); // Re-selecting the current tab retains its return point.
+  await page.getByRole('button', { name: 'View accounts and balances', exact: true }).click();
+  await page.goBack();
+  await query.waitFor();
+  assert.equal(await query.inputValue(), '100%_');
+  assert.equal(await filter.inputValue(), travel.id);
+  await rows.filter({ hasText: 'Deep history 100%_' }).waitFor();
+  const browserState = await page.evaluate(() => JSON.stringify({ href: location.href, history: history.state, local: { ...localStorage }, session: { ...sessionStorage } }));
+  assert(!browserState.includes('100%_') && !browserState.includes(travel.id), 'Private Activity criteria entered browser URL or storage');
+  pass('Literal search finds older records within the chosen account; Back restores criteria held only in memory');
+
+  delaySearch = 'Archived receipt search';
+  await query.fill(delaySearch); await search.getByRole('button', { name: 'Search', exact: true }).click();
+  for (let attempt = 0; attempt < 100 && !releaseSearch; attempt++) await delay(20);
+  assert(releaseSearch, 'Delayed old-search response was not captured');
+  await searchFor('Travel');
+  await rows.filter({ hasText: 'Synthetic travel' }).first().waitFor();
+  await releaseSearch(); releaseSearch = null;
+  await delay(50);
+  assert.equal(await rows.filter({ hasText: 'Deep history' }).count(), 0);
+  assert.equal(await rows.count(), 200);
+  pass('A late prior search cannot replace the current Activity results');
+
+  await search.getByRole('button', { name: 'Clear search', exact: true }).click();
+  await page.getByRole('button', { name: 'Load older', exact: true }).waitFor();
+  await page.getByRole('button', { name: '+ record an entry', exact: true }).click();
+  const entryForm = page.locator('form.entry-form');
+  assert.equal(await entryForm.getByLabel('Account', { exact: true }).inputValue(), travel.id);
+  await entryForm.getByLabel('Title', { exact: true }).fill('Draft stays with travel');
+  await entryForm.getByLabel('Amount', { exact: true }).fill('2.00');
+  await selectAccount(household.id);
+  assert.equal(await entryForm.getByLabel('Title', { exact: true }).inputValue(), 'Draft stays with travel');
+  assert.equal(await entryForm.getByLabel('Account', { exact: true }).inputValue(), travel.id);
+  const recordResponse = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/transactions' && r.request().method() === 'POST');
+  await entryForm.getByRole('button', { name: 'Record', exact: true }).click();
+  const savedEntry = await (await recordResponse).json();
+  assert.equal(savedEntry.transaction.account_id, travel.id);
+  await page.getByRole('button', { name: 'close entry form', exact: true }).click();
+  await page.getByRole('button', { name: '+ record an entry', exact: true }).click();
+  assert.equal(await entryForm.getByLabel('Account', { exact: true }).inputValue(), household.id);
+  await page.getByRole('button', { name: 'close entry form', exact: true }).click();
+  await selectAccount(archivedId);
+  await page.getByRole('button', { name: '+ record an entry', exact: true }).click();
+  assert.equal(await entryForm.getByLabel('Account', { exact: true }).inputValue(), '', 'An archived filter must not silently select an unrelated active account');
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({ path: join(root, `activity-search-${width}.png`), fullPage: true, animations: 'disabled' });
+  }
+  assert.equal((await api('/api/accounts')).data.accounts.find((a) => a.id === travel.id).balance_minor, '0');
+  pass('Fresh entries follow the active account; an existing draft keeps its destination and archived history never selects another account');
+
+  await selectAccount(travel.id); await searchFor('100%_');
+  await page.getByRole('button', { name: 'Lock', exact: true }).click();
+  await page.getByLabel('Passphrase', { exact: true }).waitFor(); await unlock();
+  await navigate('Activity'); await query.waitFor();
+  assert.equal(await query.inputValue(), ''); assert.equal(await filter.inputValue(), '');
+  assert.equal(await page.locator('form.entry-form').count(), 0);
+  pass('Lock clears remembered Activity criteria and the open entry draft');
 
   await stop();
   unlinkSync(join(nodeRoot, 'ui')); mkdirSync(join(nodeRoot, 'ui'));

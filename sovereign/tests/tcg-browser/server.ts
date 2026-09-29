@@ -97,7 +97,7 @@ app.get("/api/accounts", (c) => c.json({ accounts: fixtureAccounts }));
 app.get("/api/vault/keys", (c) => c.json({ keys: [fixtureKey, { id: "fixture-record-key", kind: "secret", label: "Synthetic record signer", address: "ed25519-public-fixture", created_at: stamp }] }));
 app.get("/api/analytics/summary", (c) => c.json({ accounts: fixtureAccounts.map((account) => ({ ...account, in_minor: "0", out_minor: "0", tx_count: 0 })) }));
 app.get("/api/wallet/v3/positions", (c) => c.json({ base_accounts: [] }));
-app.get("/api/transactions", (c) => c.json({ transactions: fixtureTransactions.filter((row) => !c.req.query("accountId") || c.req.query("accountId") === row.account_id) }));
+app.get("/api/transactions", (c) => c.json({ transactions: fixtureTransactions.filter((row) => !c.req.query("accountId") || c.req.query("accountId") === row.account_id), has_more: false, next_cursor: null }));
 app.post("/api/transactions", async (c) => {
   const body = await c.req.json();
   if (!fixtureAccounts.some((account) => account.id === body.account_id && account.status === "ACTIVE")

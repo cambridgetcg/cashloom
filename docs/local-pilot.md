@@ -73,6 +73,19 @@ accounts remain available in its history filter but cannot receive new manual
 entries. If account metadata cannot be read, amounts show exact atomic units
 with an explicit missing-metadata label instead of a guessed currency scale.
 
+Search titles and categories to find entries anywhere in saved history. Use
+**Load older** to continue beyond the first 200 results; a failed read keeps
+the already loaded rows and offers a retry. Back restores the applied search
+and account during the unlocked session. Reload and lock clear those choices.
+Search is literal and ignores ASCII letter case. Reload saved history after
+concurrent edits to dates or categories to see the updated result order.
+
+A fresh entry follows the selected active account. If you already started a
+draft, changing the history filter keeps that draft attached to its original
+account and displays a reminder. An archived filter asks you to choose an
+active account for a new entry. JSON export includes all saved records for the
+selected account, regardless of your search or loaded pages.
+
 Account refresh and payment actions remain explicit. Saved balances are dated
 observations, not a promise of current provider or chain state. Different
 assets and networks retain their own units.

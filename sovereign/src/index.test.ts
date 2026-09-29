@@ -896,6 +896,97 @@ describe("archived ledger account identity", () => {
   });
 });
 
+describe("Activity search and older pages", () => {
+  function fixture() {
+    const accountId = newId();
+    db.query("INSERT INTO accounts(id,rail,display_name,currency,decimals,balance_minor) VALUES(?,'CASH','History search fixture','USD',2,'12345')").run(accountId);
+    const insert = db.query(`INSERT INTO transactions(id,account_id,title,amount_minor,date,category,raw)
+      VALUES(?,?,?,'-123456789012345678901',?,'Saved category','synthetic raw must stay private')`);
+    for (let index = 1; index <= 3; index++) insert.run(newId(), accountId, `Literal 100% ${index}`, `2026-09-${String(index).padStart(2, "0")}T00:00:00.000Z`);
+    return accountId;
+  }
+  const path = (query: Record<string, string | undefined>) => {
+    const parameters = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) parameters.set(key, value);
+    return `/api/transactions?${parameters}`;
+  };
+
+  it("returns additive page metadata and reads matching saved history through the existing scoped route", async () => {
+    const accountId = fixture();
+    const response = await app.request(path({ accountId, q: " 100% ", limit: "2" }), authorized(readToken));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    const first = await response.json();
+    expect(Object.keys(first).sort()).toEqual(["has_more", "next_cursor", "transactions"]);
+    expect(first.transactions.map((row: { title: string }) => row.title)).toEqual(["Literal 100% 3", "Literal 100% 2"]);
+    expect(first.has_more).toBe(true);
+    const second = await (await app.request(path({ accountId, q: "100%", cursor: first.next_cursor }), authorized(readToken))).json();
+    expect(second.transactions.map((row: { title: string }) => row.title)).toEqual(["Literal 100% 1"]);
+    expect(second).toMatchObject({ has_more: false, next_cursor: null });
+    expect(first.transactions[0].amount_minor).toBe("-123456789012345678901");
+    expect(first.transactions[0]).not.toHaveProperty("raw");
+    expect(JSON.stringify(first)).not.toContain("synthetic raw must stay private");
+  });
+
+  it("refuses invalid parameters and account/search cursor mismatches with fixed private errors", async () => {
+    const accountId = fixture();
+    const first = await (await app.request(path({ accountId, q: "100%", limit: "1" }), authorized(readToken))).json();
+    for (const query of [{ accountId, q: "changed search", cursor: first.next_cursor }, { accountId: newId(), q: "100%", cursor: first.next_cursor }, { accountId, cursor: "private malformed marker" }]) {
+      const response = await app.request(path(query), authorized(readToken));
+      expect(response.status).toBe(400);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      const result = await response.json();
+      expect(result.error).toBe("activity_cursor_invalid");
+      expect(JSON.stringify(result)).not.toContain("private malformed marker");
+      expect(JSON.stringify(result)).not.toContain("changed search");
+    }
+    for (const query of [{ limit: "501" }, { accountId: "wrong" }, { q: "x".repeat(121) }]) {
+      const response = await app.request(path(query), authorized(readToken));
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe("activity_query_invalid");
+    }
+  });
+
+  it("requires general accounts:read and never promotes an Assist cursor or token into that authority", async () => {
+    const accountId = fixture();
+    const first = await (await app.request(path({ accountId, limit: "1" }), authorized(readToken))).json();
+    const url = path({ accountId, cursor: first.next_cursor });
+    expect(requiredScopeForLocalRoute("GET", "/api/transactions")).toBe("accounts:read");
+    expect((await app.request(url)).status).toBe(401);
+    const keysOnly = await vault.unlock(PASSPHRASE, { scopes: ["keys:manage"] });
+    expect((await app.request(url, authorized(keysOnly))).status).toBe(403);
+    const assist = vault.createAssistAccess(ownerToken, { label: "History boundary fixture", account_ids: [accountId], allow_proposals: false, ttl_minutes: 5 });
+    try { expect((await app.request(url, authorized(assist.token))).status).toBe(403); }
+    finally { vault.revokeAssistAccess(ownerToken, assist.access.id); }
+    const expired = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"], ttlMs: 1 });
+    await Bun.sleep(5);
+    expect((await app.request(url, authorized(expired))).status).toBe(401);
+  });
+
+  it("searches saved data without fetching providers, recording payments or changing balances and entries", async () => {
+    const accountId = fixture();
+    const before = {
+      changes: db.query("SELECT total_changes() AS n").get(),
+      account: db.query("SELECT balance_minor,balance_as_of FROM accounts WHERE id=?").get(accountId),
+      payments: db.query("SELECT COUNT(*) AS n FROM payments").get(),
+    };
+    const originalFetch = globalThis.fetch;
+    let networkCalls = 0;
+    globalThis.fetch = (async (): Promise<Response> => { networkCalls++; throw new Error("No network allowed in history reads"); }) as unknown as typeof fetch;
+    try {
+      for (const query of [{ accountId, q: "category" }, { q: "100%" }, { accountId, q: "missing" }]) {
+        expect((await app.request(path(query), authorized(readToken))).status).toBe(200);
+      }
+    } finally { globalThis.fetch = originalFetch; }
+    expect(networkCalls).toBe(0);
+    expect({
+      changes: db.query("SELECT total_changes() AS n").get(),
+      account: db.query("SELECT balance_minor,balance_as_of FROM accounts WHERE id=?").get(accountId),
+      payments: db.query("SELECT COUNT(*) AS n FROM payments").get(),
+    }).toEqual(before);
+  });
+});
+
 describe("analytics exact atomic values", () => {
   it("sums values beyond SQLite's signed-64-bit range as decimal strings", async () => {
     const accountId = newId();

@@ -213,6 +213,7 @@ describe("explicit browser persistence", () => {
 
 describe("money plan page", () => {
   it("starts without fake entries, with saving off and all monthly categories available", () => {
+    expect(emptyPlan()).toMatchObject({ currency: "GBP", purpose: "personal", items: [] });
     const html = renderToStaticMarkup(<MoneyPlan />);
     expect(html).toContain("No account needed");
     expect(html).toContain("Enter monthly amounts only");

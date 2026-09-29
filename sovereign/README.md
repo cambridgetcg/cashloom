@@ -102,7 +102,14 @@ Different assets and networks retain their own units.
   an active manual non-crypto account. Concurrent edits require reloading and
   reviewing the saved value. It neither sends money nor creates Activity entries.
 - **Activity:** record account activity separately from observed balances. Entering
-  an expense does not silently recalculate a balance observation.
+  an expense does not silently recalculate a balance observation. Search saved
+  titles and categories across the full history, choose an account, and use
+  **Load older** beyond the first 200 entries. Search treats characters literally
+  and ignores ASCII letter case. Back restores the applied search and account
+  within the unlocked session; reload or lock clears those in-memory choices.
+  New entries follow the selected active account; an existing draft keeps its
+  destination when the history filter changes. JSON export includes all saved
+  entries for the selected account, regardless of search or loaded pages.
 - **Payment recovery:** eligible already-signed Base ETH/USDC payments show “Review
   recovery.” Review the saved transaction, recipient, and amount before explicitly
   rebroadcasting its existing bytes. Ambiguous executions use reconciliation;

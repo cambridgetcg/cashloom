@@ -15,7 +15,7 @@ export const WALLET_VIEWS = [
 export const WALLET_NAV_GROUPS = ["Your money", "Setup", "Advanced"] as const;
 
 export type WalletView = (typeof WALLET_VIEWS)[number]["id"];
-export interface WalletContext { accountId?: string; keyId?: string }
+export interface WalletContext { accountId?: string; keyId?: string; activityQuery?: string }
 export type WalletNavigate = (view: WalletView, context?: WalletContext) => void;
 export interface WalletRoute { view: WalletView; context?: WalletContext }
 

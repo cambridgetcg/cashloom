@@ -35,6 +35,14 @@ try {
   });
   page.on("dialog", (dialog) => dialog.accept());
 
+  await page.goto(`${origin}/plan`);
+  await page.getByRole("radio", { name: "Just me", exact: true }).waitFor();
+  assert.equal(await page.getByRole("radio", { name: "Just me", exact: true }).isChecked(), true);
+  assert.equal(await page.getByRole("combobox", { name: "Currency", exact: true }).inputValue(), "GBP");
+  assert.equal(await page.locator(".plan-entry").count(), 0);
+  assert.equal(await page.getByRole("checkbox", { name: "Save this plan in this browser" }).isChecked(), false);
+  checkpoint("fresh planner keeps its original currency, personal purpose and saving-off defaults");
+
   await page.goto(origin);
   await page.getByRole("heading", { level: 1, name: /Your money\.\s*Your direction\./ }).waitFor();
   await page.screenshot({ path: path.join(output, "overview-desktop.png"), fullPage: true });
@@ -89,11 +97,18 @@ try {
   await page.getByRole("button", { name: "Clear plan", exact: true }).click();
   await page.getByRole("button", { name: "Keep my plan", exact: true }).click();
   assert.equal(await page.locator(".plan-remainder strong").innerText(), "£1,399.20");
+  await page.getByRole("combobox", { name: "Currency", exact: true }).selectOption("USD");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("cashloom.money-plan.v1"))?.currency === "USD");
   await page.getByRole("button", { name: "Clear plan", exact: true }).click();
+  assert.ok((await page.getByRole("alertdialog", { name: "Clear this plan?", exact: true }).innerText()).includes("Your currency and who you’re planning for stay selected in this tab."));
   await page.getByRole("button", { name: "Yes, clear plan", exact: true }).click();
   assert.equal(await page.evaluate(() => localStorage.getItem("cashloom.money-plan.v1")), null);
   assert.equal(await page.locator(".plan-entry").count(), 0);
-  checkpoint("export preserves decimal values and clear requires confirmation");
+  assert.equal(await page.getByRole("combobox", { name: "Currency", exact: true }).inputValue(), "USD");
+  assert.equal(await page.getByRole("radio", { name: "Our household", exact: true }).isChecked(), true);
+  assert.equal(await page.getByRole("checkbox", { name: "Save this plan in this browser" }).isChecked(), false);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "plan-add-income");
+  checkpoint("export preserves decimal values; reviewed clear removes saved entries while retaining USD and household purpose");
 
   const fileInput = page.getByLabel("Choose a CashLoom plan file", { exact: true });
   await fileInput.setInputFiles({ name: "bad.json", mimeType: "application/json", buffer: Buffer.from('{"version":1}') });
@@ -155,6 +170,29 @@ try {
   checkpoint("turning off saving removes only the browser copy and keeps the open draft");
   await page.getByRole("button", { name: "Clear plan", exact: true }).click();
   await page.getByRole("button", { name: "Yes, clear plan", exact: true }).click();
+
+  await page.goto(`${origin}/connections`);
+  await page.getByRole("link", { name: "Read workspace requirements", exact: true }).click();
+  await page.waitForFunction(() => {
+    const target = document.getElementById("setup")?.getBoundingClientRect();
+    return target && target.top >= 0 && target.top < innerHeight / 2;
+  });
+  assert.equal(new URL(page.url()).hash, "#setup");
+  await page.goto(`${origin}/connections`);
+  await page.locator(".service-connection").filter({ has: page.getByRole("heading", { name: "US banks · Plaid sandbox", exact: true }) }).getByRole("link", { name: "See connection requirements", exact: true }).click();
+  await page.waitForFunction(() => {
+    const target = document.getElementById("connections")?.getBoundingClientRect();
+    return target && target.top >= 0 && target.top < innerHeight / 2;
+  });
+  const connectionGuide = page.locator("#connections");
+  assert.ok((await connectionGuide.innerText()).includes("Connect a test bank"));
+  assert.ok((await connectionGuide.innerText()).includes("Only supported USD test accounts"));
+  assert.ok((await connectionGuide.innerText()).includes("GoCardless requires an account and consent already linked with the provider"));
+  assert.equal(await connectionGuide.getByRole("link", { name: "Read connection setup · repository access required ↗", exact: true }).getAttribute("href"), "https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929/sovereign#unified-money-view-local-pilot");
+  assert.equal(await connectionGuide.locator('a[href="/connections"]').count(), 0);
+  await connectionGuide.getByRole("link", { name: "Set up your local workspace", exact: true }).click();
+  assert.equal(new URL(page.url()).hash, "#setup");
+  checkpoint("connection requirements lead to local setup, sandbox instructions and scoped source guidance without a return loop");
 
   await page.goto(`${origin}/connections`);
   await page.getByRole("button", { name: "Send money", exact: true }).click();

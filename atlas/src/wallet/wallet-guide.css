@@ -46,6 +46,9 @@
 .wallet-guide-grid p + p { margin-top: .7rem; }
 .wallet-guide-tag { display: inline-block; margin-bottom: 1.1rem; color: var(--cl-primary); font-size: .68rem; font-weight: 600; }
 .wallet-guide-grid a { display: inline-flex; gap: .5rem; margin-top: 1rem; color: var(--cl-primary); font-size: .8rem; font-weight: 600; text-underline-offset: 3px; }
+.wallet-guide-connection-intro { margin-bottom: 1rem; }
+.wallet-guide-connection-limits { margin-top: 1rem; }
+.wallet-guide-connection-intro a, .wallet-guide-connection-limits a { color: var(--cl-primary); text-decoration: underline; text-underline-offset: 3px; }
 .wallet-guide-start { margin-top: clamp(3rem, 6vw, 5.5rem); padding: clamp(1.3rem, 3vw, 2.5rem); border: 1px solid var(--cl-border); border-radius: var(--cl-radius-lg); background: var(--cl-surface-soft); scroll-margin-top: 1rem; }
 .wallet-guide-start h2 { margin-bottom: 1rem; }
 .wallet-guide-start p { color: var(--cl-muted); font-size: .86rem; }

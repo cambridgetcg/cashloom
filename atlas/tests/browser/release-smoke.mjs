@@ -151,9 +151,13 @@ try {
       await page.setViewportSize({ width, height: 950 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Populated planner overflows at ${width}px.`);
     }
+    await page.getByRole("combobox", { name: "Currency", exact: true }).selectOption("USD");
+    await page.getByRole("radio", { name: "Our household", exact: true }).check();
     await page.getByRole("button", { name: "Clear plan", exact: true }).click();
     await page.getByRole("button", { name: "Yes, clear plan", exact: true }).click();
     assert.equal(await page.locator(".plan-entry").count(), 0);
+    assert.equal(await page.getByRole("combobox", { name: "Currency", exact: true }).inputValue(), "USD");
+    assert.equal(await page.getByRole("radio", { name: "Our household", exact: true }).isChecked(), true);
     await page.setViewportSize({ width: 1365, height: 950 });
     assert.deepEqual(report.plannerRequests, [], "Planner edits must not trigger network data requests.");
     } finally { editingPlan = false; }
@@ -169,6 +173,21 @@ try {
     const sourceLinks = await page.locator('a[href*="github.com/cambridgetcg/cashloom"]').evaluateAll((links) => links.map((link) => ({ href: link.href, text: link.textContent })));
     report.observations.push({ sourceLinks, sourceLinksOpened: false });
     if (!/repository access|source access|access to (?:the |this )?(?:source|repository)|private repository|source repository.{0,40}private|invitation/i.test(copy)) gap("Source access restriction is not explicitly disclosed in the workspace guide");
+  });
+
+  await check("connection requirements reach local setup and actionable sandbox guidance", async () => {
+    await page.goto(`${origin}/connections`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("link", { name: "Read workspace requirements", exact: true }).click();
+    assert.equal(new URL(page.url()).pathname, "/wallet");
+    assert.equal(new URL(page.url()).hash, "#setup");
+    await page.waitForFunction(() => {
+      const top = document.getElementById("setup")?.getBoundingClientRect().top;
+      return top !== undefined && top >= -1 && top < innerHeight / 2;
+    });
+    const guide = page.locator("#connections");
+    assert.match(await guide.innerText(), /Connect a test bank/);
+    assert.match(await guide.innerText(), /Only supported USD test accounts/);
+    assert.ok(await guide.locator('a[href*="README.md#unified-money-view-local-pilot"]').count());
   });
 
   await check("agent setup handoff keeps local scope and owner review explicit", async () => {
@@ -199,7 +218,7 @@ try {
     const result = await publicRequest("/api/meta"); report.api.meta = result;
     assert.equal(result.status, 200); assert.equal(result.json?.mode, "info"); assert.equal(result.json?.name, "cashloom-info");
   });
-  for (const endpoint of ["/api/accounts", "/api/connections", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status", "/api/assist/access", "/api/assist/context", "/api/assist/proposals", "/api/assist/review"]) await check(`private route absent: ${endpoint}`, async () => {
+  for (const endpoint of ["/api/accounts", "/api/transactions?q=synthetic", "/api/connections", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status", "/api/assist/access", "/api/assist/context", "/api/assist/proposals", "/api/assist/review"]) await check(`private route absent: ${endpoint}`, async () => {
     const result = await publicRequest(endpoint); report.api[endpoint] = { status: result.status, type: result.type };
     assert.equal(result.status, 404); assert.ok(result.json && typeof result.json === "object", "Private route must return a JSON refusal, never the SPA or private data.");
   });

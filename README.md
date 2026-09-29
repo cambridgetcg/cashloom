@@ -164,6 +164,9 @@ the public website does not connect to a private node.
 Inside the workspace, Signing keys → Accounts → Send money / Receive money /
 Activity carries the selected account or key. Overview shows saved balance evidence, manual accounts can record
 a balance observation, and eligible signed Base payments offer reviewed recovery.
+Activity searches the full saved history, loads older pages, and restores its
+search/account selection with Back during an unlocked session. Entry drafts
+keep their chosen account when you change the history filter.
 Trades remains a records-and-simulation feature. The public MCP adapter now
 exposes World, Onchain, and Capital flows alongside its existing read tools.
 

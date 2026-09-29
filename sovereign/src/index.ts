@@ -72,6 +72,7 @@ import { buildWalletIntegrationCatalog } from "./wallet/integration-catalog.ts";
 import { createConnectRoutes } from "./connect/routes.ts";
 import { createPlaidSandboxService, PlaidError } from "./connect/plaid.ts";
 import { createAssistRoutes } from "./assist/routes.ts";
+import { ActivityQueryError, readActivityPage } from "./activity/history.ts";
 
 export const app = new Hono();
 
@@ -766,17 +767,15 @@ const txSchema = z.object({
 });
 
 app.get("/api/transactions", (c) => {
-  const accountId = z.string().uuid().optional().parse(c.req.query("accountId"));
-  const limit = z.coerce.number().int().min(1).max(500).default(100).parse(c.req.query("limit"));
-  const fields = "id,account_id,external_id,title,amount_minor,category,date,source,created_at,status,gross_minor,fee_minor,net_minor,transfer_link_id,provider_category";
-  const rows = accountId
-    ? db
-        .query(
-          `SELECT ${fields} FROM transactions WHERE account_id = ? ORDER BY date DESC,id DESC LIMIT ?`
-        )
-        .all(accountId, limit)
-    : db.query(`SELECT ${fields} FROM transactions ORDER BY date DESC,id DESC LIMIT ?`).all(limit);
-  return c.json({ transactions: rows });
+  try {
+    return c.json(readActivityPage(db, {
+      accountId: c.req.query("accountId"), limit: c.req.query("limit"),
+      q: c.req.query("q"), cursor: c.req.query("cursor"),
+    }));
+  } catch (error) {
+    if (error instanceof ActivityQueryError) return c.json({ error: error.code, message: error.message }, 400);
+    throw error;
+  }
 });
 
 app.post("/api/transactions", async (c) => {

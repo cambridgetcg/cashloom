@@ -84,11 +84,13 @@ export default function WalletGuide() {
       <section id="connections" className="wallet-guide-section" aria-labelledby="workspace-tools-title">
         <p className="wallet-guide-eyebrow">Build on that foundation</p>
         <h2 id="workspace-tools-title">Use the tools you need.</h2>
+        <p className="wallet-guide-connection-intro">First time here? <a href="#setup">Set up your local workspace</a>. Once it is running, unlock it and open Connections to see your saved sources. Opening that page does not refresh providers.</p>
         <div className="wallet-guide-grid">
-          <article><span className="wallet-guide-tag">Manual or connected</span><h3>Accounts &amp; activity</h3><p>Keep saved balances, their source and their observation date together. Preview CSV imports, export saved records, and review transfers between your accounts. Supported read connections refresh when you request them; Plaid bank linking currently uses sandbox test accounts.</p><a href="/connections">Review connections <span aria-hidden="true">→</span></a></article>
+          <article><span className="wallet-guide-tag">Local workspace → Connections</span><h3>Read balances &amp; activity</h3><p>For Plaid, configure sandbox credentials in your private node, then choose “Connect a test bank.” Only supported USD test accounts are available; live bank access and bank payments are not enabled.</p><p>Use Accounts to configure other supported readers with your own provider access. GoCardless requires an account and consent already linked with the provider; the workspace does not start that consent journey.</p><a href={`${WORKSPACE_SOURCE}/sovereign#unified-money-view-local-pilot`} target="_blank" rel="noopener noreferrer">Read connection setup · repository access required ↗</a></article>
           <article id="payments"><span className="wallet-guide-tag">Local keys required</span><h3>Send &amp; receive</h3><p>Supported local-key payments are Base ETH, Base USDC and Bitcoin. Choose an account and recipient, review a quote, then confirm signing and broadcast.</p><p>Receiving uses a public address. Payment records retain the available evidence and any uncertain outcome.</p></article>
           <article><span className="wallet-guide-tag">Records &amp; rehearsal</span><h3>Trade agreements</h3><p>This development checkout includes card-trade terms and supporting records. Its separate escrow simulation holds no money and provides no real payment protection.</p></article>
         </div>
+        <p className="wallet-guide-hint wallet-guide-connection-limits">Hardware-wallet, WalletConnect and pay-by-bank execution are not enabled. <a href={`${WORKSPACE_SOURCE}/sovereign#connectivity-foundation-honest-release-state`} target="_blank" rel="noopener noreferrer">Read provider and wallet limits · repository access required ↗</a></p>
       </section>
 
       <section id="agents" className="wallet-guide-section" aria-labelledby="workspace-agents-title">

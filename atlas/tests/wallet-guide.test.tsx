@@ -47,4 +47,17 @@ describe("public workspace handoff", () => {
     expect(html).toContain("equal amounts without fee or currency differences");
     expect(html).toContain("Importing records does not update a saved balance");
   });
+
+  it("takes connection requirements to local setup and provider limits without a circular handoff", () => {
+    const html = renderToStaticMarkup(<WalletGuide />);
+    const section = html.slice(html.indexOf('<section id="connections"'), html.indexOf('<section id="agents"'));
+    expect(section).toContain('href="#setup">Set up your local workspace');
+    expect(section).toContain("Connect a test bank");
+    expect(section).toContain("Only supported USD test accounts");
+    expect(section).toContain("GoCardless requires an account and consent already linked with the provider");
+    expect(section).toContain("sovereign#unified-money-view-local-pilot");
+    expect(section).toContain("sovereign#connectivity-foundation-honest-release-state");
+    expect(section).toContain("repository access required");
+    expect(section).not.toContain('href="/connections"');
+  });
 });

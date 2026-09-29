@@ -28,6 +28,7 @@ describe("service entry routes", () => {
     expect(html).toContain("self-service bank-linking journey is not enabled");
     expect(html).toContain("No live bank-payment action is offered");
     expect(html).toContain("Recording activity does not change a saved balance or move money");
+    expect(html).toContain('href="/wallet#setup">Read workspace requirements');
     expect(html).not.toContain('href="http://127.0.0.1');
     expect(html).not.toContain("<input");
     expect(fetcher).not.toHaveBeenCalled();

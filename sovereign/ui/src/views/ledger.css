@@ -1,0 +1,23 @@
+.ledger-view .ledger-export-note {
+  color: var(--cl-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: -6px 0 22px;
+}
+.ledger-entry-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.ledger-entry-fields:disabled { opacity: .75; }
+.ledger-search { margin: 0 0 18px; }
+.ledger-search > label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.ledger-search-controls { display: flex; align-items: stretch; gap: 8px; }
+.ledger-search-controls input { flex: 1 1 240px; min-width: 0; }
+.ledger-search-controls button { flex: 0 0 auto; }
+.ledger-search > p, .ledger-pagination > p { margin: 8px 0 0; color: var(--cl-muted); font-size: 13px; line-height: 1.5; }
+.ledger-results-summary { color: var(--cl-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.ledger-pagination { display: flex; align-items: flex-start; flex-direction: column; gap: 10px; margin-top: 18px; }
+.ledger-pagination > .form-error { color: var(--cl-danger); }
+@media (max-width: 540px) {
+  .ledger-search-controls { flex-wrap: wrap; }
+  .ledger-search-controls input { flex-basis: 100%; width: 100%; }
+  .ledger-search-controls button { flex: 1 1 0; }
+  .ledger-view .ledger-toolbar select { max-width: 100%; }
+}

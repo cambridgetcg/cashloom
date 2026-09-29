@@ -121,6 +121,8 @@ export default function App() {
 
   const goto = useCallback<WalletNavigate>((next, nextContext) => {
     const hash = walletViewHash(next);
+    // Re-selecting the current view keeps its draft and in-memory return point.
+    if (window.location.hash === hash && nextContext === undefined) return;
     const nextRoute = { view: next, context: nextContext };
     const entry = crypto.randomUUID();
     historyContext.current.set(entry, nextRoute);
@@ -131,6 +133,17 @@ export default function App() {
     if (window.location.hash !== hash) window.history.pushState(marker, "", hash);
     else window.history.replaceState(marker, "", hash);
     setRoute(nextRoute);
+  }, []);
+
+  const rememberActivityCriteria = useCallback(({ accountId, query }: { accountId?: string; query: string }) => {
+    if (!hasToken() || window.location.hash !== walletViewHash("ledger")) return;
+    const marker = window.history.state?.cashloomViewEntry;
+    const entry = typeof marker === "string" && historyContext.current.has(marker) ? marker : crypto.randomUUID();
+    historyContext.current.set(entry, { view: "ledger", context: { accountId, activityQuery: query.trim().slice(0, 120) } });
+    if (historyContext.current.size > 50) historyContext.current.delete(historyContext.current.keys().next().value!);
+    // Replace only the in-memory return point. Updating route state here would
+    // remount Activity and discard an open entry draft when its filter changes.
+    window.history.replaceState({ cashloomViewEntry: entry }, "", walletViewHash("ledger"));
   }, []);
 
   async function lock() {
@@ -254,12 +267,12 @@ export default function App() {
 
       <div className="workspace-layout">
       <aside className="workspace-sidebar"><WalletNavigation view={view} onGoto={goto} /></aside>
-      <main id="workspace-content" tabIndex={-1} className="main" key={`${view}:${context?.accountId ?? ""}:${context?.keyId ?? ""}`}>
+      <main id="workspace-content" tabIndex={-1} className="main" key={`${view}:${context?.accountId ?? ""}:${context?.keyId ?? ""}:${context?.activityQuery ?? ""}`}>
         {view === "dashboard" && <Dashboard onGoto={goto} />}
         {view === "pay" && <Pay initialAccountId={context?.accountId} onGoto={goto} />}
         {view === "receive" && <Receive initialAccountId={context?.accountId} initialKeyId={context?.keyId} onGoto={goto} />}
         {view === "trades" && <Trades onGoto={goto} />}
-        {view === "ledger" && <Ledger initialAccountId={context?.accountId} onGoto={goto} />}
+        {view === "ledger" && <Ledger initialAccountId={context?.accountId} initialQuery={context?.activityQuery} onCriteriaChange={rememberActivityCriteria} onGoto={goto} />}
         {view === "accounts" && <Accounts initialAccountId={context?.accountId} initialKeyId={context?.keyId} onGoto={goto} />}
         {view === "connections" && <Connections onGoto={goto} />}
         {view === "assist" && <AgentAccess visible={privateVisible} onGoto={goto} />}

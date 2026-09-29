@@ -38,6 +38,12 @@ import type {
 } from "./types";
 import type { SessionInspection } from "./session-lifecycle";
 
+export interface ActivityPage {
+  transactions: Tx[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
 /**
  * Session token lives in module memory + sessionStorage: a refresh survives,
  * a closed tab forgets. Any 401 drops the session and returns you to the gate.
@@ -209,12 +215,14 @@ export const api = {
   syncAccount: (id: string) =>
     request<SyncResult>(`/api/accounts/${encodeURIComponent(id)}/sync`, {}),
 
-  transactions: (opts: { accountId?: string; limit?: number } = {}) => {
+  transactions: (opts: { accountId?: string; limit?: number; q?: string; cursor?: string } = {}) => {
     const q = new URLSearchParams();
     if (opts.accountId) q.set("accountId", opts.accountId);
     if (opts.limit) q.set("limit", String(opts.limit));
+    if (opts.q?.trim()) q.set("q", opts.q.trim());
+    if (opts.cursor) q.set("cursor", opts.cursor);
     const qs = q.toString();
-    return request<{ transactions: Tx[] }>(`/api/transactions${qs ? `?${qs}` : ""}`);
+    return request<ActivityPage>(`/api/transactions${qs ? `?${qs}` : ""}`);
   },
   createTransaction: (body: {
     account_id: string;

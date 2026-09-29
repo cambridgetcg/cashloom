@@ -16,6 +16,7 @@ import { installTradeSchema } from "./tcg/schema.ts";
 import { installConnectSchema } from "./connect/schema.ts";
 import { installPlaidSchema } from "./connect/plaid-schema.ts";
 import { installAssistSchema } from "./assist/schema.ts";
+import { installActivityHistoryIndexes } from "./activity/schema.ts";
 
 const dataDir = process.env.CASHLOOM_DATA_DIR ?? join(homedir(), ".cashloom");
 // New data directories and database files are owner-only. Do not chmod an
@@ -79,7 +80,6 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_dedupe
   ON transactions(account_id, external_id) WHERE external_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_tx_account_date ON transactions(account_id, date);
 
 -- Local key custody. enc_blob is Argon2id(passphrase)->AES-256-GCM sealed;
 -- plaintext key material NEVER touches this table, any log, or the network.
@@ -138,5 +138,6 @@ installTradeSchema(db);
 installConnectSchema(db);
 installPlaidSchema(db);
 installAssistSchema(db);
+installActivityHistoryIndexes(db);
 
 export const newId = (): string => crypto.randomUUID();
