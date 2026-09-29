@@ -75,7 +75,27 @@ no Fly redeployment. This release activates no hosted private wallet, bank, or
 payment provider. The original development checkout and inherited edits remain
 preserved.
 
-Publication and deployment verification will be recorded here after delivery.
+Source implementation: `3c188b1efa71384896e47ccdaa4f52b73f5e6e3d`, published on
+the private `release/service-workspace-20260929` branch. The release public build
+matched the checked original build across all 30 artifacts. The original private
+UI build matched the final isolated browser-tested build across all six artifacts.
+
+| Environment | Deployment | Verification |
+| --- | --- | --- |
+| Preview | https://fbd634f0.cashloom-atlas.pages.dev | 30 passed, zero failures or API availability gaps |
+| Production | https://cashloom.io, Pages ID `54999b6f-899e-4037-a233-f96100c562be` | 30 passed, zero failures or API availability gaps |
+
+Seven deployed entry, planner, guide, and Connections assets matched local
+hashes. `www.cashloom.io/connections` returned 308 to the canonical route.
+The new private watch path returned 404 for GET and 405 for an empty POST.
+The crypto handoff reaches the guide without a public address-entry form.
+Capital flows returned 200 with partial source coverage; this does not imply
+complete financial-data readiness.
+
+Final reports: `/tmp/cashloom-crypto-preview-20260929/result.json`,
+`/tmp/cashloom-crypto-production-20260929/result.json`, and its adjacent
+`asset-verification.json`. The Fly INFO image was unchanged.
+
 Website rollback target: Pages deployment
 `fa81b155-a70d-4a3e-828c-3079bfc66eda`, source
 `d27378ae2a7debfa313cff46b7869cd14b096892`.

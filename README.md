@@ -17,7 +17,7 @@ private wallet and public information tools.
 
 **Release status — 29 September 2026:** source is published on
 `release/service-workspace-20260929` in the private CashLoom repository.
-The website and local-agent setup guide are deployed at [cashloom.io](https://cashloom.io).
+The website, Base wallet guide, and local-agent setup guide are deployed at [cashloom.io](https://cashloom.io).
 The public INFO service has now been updated on Fly, and the Capital flows API
 returns publisher reports through the same website origin. Coverage remains
 partial: source failures and missing observations stay explicit. See the
@@ -28,17 +28,21 @@ Household/group planning is one person's editable plan with an export, not share
 accounts or joint payment authority. The private workspace remains a local
 developer pilot; this website release activates no live banks or private payments.
 
-Website source checkpoint: `d27378ae2a7debfa313cff46b7869cd14b096892`.
-Preview and production each passed all 27 release checks with no failures or
+Website source checkpoint: `3c188b1efa71384896e47ccdaa4f52b73f5e6e3d`.
+Preview and production each passed all 30 release checks with no failures or
 API availability gaps. The `www` redirect returned 308, and deployed entry,
 planner, guide and Connections assets matched the verified build. Setup links
 now reach useful instructions, and clearing a plan retains currency and purpose.
-Activity search, older-history browsing and draft/account handling are verified
-in the separate local workspace. See the
-[everyday-use release record](docs/release-friction-2026-09-29.md) for delivery
-and rollback details; the earlier
-[agent release record](docs/release-agent-layer-2026-09-29.md) preserves that
-milestone's verification.
+The local workspace now watches a public Base address with explicit ETH/native
+USDC balance checks and selected saved holdings for agents. Watching needs no
+key or signature and grants no spending authority. The final live default-provider
+check settled with two-provider finalized agreement. See the
+[crypto release record](docs/release-crypto-watch-2026-09-29.md) for verification,
+delivery and rollback details. Activity search, older-history browsing and
+draft/account handling remain verified in the separate local workspace; the
+[everyday-use release record](docs/release-friction-2026-09-29.md) and earlier
+[agent release record](docs/release-agent-layer-2026-09-29.md) preserve those
+milestones' verification.
 
 Read the [purpose, naming, architecture, and delivery plan](docs/service-rebuild-2026-09-29.md).
 The [US-first unified money layer](docs/unified-money-layer-2026-09-29.md) now
