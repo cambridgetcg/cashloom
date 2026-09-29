@@ -6,6 +6,7 @@ import { mergeSavedBasePositions } from "../src/views/Accounts";
 import { SavedMoneySource } from "../src/views/Connections";
 import { isLiveSendingAccount } from "../src/views/Pay";
 import { WatchWallet, WatchedWalletDetails, watchedBaseAddress, watchWalletInput, watchResultMatches, watchResultMessage, watchOutcomeUncertain } from "../src/views/WatchWallet";
+import { BrowserWalletPickerView, pickerCanUseAddress, retainPickerChoice, type BrowserWalletPickerState } from "../src/views/BrowserWalletPicker";
 import type { Account, BaseAccountPositionView } from "../src/types";
 
 const address = `0x${"a".repeat(40)}`;
@@ -50,7 +51,9 @@ describe("watch-only presentation", () => {
     const html = renderToStaticMarkup(<WatchWallet canManage onSaved={() => undefined} onCancel={() => undefined} />);
     expect(html).toContain('aria-label="Watch a wallet"');
     for (const label of ["Network", "Public wallet address", "Wallet label", "Add watched wallet", "Cancel"]) expect(html).toContain(label);
-    expect(html).toContain("Adding it does not contact a blockchain provider");
+    expect(html).toContain("Saving the address does not check balances");
+    expect(html).toContain("Choose from a wallet");
+    expect(html).not.toContain('aria-label="Browser wallet picker"');
     expect(html).toContain("configured RPC providers");
     expect(html).toContain("does not import Base transaction history");
     expect(html).not.toContain('type="password"');
@@ -82,6 +85,81 @@ describe("watch-only presentation", () => {
     expect(watched).not.toContain("0.00");
     const existing = renderToStaticMarkup(<BasePositionPanel view={null} refreshing={false} onRefresh={() => undefined} />);
     expect(existing).toContain("Refresh finalized balances");
+  });
+});
+
+describe("browser wallet address selection presentation", () => {
+  const secondAddress = `0x${"b".repeat(40)}`;
+  const ready: BrowserWalletPickerState = {
+    wallets: [{ id: "provider-a", name: "Local fixture wallet", source: "eip6963" }],
+    status: "ready", wallet_id: "provider-a", accounts: [address, secondAddress], error: null,
+  };
+  const renderPicker = (state: BrowserWalletPickerState, selectedAddress: string | null = null, overrides: { busy?: boolean; disabled?: boolean } = {}) => renderToStaticMarkup(
+    <BrowserWalletPickerView state={state} selectedAddress={selectedAddress} busy={false} disabled={false} {...overrides}
+      onConnect={() => undefined} onSelect={() => undefined} onConfirm={() => undefined} onDiscover={() => undefined} onClose={() => undefined} />,
+  );
+
+  test("the empty picker keeps an explicit paste fallback and describes permission boundaries", () => {
+    const html = renderPicker({ wallets: [], status: "idle", wallet_id: null, accounts: [], error: null });
+    expect(html).toContain('aria-label="Browser wallet picker"');
+    expect(html).toContain("No browser wallet has been found");
+    expect(html).toContain("paste a public address");
+    expect(html).toContain("Discover wallets again");
+    expect(html).toContain("Close wallet picker");
+    expect(html).toContain("wallet may contact its own providers");
+    expect(html).toContain("wallet’s settings");
+    expect(html).toContain("separate local record");
+    expect(html).not.toContain("Use this address");
+  });
+
+  test("shows full addresses without selecting the first account or submitting the watch form", () => {
+    const html = renderPicker(ready);
+    expect(html).toContain(address); expect(html).toContain(secondAddress);
+    expect(html.match(/type="radio"/g)).toHaveLength(2);
+    expect(html).not.toContain('checked=""');
+    expect(html).toContain('disabled="">Use this address');
+    expect(html).not.toContain('type="submit"');
+    const chosen = renderPicker(ready, secondAddress);
+    expect(chosen.match(/checked=""/g)).toHaveLength(1);
+    expect(chosen).not.toContain('disabled="">Use this address');
+  });
+
+  test("wallet-supplied names are plain text without icons or provider links", () => {
+    const html = renderPicker({ ...ready, wallets: [{ id: "provider-a", name: '<img src="https://example.invalid/tracker">', source: "eip6963" }] });
+    expect(html).toContain("self-reported, not verified");
+    expect(html).toContain("Request addresses from &lt;img");
+    expect(html).not.toContain("<img"); expect(html).not.toContain("href=");
+  });
+
+  test("a request or parent restriction blocks selection while keeping a local close action", () => {
+    for (const options of [{ busy: true }, { disabled: true }]) {
+      const html = renderPicker(ready, address, options);
+      expect(html).toContain('disabled="">Use this address');
+      expect(html).toContain('disabled="">Request addresses from Local fixture wallet');
+      expect(html).not.toContain('disabled="">Close wallet picker');
+    }
+    expect(renderPicker(ready, address, { busy: true })).toContain("cannot dismiss a wallet prompt");
+  });
+
+  test("only an explicit current ready address can be confirmed", () => {
+    expect(pickerCanUseAddress(ready, null)).toBe(false);
+    expect(pickerCanUseAddress(ready, `0x${"c".repeat(40)}`)).toBe(false);
+    expect(pickerCanUseAddress(ready, address)).toBe(true);
+    for (const state of [{ ...ready, status: "requesting" as const }, { ...ready, wallet_id: null }, { ...ready, accounts: [] }, {
+      ...ready, status: "error" as const, error: { code: "wallet_wrong_network" as const, message: "Choose Base in your wallet, then try again." },
+    }]) expect(pickerCanUseAddress(state, address)).toBe(false);
+    const refused = renderPicker({ ...ready, status: "error", accounts: [], error: { code: "wallet_wrong_network", message: "Choose Base in your wallet, then try again." } });
+    expect(refused).toContain('role="alert"'); expect(refused).toContain("Choose Base in your wallet");
+    expect(refused).not.toContain('type="radio"'); expect(refused).not.toContain("Use this address");
+  });
+
+  test("late wallet discovery preserves a choice, while changed provider state clears it", () => {
+    const discovered = { ...ready, wallets: [...ready.wallets, { id: "provider-b", name: "Another wallet", source: "eip6963" as const }] };
+    expect(retainPickerChoice(ready, discovered, address)).toBe(address);
+    expect(retainPickerChoice(ready, { ...ready, wallet_id: "provider-b" }, address)).toBeNull();
+    expect(retainPickerChoice(ready, { ...ready, status: "requesting" }, address)).toBeNull();
+    expect(retainPickerChoice(ready, { ...ready, accounts: [secondAddress] }, address)).toBeNull();
+    expect(retainPickerChoice(ready, { ...ready, status: "error", accounts: [] }, address)).toBeNull();
   });
 });
 

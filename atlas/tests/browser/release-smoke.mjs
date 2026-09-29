@@ -202,6 +202,9 @@ try {
     });
     const guide = page.locator("#crypto");
     assert.match(await guide.innerText(), /Check balances/);
+    assert.match(await guide.innerText(), /Choose from a wallet/);
+    assert.match(await guide.innerText(), /Use this address/);
+    assert.match(await guide.innerText(), /remove any site permission in your wallet/);
     assert.match(await guide.innerText(), /Base transaction-history import/);
     assert.match(await guide.innerText(), /does not establish ownership or authorize spending/);
     assert.equal(await guide.locator("input,form").count(), 0);

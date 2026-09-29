@@ -189,6 +189,9 @@ wallet or move money; public INFO reads can contact upstream data providers.
   ERC-4337 v0.7 request/verification adapters plus an additive durable ledger
   are implemented. They remain execution-disabled until an owner coordinator
   can atomically persist verified output through the core artifact boundary.
+- **Browser wallet addresses** — EIP-6963 discovery and EIP-1193 account access
+  let the owner choose a Base address for watching. This does not activate the
+  external-wallet signing adapters or any payment method.
 - **Open banking** — GoCardless Bank Account Data is AIS/read-only. A bounded
   Yapily one-off domestic GBP preparation/submission/status foundation exists,
   but live payment initiation remains provider/legal-policy blocked and agents
@@ -201,10 +204,32 @@ wallet or move money; public INFO reads can contact upstream data providers.
 
 In an unlocked owner workspace, open **Connections → Add crypto wallet**.
 Keep the network set to **Base**, paste a public EVM address and give it a
-label. This creates one watched account for Base ETH and native Circle USDC.
+label. Alternatively, choose **Choose from a wallet** to find compatible wallets
+in the same browser. Set the chosen wallet to Base, request its addresses, approve
+address sharing there, select an address and choose **Use this address**. Review
+the address and label, then choose **Add watched wallet**. Selecting an address
+does not save it or check balances. This creates one watched account for Base ETH
+and native Circle USDC.
 It needs no seed phrase, private key, signature, API key or manual CAIP fields.
 Adding an already tracked active Base address opens its existing account and
 preserves its label and custody settings. Archived records remain archived.
+
+The picker discovers multiple wallets using EIP-6963 and calls only
+`eth_chainId`, `eth_requestAccounts`, and `eth_accounts` through EIP-1193. It
+requests account access only for the wallet you select and rechecks the address
+and Base network before copying an address into the form. Changes of account,
+network, or connectivity invalidate an active choice. Wallet names are supplied
+by the wallets themselves, not verified identities. A generic `window.ethereum`
+option appears only when no wallet announces itself. No wallet icons, remote
+SDKs, relay, or analytics are loaded by this picker.
+
+Closing the picker, leaving the form, or locking ends the local selection and
+removes its account/network listeners. This does not revoke permissions granted
+inside a wallet; remove the site's permission there if desired. CashLoom keeps
+discovery metadata in page memory and its address selection out of browser storage
+and URLs. A saved watch is independent of wallet permission and remains until you
+archive it. Wallet software may contact its own services while handling requests.
+CashLoom never asks this picker to sign, send, add a chain, or switch networks.
 
 Adding a watch is a local record operation. In **Accounts**, choose **Check
 balances** to send the public address to the node's two configured RPC
@@ -222,11 +247,17 @@ availability and rate limits still apply. The providers receive the watched
 address and request metadata when you explicitly check it; storing an address
 locally does not make that later provider request private from the provider.
 
-Watching an address does not prove ownership or authorize spending. The new
-flow does not add signing keys, wallet permissions, transaction history, token
+Watching an address does not prove ownership or authorize spending. The watch
+record does not add signing keys, payment permissions, transaction history, token
 discovery, price conversion or automatic refresh. ETH/USDC balances retain
 their own units. Bitcoin, Ethereum-mainnet readers and local-key payment paths
 retain their existing separate setup.
+
+The picker supports compatible EVM browser providers; individual wallet apps
+have not been certified by this release. WalletConnect QR/mobile pairing and
+Solana Wallet Standard need their own session/network integration and are not
+part of this picker. The standards and remaining boundaries are recorded in the
+[crypto release record](../docs/release-crypto-watch-2026-09-29.md#browser-wallet-standards).
 
 **Agent access** can share selected saved Base holdings. It keeps legacy crypto
 scalar balances unknown and uses a separate `base_holdings` projection with

@@ -257,7 +257,7 @@ export function Connections({ onGoto }: { onGoto?: WalletNavigate } = {}) {
           {data.can_manage && data.plaid.configured ? <button className="btn btn-primary" disabled={busy !== null} onClick={() => void connectBank()}>{busy === "link" ? "Connecting…" : "Connect a test bank"}</button>
             : <p className="journey-note">{!data.can_manage ? "The workspace owner can manage connections." : "Plaid sandbox is not configured on this node. Add its sandbox configuration on the server to enable test linking."}</p>}
         </div>
-        <div className="card connection-start"><h3>Watch a public wallet</h3><p>Save a Base address, then choose when to check its ETH and native USDC balances. No wallet signature or key is needed.</p>
+        <div className="card connection-start"><h3>Watch a public wallet</h3><p>Paste a Base address or choose one from a compatible browser wallet, then decide when to check ETH and native USDC balances. No wallet signature or key is needed.</p>
           {data.can_manage ? <button ref={watchTrigger} className="btn btn-primary" disabled={busy !== null || reading || showWatch} onClick={() => { setShowWatch(true); setNotice(null); }}>Add crypto wallet</button> : <p className="journey-note">The workspace owner can add watched wallets.</p>}
         </div>
         {showWatch && <WatchWallet canManage={data.can_manage === true} disabled={reading || busy !== null && busy !== "watch"}

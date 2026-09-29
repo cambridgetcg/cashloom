@@ -99,7 +99,10 @@ organise records and do not move money. Connected accounts cannot receive CSV
 imports until cross-source duplicate review is implemented.
 
 **Connections → Add crypto wallet** adds a watched Base address with a label.
-No key or signature is needed. Then choose **Check balances** in Accounts to
+Paste an address, or use **Choose from a wallet** to request addresses from a
+compatible browser wallet set to Base. Select one, choose **Use this address**,
+then review and save. No key or signature is needed. Closing the picker does not
+revoke any permission granted in the wallet. Then choose **Check balances** in Accounts to
 read ETH and native USDC from the configured RPC providers. Opening Accounts
 or Overview reads saved evidence only. Missing balances stay unknown; a failed
 check keeps the dated previous snapshot. Watching grants no spending authority

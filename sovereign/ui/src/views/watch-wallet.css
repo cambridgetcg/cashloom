@@ -7,8 +7,23 @@
 .watched-wallet-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .watched-wallet-details > code { display: block; font-family: var(--cl-font-mono); overflow-wrap: anywhere; word-break: break-word; line-height: 1.7; }
 .watched-wallet-details > p { margin: 12px 0 0; color: var(--cl-muted); }
+.watch-wallet-picker-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px 0; }
+.watch-wallet-picker-entry > span { color: var(--cl-muted); font-size: 13px; }
+.browser-wallet-picker { min-width: 0; margin: 16px 0; padding: 20px; border: 1px solid var(--cl-border-strong); border-radius: var(--cl-radius); background: var(--cl-surface-soft); }
+.browser-wallet-picker h4 { margin: 0; font-size: 18px; }
+.browser-wallet-picker > p { font-size: 14px; line-height: 1.65; }
+.browser-wallet-options { display: grid; gap: 8px; margin: 16px 0; }
+.browser-wallet-options button { min-height: 44px; height: auto; white-space: normal; overflow-wrap: anywhere; text-align: left; justify-content: flex-start; }
+.watch-wallet-form .browser-wallet-addresses { gap: 8px; }
+.browser-wallet-addresses legend { padding: 0; margin-bottom: 12px; font-size: 14px; font-weight: 600; }
+.browser-wallet-address { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm); background: var(--cl-surface); cursor: pointer; }
+.browser-wallet-address:has(input:checked) { border-color: var(--cl-primary); }
+.browser-wallet-address input[type="radio"] { width: 18px; height: 18px; min-height: 0; flex-shrink: 0; margin: 3px 0 0; padding: 0; accent-color: var(--cl-primary); }
+.browser-wallet-address code { min-width: 0; font-family: var(--cl-font-mono); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 @media (max-width: 540px) {
   .watch-wallet-form .btn-row { align-items: stretch; }
   .watch-wallet-form .btn-row > button { width: 100%; }
-  .watched-wallet-details { padding: 12px; }
+  .watched-wallet-details, .browser-wallet-picker { padding: 12px; }
+  .watch-wallet-picker-entry { align-items: stretch; }
+  .watch-wallet-picker-entry > button { width: 100%; }
 }

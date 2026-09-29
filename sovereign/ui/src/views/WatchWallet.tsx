@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, currentSessionGuard, errorMessage, type WatchWalletInput, type WatchWalletResult } from "../api";
 import { Badge, Field } from "../components";
 import type { Account } from "../types";
+import { BrowserWalletPicker } from "./BrowserWalletPicker";
 import "./watch-wallet.css";
 
 const BASE = "eip155:8453";
@@ -66,14 +67,21 @@ export function WatchWallet({ canManage, disabled = false, onBusyChange, onSaved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryInput, setRetryInput] = useState<WatchWalletInput | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [copiedFromWallet, setCopiedFromWallet] = useState(false);
   const pending = useRef(false), live = useRef(true);
+  const pickerAllowed = useRef(false);
   const addressField = useRef<HTMLInputElement | null>(null);
+  const pickerTrigger = useRef<HTMLButtonElement | null>(null);
+  pickerAllowed.current = canManage && !disabled && !busy && retryInput === null;
   useEffect(() => { live.current = true; addressField.current?.focus(); return () => { live.current = false; }; }, []);
+  useEffect(() => { if (!canManage || disabled || busy || retryInput !== null) setPickerOpen(false); }, [canManage, disabled, busy, retryInput]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const session = currentSessionGuard();
-    if (!live.current || !session() || pending.current || disabled || !canManage) return;
+    if (!live.current || !session() || pending.current || pickerOpen || pickerBusy || disabled || !canManage) return;
     let input: WatchWalletInput;
     try { input = retryInput ?? watchWalletInput(address, name); }
     catch (reason) { setError(errorMessage(reason)); return; }
@@ -100,17 +108,29 @@ export function WatchWallet({ canManage, disabled = false, onBusyChange, onSaved
 
   return <form className="card watch-wallet-form" aria-label="Watch a wallet" onSubmit={event => void submit(event)} autoComplete="off">
     <h3>Watch a wallet</h3>
-    <p>Add a public address to your local records. You can check its ETH and native USDC balances on Base afterwards. Adding it does not contact a blockchain provider.</p>
+    <p>Add a public address to your local records. You can check its ETH and native USDC balances on Base afterwards. Saving the address does not check balances.</p>
     <p className="journey-note">A public address is enough. No wallet signature, seed phrase or private key is requested. Watching does not establish ownership or enable sending and receiving actions.</p>
-    <fieldset disabled={busy || disabled || !canManage || retryInput !== null}>
+    {!busy && retryInput === null && <div className="watch-wallet-picker-entry"><button ref={pickerTrigger} className="btn btn-ghost" type="button" disabled={!canManage || disabled || pickerOpen} onClick={() => {
+      if (live.current && pickerAllowed.current && currentSessionGuard()()) setPickerOpen(true);
+    }}>Choose from a wallet</button><span>Optional · or paste a public address below.</span></div>}
+    {pickerOpen && pickerAllowed.current && <BrowserWalletPicker disabled={disabled || !canManage}
+      onBusyChange={value => { if (live.current) { setPickerBusy(value); onBusyChange?.(pending.current || value); } }}
+      onAddress={pickedAddress => {
+        if (!live.current || !pickerAllowed.current || pending.current || !currentSessionGuard()()) return;
+        setAddress(pickedAddress); setCopiedFromWallet(true); setError(null); setPickerOpen(false);
+        requestAnimationFrame(() => { if (live.current) addressField.current?.focus(); });
+      }}
+      onClose={() => { setPickerOpen(false); requestAnimationFrame(() => { if (live.current) pickerTrigger.current?.focus(); }); }} />}
+    {copiedFromWallet && <p className="journey-note" role="status">Address copied from your wallet. Review it and choose Add watched wallet to save. This form does not follow later wallet changes.</p>}
+    <fieldset disabled={busy || pickerBusy || disabled || !canManage || retryInput !== null}>
       <Field label="Network"><select value="base" onChange={() => undefined}><option value="base">Base</option></select></Field>
-      <Field label="Public wallet address" hint="An address on Base, beginning with 0x. Other networks are not supported in this flow."><input ref={addressField} className="mono-input" value={address} onChange={event => setAddress(event.target.value)} placeholder="0x…" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={256} required /></Field>
+      <Field label="Public wallet address" hint="An address on Base, beginning with 0x. Other networks are not supported in this flow."><input ref={addressField} className="mono-input" value={address} onChange={event => { setAddress(event.target.value); setCopiedFromWallet(false); }} placeholder="0x…" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={256} required /></Field>
       <Field label="Wallet label" hint="A name for your records, not a claim about who owns this address."><input value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Base wallet to follow" maxLength={120} required /></Field>
     </fieldset>
     {error && <p className="form-error" role="alert">{error}</p>}
     {retryInput && <p className="journey-note">The submitted address and label are kept unchanged for this retry. If it was already added, the node returns the existing account.</p>}
     {!canManage && <p className="journey-note">The workspace owner can add watched wallets.</p>}
-    <div className="btn-row"><button className="btn btn-primary" type="submit" disabled={busy || disabled || !canManage}>{busy ? "Adding watched wallet…" : retryInput ? "Retry same wallet" : "Add watched wallet"}</button>
+    <div className="btn-row"><button className="btn btn-primary" type="submit" disabled={busy || pickerOpen || pickerBusy || disabled || !canManage}>{busy ? "Adding watched wallet…" : retryInput ? "Retry same wallet" : "Add watched wallet"}</button>
       <button className="btn btn-ghost" type="button" disabled={busy} onClick={onCancel}>Cancel</button>
       {retryInput && onReviewAccounts && <button className="link-btn" type="button" disabled={busy} onClick={onReviewAccounts}>Review saved accounts</button>}
     </div>

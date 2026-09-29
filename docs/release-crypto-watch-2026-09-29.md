@@ -99,3 +99,77 @@ Final reports: `/tmp/cashloom-crypto-preview-20260929/result.json`,
 Website rollback target: Pages deployment
 `fa81b155-a70d-4a3e-828c-3079bfc66eda`, source
 `d27378ae2a7debfa313cff46b7869cd14b096892`.
+
+## Browser wallet standards
+
+The next increment adds an address picker to the same local watch flow. The
+owner chooses a discovered wallet, approves address sharing in that wallet,
+selects an address, and reviews it in the existing watch form before saving.
+The wallet must report Base before and after account access and at the final
+selection check. This is an explicit CashLoom scope choice to keep the watch
+target clear; address discovery itself is not proof of account ownership.
+
+The discovery adapter uses the event handshake and page-lifetime listener from
+[EIP-6963](https://eips.ethereum.org/EIPS/eip-6963). It bounds and copies wallet
+metadata, treats names as self-reported, omits icons, pins the original provider
+reference, and offers a generic legacy provider only when no wallet announces
+itself. Discovery does not request account permission. The picker uses
+[EIP-1193](https://eips.ethereum.org/EIPS/eip-1193) for `eth_chainId`, explicit
+`eth_requestAccounts`, final `eth_accounts`, and account/network/disconnect events.
+It sends no signing, payment, permission-revocation, or chain-changing method.
+Closing clears local selection and selected-provider listeners; it does not revoke wallet-side
+site permission. Wallet implementations can contact their own services.
+
+Saved identity continues to use `eip155:8453:<address>`, consistent with
+[CAIP-2 chain identifiers](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-2.md)
+and [CAIP-10 account identifiers](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-10.md).
+EVM-specific address normalization remains in the existing backend; CAIP-10
+does not prescribe a universal canonicalization rule. No new wallet permission,
+provider object, browser-wallet identity, or signing authority is stored with
+the account or exposed to agents.
+
+WalletConnect pairing remains a separate next integration. Existing code
+projects and verifies signed evidence but has no activated pairing transport
+or owner completion coordinator. A usable session needs a configured project,
+approved origins, narrowly requested capabilities, and tested expiry/update/
+deletion handling. The [official Ethereum provider setup](https://github.com/WalletConnect/walletconnect-monorepo/blob/v2.0/providers/ethereum-provider/README.md)
+describes the project and session options. This release adds no relay SDK or
+WalletConnect permissions. Solana also needs a separate adapter and balance
+reader: its [Wallet Standard connection contract](https://github.com/wallet-standard/wallet-standard/blob/master/packages/core/features/src/connect.ts)
+uses its own authorized-account flow, and its `silent` option is not a universal
+no-prompt guarantee. Neither future integration should inherit EVM address rules
+or acquire payment authority merely by sharing an address.
+
+Specifications and source were reviewed on 29 September 2026. Verification uses
+synthetic browser providers in an isolated browser and actual local node. It
+does not certify interoperability with each wallet brand or use a personal
+browser profile, real extension, or real wallet approval.
+
+### Browser wallet verification
+
+- Private UI: 195 tests passed, including 31 controller tests and 17 watch/picker
+  presentation tests; TypeScript and production build passed.
+- The final isolated runner passed 22 workspace checks, six actual-node/MCP agent
+  checks, five Base watch groups, nine new browser-wallet groups, 15 actual-node
+  daily-use groups, and the money-sources rehearsal. Its source fingerprint
+  remained current through completion.
+- New browser checks cover multiwallet discovery, hostile metadata as plain text,
+  ignored icons, deduplication, initial permission events, declined access, Base
+  gating before/after approval and before copying, changed accounts/network,
+  explicit address selection, separate saving, duplicate-safe watch creation,
+  late responses after close/navigation/lock, generic legacy fallback, and no
+  installed wallet. Only the three allowed read methods ran. No backend RPC,
+  keys, activity, wallet metadata, or unselected addresses were created or stored.
+- Public UI: 238 Vitest tests, TypeScript/build and 21 compiled browser checkpoints
+  passed. The guide explains browser selection, permission cleanup, and the
+  remaining WalletConnect boundary. Desktop and 320px layouts fit.
+
+The first new browser run read the wallet list before discovery rendered. A
+bounded discovery/render wait fixed the harness; no product change was needed.
+The initial public unit command used Bun's runner for a Vitest suite; the correct
+package test command passed. These are test-runner issues, not wallet compatibility
+evidence.
+
+Final local evidence: `/tmp/cashloom-wallet-standards-integration-20260929.log`,
+`/tmp/cashloom-wallet-standards-public-review-20260929/result.json`, and
+`/private/var/folders/69/4qnq5h3j1095bfs9psqv13100000gn/T/cashloom-tcg-browser-7lkjzdyk`.
