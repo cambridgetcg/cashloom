@@ -1,20 +1,21 @@
 # CashLoom: a service for sorting your money
 
-Implementation and preview status, 29 September 2026. Builds on the existing
+Implementation and deployment status, 29 September 2026. Builds on the existing
 Capital flows, wallet, and TCG work in `feature/capital-flows-20260909`; that
 original development worktree and its edits remain preserved. The current source
 is pushed on `release/service-workspace-20260929` in the private CashLoom
-repository. The Cloudflare preview passed 19 checks with zero failures; the
-hosted Capital flows API (404) is its sole capability gap. Production deployment
-is pending. Historical implementation checks below are dated separately from
-this preview verification.
+repository. The website is deployed at [cashloom.io](https://cashloom.io).
+Production and the final Cloudflare preview each passed 19 checks with zero
+failures; the hosted Capital flows API (404) is the sole capability gap and its
+separate rollout remains incomplete. Historical implementation checks below are
+dated separately from this deployment verification.
 
 The [current release source](https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929)
 requires private repository access. Use the
 [current clone and local INFO instructions](../README.md#run-the-existing-information-tools-locally)
 or the [private workspace pilot guide](local-pilot.md). Public Money insights is
 at [`/world`](https://cashloom.io/world); the origin root is the new service
-overview in the preview.
+overview in production and the preview.
 
 ## Purpose
 
@@ -138,10 +139,10 @@ The next releases should address these concrete jobs in order:
    activation before offering new signing or bank-payment routes.
 
 Publication was authorized for this release. The private source branch is
-published and the Cloudflare preview is verified; production deployment remains
-pending. The preview checks use synthetic planner values and public INFO reads.
-They do not activate credentials, connect real banks, or make payments. The new
-Capital flows API needs a separate hosted INFO deployment; its preview page
+published; the production website and Cloudflare preview are verified. These
+checks use synthetic planner values and public INFO reads. They do not activate
+credentials, connect real banks, or make payments. The private workspace remains
+a local developer pilot. The new Capital flows API needs a separate hosted INFO deployment; its page
 discloses the current 404 instead of claiming available data.
 
 ## Verification history
@@ -185,18 +186,25 @@ shared-theme implementation, alongside 119 UI tests, TypeScript, and build.
 The fixture preserves the repository's shared theme/font layout and verifies
 source hashes; it does not substitute a separate test palette.
 
-### Release preparation and Cloudflare preview — 29 September 2026
+### Release preparation, preview and production — 29 September 2026
 
-The Cloudflare preview of `release/service-workspace-20260929` passed 19 checks
-with zero failures. Checks covered the primary pages, navigation, desktop/mobile
+The [final Cloudflare preview](https://449cf6c3.cashloom-atlas.pages.dev) of
+`release/service-workspace-20260929` passed 19 checks with zero failures.
+Production at [cashloom.io](https://cashloom.io) then passed the same 19 checks
+with zero failures. Deployment `4fe327f3-de34-44c5-b280-464dbd91fb4e` uses source
+`932bdc5b6fc3fb2806be8aac6c9689d12e9eaa63`. The `www` redirect returned 308 and
+entry JavaScript/CSS hashes matched the verified build.
+Checks covered the primary pages, navigation, desktop/mobile
 layouts, synthetic monthly-plan arithmetic without automatic saving or network
 data requests, repository-access disclosure, page assets, and no external fonts.
 The public metadata endpoint identified INFO; private endpoints returned JSON
 404 responses and the public edge refused the private POST probe with 405.
 
 The sole reported capability gap was hosted `GET /v1/capital-flows` returning
-404. The release runner therefore retained `releaseReady: false`; a successful
-preview does not establish that API's availability or production deployment.
+404. The release runner therefore retained `releaseReady: false`: the website
+is deployed, but the separate API rollout is incomplete. Fly login was unavailable,
+so the hosted INFO service is unchanged. No live-bank or payment-provider
+activation was performed.
 
 Separately, 713 public INFO tests passed (one optional live test skipped). The
 public-only Linux/amd64 image ran with one CPU and a hard 256 MiB memory limit

@@ -17,11 +17,19 @@ private wallet and public information tools.
 
 **Release status — 29 September 2026:** source is published on
 `release/service-workspace-20260929` in the private CashLoom repository.
-The Cloudflare preview passed 19 checks with zero failures; its sole capability
-gap is the hosted Capital flows API, which returns 404. Production deployment
-and its verification are still pending. Existing account, payment, Capital flows,
-and TCG work is preserved. Household/group planning is one person's editable
-plan with an export, not shared accounts or joint payment authority.
+The website is deployed at [cashloom.io](https://cashloom.io). Production and the
+[final preview](https://449cf6c3.cashloom-atlas.pages.dev) each passed 19 checks
+with zero failures. The sole capability gap is the hosted Capital flows API,
+which returns 404; the separate API rollout remains incomplete and the smoke
+report retains `releaseReady: false`. Fly access was unavailable, so INFO is
+unchanged. Existing account, payment, Capital flows, and TCG work is preserved.
+Household/group planning is one person's editable plan with an export, not shared
+accounts or joint payment authority. The private workspace remains a local
+developer pilot; this website release activates no live banks or private payments.
+
+Production deployment: `4fe327f3-de34-44c5-b280-464dbd91fb4e`; source:
+`932bdc5b6fc3fb2806be8aac6c9689d12e9eaa63`. The `www` redirect returned 308,
+and deployed entry JavaScript/CSS hashes matched the verified build.
 
 Read the [purpose, naming, architecture, and delivery plan](docs/service-rebuild-2026-09-29.md).
 The [US-first unified money layer](docs/unified-money-layer-2026-09-29.md) now
@@ -108,9 +116,9 @@ Provider failures can leave partial coverage. For local machine discovery, read
 
 The published private release includes the lazy human route `/capital-flows`
 and read-only API `GET /v1/capital-flows` (also conditional GET/HEAD).
-As verified on 29 September 2026, the Cloudflare preview serves the page but the
+As verified on 29 September 2026, production and the preview serve the page but the
 existing hosted INFO service returns **404 for the new API**. The page discloses
-that gap; source publication and a working preview do not establish hosted data
+that gap; source publication and a deployed website do not establish hosted data
 availability. The public-only INFO image passed local Linux verification, and its
 hosted deployment remains separate. To use the implemented API locally, clone
 the release above, run the INFO/frontend commands, then open `/capital-flows`
@@ -149,8 +157,9 @@ a balance observation, and eligible signed Base payments offer reviewed recovery
 Trades remains a records-and-simulation feature. The public MCP adapter now
 exposes World, Onchain, and Capital flows alongside its existing read tools.
 
-These changes are published in the private release branch. The public preview
-was verified on 29 September 2026; production deployment is still pending.
+These changes are published in the private release branch. The public website
+and preview were deployed and verified on 29 September 2026. The private
+workspace remains local, and the separate Capital flows API rollout is pending.
 See the [integration report and verification](docs/experience-integration-2026-09-23.md)
 and the [earlier implementation survey](docs/current-map-2026-09-23.md).
 For daily use, setup, and recovery, see the [local pilot guide](docs/local-pilot.md).

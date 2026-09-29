@@ -1,8 +1,9 @@
 # Service and workspace release — 29 September 2026
 
-Status: source published to the existing private repository; public preview
-verified. Production publication is pending the final copy corrections below.
-The website can be released independently of the pending Fly API update.
+Status: public website deployed and verified at https://cashloom.io on
+29 September 2026. Source is published to the existing private repository.
+The Fly API update remains pending authentication; the private workspace remains
+a local developer pilot.
 
 ## Scope and source
 
@@ -27,16 +28,18 @@ stable references for separate transactions that happen to look identical.
 
 | Component | Target | Release boundary |
 |---|---|---|
-| Public pages and read proxy | Existing Cloudflare Pages project `cashloom-atlas`; `cashloom.io` and `www.cashloom.io` | Preview first, then production; uses same-origin public read APIs |
-| Public INFO service | Existing Fly app `cashloom-api` | Separate public-only image; no private money or custody code |
+| Public pages and read proxy | Existing Cloudflare Pages project `cashloom-atlas`; `cashloom.io` and `www.cashloom.io` | Deployed after preview verification; uses same-origin public read APIs |
+| Public INFO service | Existing Fly app `cashloom-api` | Existing deployment unchanged; tested replacement is a separate public-only image |
 | Private workspace | Local source/build | No public hosting, live bank activation, or payment-provider activation |
 
 Cloudflare access was verified using the existing Wrangler login. Fly's CLI
 reported no access token for `cashloom-api`; an existing CashLoom-specific
 credential wrapper or local login was requested. No unrelated app credential
-was substituted. If that access remains absent, the website can ship against
-the existing INFO service and the new Capital flows API remains unavailable.
-The public page states that gap explicitly instead of repeatedly retrying.
+was substituted. A final `fly status --app cashloom-api --json` check still
+reported no access token. The website ships against the existing INFO service
+and the new Capital flows API remains unavailable. The public page states that
+gap explicitly instead of repeatedly retrying. Resuming that deployment needs
+a CashLoom-authorized Fly login or scoped wrapper, not new website approval.
 
 ## Verification evidence
 
@@ -86,4 +89,26 @@ consistent snapshot command and clarified the architecture guide's limits.
 Native publisher CSV/TIC fixture whitespace was preserved; the staged source
 whitespace check passes when those fixtures are excluded.
 
-Final deployment IDs, source commit and production verification: pending.
+Final deployed source: `932bdc5b6fc3fb2806be8aac6c9689d12e9eaa63`.
+
+| Environment | URL | Result |
+|---|---|---|
+| Final preview | https://449cf6c3.cashloom-atlas.pages.dev | 19 passed, zero failures; Capital flows API 404 gap |
+| Production | https://cashloom.io | 19 passed, zero failures; same disclosed API gap |
+| Production deployment | https://4fe327f3.cashloom-atlas.pages.dev | `4fe327f3-de34-44c5-b280-464dbd91fb4e`, source `932bdc5` |
+
+The production entry JavaScript and CSS match the local release build byte for
+byte. `https://www.cashloom.io/plan` returns 308 to
+`https://cashloom.io/plan`. The production browser run checks all eight pages,
+desktop and narrow mobile layouts, synthetic planner arithmetic, opt-in saving,
+source-access disclosure, public INFO identification and the private-route
+boundary. It records no page errors, asset errors, external resource requests,
+planner data requests or unintended writes. These checks describe this run;
+they are not an availability or privacy guarantee for hosting infrastructure.
+
+Local evidence: `/tmp/cashloom-release-final-preview-20260929/result.json`,
+`/tmp/cashloom-release-production-20260929/result.json` and
+`/tmp/cashloom-release-production-20260929/asset-verification.json`.
+Documentation-only commits after the deployed source record this outcome and do
+not change the deployed artifact. The original development worktree remains
+uncommitted and both public/private local builds were refreshed.
