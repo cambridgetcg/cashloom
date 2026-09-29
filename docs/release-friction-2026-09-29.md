@@ -48,6 +48,37 @@ Private evidence: `/tmp/cashloom-friction-integration-20260929.log` and
 `/private/var/folders/69/4qnq5h3j1095bfs9psqv13100000gn/T/cashloom-tcg-browser-5w7r3as8`.
 Public evidence: `/tmp/cashloom-public-friction-review-20260929`.
 
+## Published and deployed
+
+Source implementation: `5cb2ebd`; website source and corrected release check:
+`d27378ae2a7debfa313cff46b7869cd14b096892`, on the private
+`release/service-workspace-20260929` branch. The release production build
+matched the checked original build byte for byte across all 30 artifacts.
+The original private UI build also matched the isolated browser-tested build.
+
+| Environment | Deployment | Verification |
+| --- | --- | --- |
+| Preview | https://cbcdb263.cashloom-atlas.pages.dev | 27 passed, zero failures or API gaps |
+| Production | https://cashloom.io, Pages ID `fa81b155-a70d-4a3e-828c-3079bfc66eda` | 27 passed, zero failures or API gaps |
+
+The website's entry JavaScript/CSS, Money plan, workspace guide and Connections
+assets matched local hashes. `www.cashloom.io/connections` returned 308 to the
+canonical route. The new private transaction-search probe returned 404.
+Public availability checks passed; the separate INFO service still reports
+partial source coverage rather than complete financial-data readiness.
+
+The first preview check expected an explicit README filename, while GitHub's
+folder link renders that README. The check was corrected to the actual scoped
+anchor. Immediately after the next preview deployment, its first two route
+requests returned 404; subsequent direct requests and a full fresh browser run
+passed. Both earlier reports remain available under
+`/tmp/cashloom-friction-preview-20260929` and
+`/tmp/cashloom-friction-preview-verified-20260929`.
+
+Final reports: `/tmp/cashloom-friction-preview-settled-20260929/result.json`,
+`/tmp/cashloom-friction-production-20260929/result.json` and its adjacent
+`asset-verification.json`.
+
 ## Delivery scope
 
 Private changes ship as local-workspace source on the existing private release

@@ -28,11 +28,15 @@ Household/group planning is one person's editable plan with an export, not share
 accounts or joint payment authority. The private workspace remains a local
 developer pilot; this website release activates no live banks or private payments.
 
-Website source checkpoint: `d2e6d2ee15a102e42c87591014b1ad6a4a7ef35a`.
-Preview and production each passed all 25 release checks with no failures or
-API availability gaps. The `www` redirect returned 308, and deployed entry and
-Connections assets matched the verified build. Deployment and rollback details
-are in the INFO rollout record above; the earlier
+Website source checkpoint: `d27378ae2a7debfa313cff46b7869cd14b096892`.
+Preview and production each passed all 27 release checks with no failures or
+API availability gaps. The `www` redirect returned 308, and deployed entry,
+planner, guide and Connections assets matched the verified build. Setup links
+now reach useful instructions, and clearing a plan retains currency and purpose.
+Activity search, older-history browsing and draft/account handling are verified
+in the separate local workspace. See the
+[everyday-use release record](docs/release-friction-2026-09-29.md) for delivery
+and rollback details; the earlier
 [agent release record](docs/release-agent-layer-2026-09-29.md) preserves that
 milestone's verification.
 
