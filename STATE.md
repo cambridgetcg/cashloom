@@ -9,10 +9,10 @@ runs-on: this machine
 phase: active
 health: website and local agent source published; public INFO rollout complete; Capital flows API returns publisher reports with partial coverage
 release-branch: release/service-workspace-20260929
-published-source-snapshot: b89cbb2bae5008084339b057497c7ea3a711a252
-production-deployment: fec97b1f-54f3-4e59-8cf1-6337b3e672d1 at https://cashloom.io
-verified-preview: https://0f31568b.cashloom-atlas.pages.dev
-delivery-checks: www returned 308; entry JavaScript/CSS, Connections and agent-guide hashes matched the verified build
+published-source-snapshot: d2e6d2ee15a102e42c87591014b1ad6a4a7ef35a
+production-deployment: 9433e048-f32d-48ac-8341-3afa0b821a53 at https://cashloom.io
+verified-preview: https://9233e4c3.cashloom-atlas.pages.dev
+delivery-checks: preview and production each 25 passed with no gaps; www returned 308; entry JavaScript/CSS and Connections hashes matched the verified build
 source-access: existing private cambridgetcg/cashloom repository; repository access required
 original-development-branch: feature/capital-flows-20260909, preserved with its original worktree and local edits
 original-development-base: e421a1ac4a3e397d0afb8ae65efe2cb5580a515c
@@ -30,7 +30,7 @@ freshness: manually verified 2026-09-29
 - US-first money layer and implementation boundaries: docs/unified-money-layer-2026-09-29.md
 - daily use and recovery: docs/local-pilot.md
 - local MCP access and owner-reviewed categories: docs/agent-layer-2026-09-29.md
-- latest source, deployment and verification: docs/release-agent-layer-2026-09-29.md
+- agent source and original deployment verification: docs/release-agent-layer-2026-09-29.md
 - public INFO deployment and Capital flows availability: docs/release-info-rollout-2026-09-29.md
 
 ## can

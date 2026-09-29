@@ -28,10 +28,13 @@ Household/group planning is one person's editable plan with an export, not share
 accounts or joint payment authority. The private workspace remains a local
 developer pilot; this website release activates no live banks or private payments.
 
-Source checkpoint: `b89cbb2bae5008084339b057497c7ea3a711a252`. The `www` redirect
-returned 308, and deployed entry, Connections and agent-guide assets matched
-the verified build. See the [agent release record](docs/release-agent-layer-2026-09-29.md)
-for deployment, verification and rollback details.
+Website source checkpoint: `d2e6d2ee15a102e42c87591014b1ad6a4a7ef35a`.
+Preview and production each passed all 25 release checks with no failures or
+API availability gaps. The `www` redirect returned 308, and deployed entry and
+Connections assets matched the verified build. Deployment and rollback details
+are in the INFO rollout record above; the earlier
+[agent release record](docs/release-agent-layer-2026-09-29.md) preserves that
+milestone's verification.
 
 Read the [purpose, naming, architecture, and delivery plan](docs/service-rebuild-2026-09-29.md).
 The [US-first unified money layer](docs/unified-money-layer-2026-09-29.md) now

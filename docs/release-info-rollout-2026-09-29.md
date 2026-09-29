@@ -24,6 +24,8 @@ workspace, provider credentials or private node modules were deployed.
 
 Fly accepted the authenticated deployment and the running machine's HTTP health
 check passed. The stopped spare's check says it has not started, as expected.
+After public traffic checks, Fly reported the same verified image digest on
+both machines, with the running machine's health check still passing.
 The CLI's optional DNS check timed out querying `8.8.8.8`; direct HTTPS and
 same-origin website requests subsequently succeeded using normal resolution.
 
@@ -45,9 +47,39 @@ Each machine keeps an independent RAM cache. ETag or Age differences across
 requests can reflect different validated snapshots; restarting clears that
 cache. Publisher cadence, bounded refresh and failure backoff remain unchanged.
 
-Evidence is under `/tmp/cashloom-info-fly-rollout-20260929`: `before.json`,
-`after.json` and `api-checks.json`. Public website verification follows the
-Connections copy update and is recorded below when complete.
+Six live browser checks also passed: publisher observations render, receipts
+open and close, bounded history expands, category filters/reset work, and
+desktop/320-pixel layouts fit. Table scrolling remains within its container;
+coverage disclosures stay visible when a filter has no data. No external
+resource attempts, writes or page errors occurred. Screenshots and results are
+under `/tmp/cashloom-live-capital-review-20260929`.
+
+API evidence is under `/tmp/cashloom-info-fly-rollout-20260929`: `before.json`,
+`after.json` and `api-checks.json`.
+
+## Website follow-through
+
+The Connections card now links to Capital flows and describes public read-only
+data with partial/delayed coverage. The former pending-feed label is removed.
+All 237 public tests, TypeScript and the production build passed; the release
+build matched the checked original build byte for byte.
+
+Website source: `d2e6d2ee15a102e42c87591014b1ad6a4a7ef35a`.
+
+| Environment | Deployment | Verification |
+| --- | --- | --- |
+| Preview | https://9233e4c3.cashloom-atlas.pages.dev | 25 passed, zero failures or API gaps |
+| Production | https://cashloom.io, Pages ID `9433e048-f32d-48ac-8341-3afa0b821a53` | 25 passed, zero failures or API gaps |
+
+The release runner now exits 0 with `releaseReady: true`; this describes its
+route, delivery and availability checks, while source coverage remains partial
+and the Capital flows payload retains `launchReadiness: notAssessed`.
+Deployed entry JavaScript/CSS and Connections assets match the local build.
+`www.cashloom.io/capital-flows` returns 308 to the canonical route.
+
+Reports: `/tmp/cashloom-info-release-preview-20260929/result.json`,
+`/tmp/cashloom-info-release-production-20260929/result.json` and
+`/tmp/cashloom-info-release-production-20260929/asset-verification.json`.
 
 ## Rollback
 
@@ -56,6 +88,10 @@ Deploy that image to the same `cashloom-api` app with the current public-only
 Fly configuration if rollback is needed. That restores the prior public INFO
 version and makes the new Capital flows API unavailable again. It does not
 restore private records; this app has no private workspace or persistent volume.
+
+The website rollback target is Pages deployment
+`fec97b1f-54f3-4e59-8cf1-6337b3e672d1`, source `b89cbb2`. Its Connections card
+describes the API as pending, so coordinate that wording with any INFO rollback.
 
 The original development branch/worktree remains preserved. Source and rollout
 documentation are checkpointed in the separate release worktree; Git main is

@@ -157,7 +157,7 @@ Source receipts and `sources[].definition.rights` carry the scoped reuse evidenc
   not blanket permission for government-hosted third-party files, vendor or
   branding rights, or confidential reports.
 
-The new API is discoverable through local `/v1/orientation` and `/v1/guide`, but
+The new API is discoverable through local and hosted `/v1/orientation` and `/v1/guide`, but
 is **not** one of XENIA Surface's three deterministic resources. Cold partial
 responses, single-flight caching and cache fall-through are not themselves a
 Surface-conformance result. Hosted INFO remains process-wide non-custodial;
