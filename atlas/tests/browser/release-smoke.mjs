@@ -187,7 +187,7 @@ try {
     const guide = page.locator("#connections");
     assert.match(await guide.innerText(), /Connect a test bank/);
     assert.match(await guide.innerText(), /Only supported USD test accounts/);
-    assert.ok(await guide.locator('a[href*="README.md#unified-money-view-local-pilot"]').count());
+    assert.ok(await guide.locator('a[href$="/sovereign#unified-money-view-local-pilot"]').count());
   });
 
   await check("agent setup handoff keeps local scope and owner review explicit", async () => {
