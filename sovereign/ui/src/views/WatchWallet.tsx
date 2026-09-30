@@ -3,6 +3,7 @@ import { api, ApiError, currentSessionGuard, errorMessage, type WatchWalletInput
 import { Badge, Field } from "../components";
 import type { Account } from "../types";
 import { BrowserWalletPicker } from "./BrowserWalletPicker";
+import { PhoneWalletPicker } from "./PhoneWalletPicker";
 import "./watch-wallet.css";
 
 const BASE = "eip155:8453";
@@ -68,12 +69,15 @@ export function WatchWallet({ canManage, disabled = false, onBusyChange, onSaved
   const [error, setError] = useState<string | null>(null);
   const [retryInput, setRetryInput] = useState<WatchWalletInput | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerKind, setPickerKind] = useState<"browser" | "phone">("browser");
   const [pickerBusy, setPickerBusy] = useState(false);
   const [copiedFromWallet, setCopiedFromWallet] = useState(false);
   const pending = useRef(false), live = useRef(true);
   const pickerAllowed = useRef(false);
   const addressField = useRef<HTMLInputElement | null>(null);
   const pickerTrigger = useRef<HTMLButtonElement | null>(null);
+  const phonePickerTrigger = useRef<HTMLButtonElement | null>(null);
+  const Picker = pickerKind === "phone" ? PhoneWalletPicker : BrowserWalletPicker;
   pickerAllowed.current = canManage && !disabled && !busy && retryInput === null;
   useEffect(() => { live.current = true; addressField.current?.focus(); return () => { live.current = false; }; }, []);
   useEffect(() => { if (!canManage || disabled || busy || retryInput !== null) setPickerOpen(false); }, [canManage, disabled, busy, retryInput]);
@@ -111,16 +115,18 @@ export function WatchWallet({ canManage, disabled = false, onBusyChange, onSaved
     <p>Add a public address to your local records. You can check its ETH and native USDC balances on Base afterwards. Saving the address does not check balances.</p>
     <p className="journey-note">A public address is enough. No wallet signature, seed phrase or private key is requested. Watching does not establish ownership or enable sending and receiving actions.</p>
     {!busy && retryInput === null && <div className="watch-wallet-picker-entry"><button ref={pickerTrigger} className="btn btn-ghost" type="button" disabled={!canManage || disabled || pickerOpen} onClick={() => {
-      if (live.current && pickerAllowed.current && currentSessionGuard()()) setPickerOpen(true);
-    }}>Choose from a wallet</button><span>Optional · or paste a public address below.</span></div>}
-    {pickerOpen && pickerAllowed.current && <BrowserWalletPicker disabled={disabled || !canManage}
+      if (live.current && pickerAllowed.current && currentSessionGuard()()) { setPickerKind("browser"); setPickerOpen(true); }
+    }}>Choose from a wallet</button><button ref={phonePickerTrigger} className="btn btn-ghost" type="button" disabled={!canManage || disabled || pickerOpen} onClick={() => {
+      if (live.current && pickerAllowed.current && currentSessionGuard()()) { setPickerKind("phone"); setPickerOpen(true); }
+    }}>Connect a phone wallet</button><span>Optional · or paste a public address below.</span></div>}
+    {pickerOpen && pickerAllowed.current && <Picker disabled={disabled || !canManage}
       onBusyChange={value => { if (live.current) { setPickerBusy(value); onBusyChange?.(pending.current || value); } }}
       onAddress={pickedAddress => {
         if (!live.current || !pickerAllowed.current || pending.current || !currentSessionGuard()()) return;
         setAddress(pickedAddress); setCopiedFromWallet(true); setError(null); setPickerOpen(false);
         requestAnimationFrame(() => { if (live.current) addressField.current?.focus(); });
       }}
-      onClose={() => { setPickerOpen(false); requestAnimationFrame(() => { if (live.current) pickerTrigger.current?.focus(); }); }} />}
+      onClose={() => { setPickerOpen(false); requestAnimationFrame(() => { if (live.current) (pickerKind === "phone" ? phonePickerTrigger : pickerTrigger).current?.focus(); }); }} />}
     {copiedFromWallet && <p className="journey-note" role="status">Address copied from your wallet. Review it and choose Add watched wallet to save. This form does not follow later wallet changes.</p>}
     <fieldset disabled={busy || pickerBusy || disabled || !canManage || retryInput !== null}>
       <Field label="Network"><select value="base" onChange={() => undefined}><option value="base">Base</option></select></Field>
@@ -131,7 +137,12 @@ export function WatchWallet({ canManage, disabled = false, onBusyChange, onSaved
     {retryInput && <p className="journey-note">The submitted address and label are kept unchanged for this retry. If it was already added, the node returns the existing account.</p>}
     {!canManage && <p className="journey-note">The workspace owner can add watched wallets.</p>}
     <div className="btn-row"><button className="btn btn-primary" type="submit" disabled={busy || pickerOpen || pickerBusy || disabled || !canManage}>{busy ? "Adding watched wallet…" : retryInput ? "Retry same wallet" : "Add watched wallet"}</button>
-      <button className="btn btn-ghost" type="button" disabled={busy} onClick={onCancel}>Cancel</button>
+      <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => {
+        // The form's cleanup invalidates child callbacks. Release only the
+        // picker-owned flag before removing the form from Connections.
+        if (pickerBusy) { pickerAllowed.current = false; onBusyChange?.(false); }
+        onCancel();
+      }}>Cancel</button>
       {retryInput && onReviewAccounts && <button className="link-btn" type="button" disabled={busy} onClick={onReviewAccounts}>Review saved accounts</button>}
     </div>
     <p className="watch-wallet-limit">Balances stay unknown until you choose Check balances in Accounts. That check sends the address to configured RPC providers. This flow does not import Base transaction history.</p>

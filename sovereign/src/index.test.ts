@@ -997,6 +997,38 @@ describe("owner-controlled Base watch onboarding", () => {
   });
 });
 
+describe("owner-only phone wallet configuration", () => {
+  it("exposes only setup state to an owner with account-management scope", async () => {
+    const path = "/api/connections/crypto/walletconnect";
+    expect(requiredScopeForLocalRoute("GET", path)).toBe("accounts:write");
+    for (const verb of ["HEAD", "POST", "PUT", "DELETE"]) expect(requiredScopeForLocalRoute(verb, path)).toBeUndefined();
+    expect(requiredScopeForLocalRoute("GET", `${path}/extra`)).toBeUndefined();
+    expect((await app.request(path)).status).toBe(401);
+    expect((await app.request(path, authorized(readToken))).status).toBe(403);
+    const delegated = vault.createDelegatedAgentSession(ownerToken, { delegateKeyId: `sha256:${"c".repeat(64)}`, scopes: ["accounts:read"] });
+    expect((await app.request(path, authorized(delegated.token))).status).toBe(403);
+    const accountId = newId();
+    db.query("INSERT INTO accounts(id,rail,display_name,currency,decimals) VALUES(?,'CASH','Pairing setup fixture','USD',2)").run(accountId);
+    const grant = vault.createAssistAccess(ownerToken, { label: "Pairing setup fixture", account_ids: [accountId], ttl_minutes: 5, allow_proposals: false });
+    try { expect((await app.request(path, authorized(grant.token))).status).toBe(403); }
+    finally { vault.revokeAssistAccess(ownerToken, grant.access.id); }
+    const previous = process.env.CASHLOOM_WALLETCONNECT_PROJECT_ID;
+    try {
+      delete process.env.CASHLOOM_WALLETCONNECT_PROJECT_ID;
+      const narrowOwner = await vault.unlock(PASSPHRASE, { scopes: ["accounts:write"] });
+      const result = await app.request(path, authorized(narrowOwner));
+      expect(result.status).toBe(200);
+      expect(result.headers.get("cache-control")).toBe("private, no-store");
+      expect(await result.json()).toEqual({ state: "not_configured", project_id: null });
+      const hostile = await app.request(path, authorized(narrowOwner, { headers: { Origin: "https://attacker.example", "Sec-Fetch-Site": "cross-site" } }));
+      expect(hostile.status).toBe(403);
+    } finally {
+      if (previous === undefined) delete process.env.CASHLOOM_WALLETCONNECT_PROJECT_ID;
+      else process.env.CASHLOOM_WALLETCONNECT_PROJECT_ID = previous;
+    }
+  });
+});
+
 describe("Activity search and older pages", () => {
   function fixture() {
     const accountId = newId();

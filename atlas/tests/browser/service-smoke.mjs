@@ -198,7 +198,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${origin}/connections`);
     const watchCard = page.locator(".service-connection").filter({ has: page.getByRole("heading", { name: "Watch a Base wallet", exact: true }) });
-    assert.ok((await watchCard.innerText()).includes("Address or browser wallet · local workspace"));
+    assert.ok((await watchCard.innerText()).includes("Address, browser or phone wallet · local workspace"));
     await watchCard.getByRole("link", { name: "See crypto setup", exact: true }).click();
     await page.waitForFunction(() => {
       const target = document.getElementById("crypto")?.getBoundingClientRect();
@@ -226,7 +226,7 @@ try {
     const cryptoGuide = page.locator("#crypto");
     await cryptoGuide.getByRole("heading", { name: "Watch a wallet. See what it holds.", exact: true }).waitFor();
     const guideText = await cryptoGuide.innerText();
-    for (const step of ["Choose from a wallet", "Use this address", "remove any site permission in your wallet", "WalletConnect QR/mobile pairing"]) assert.ok(guideText.includes(step), `browser wallet setup: ${step}`);
+    for (const step of ["Choose from a wallet", "Use this address", "remove any site permission in your wallet", "Connect a phone wallet", "configuring a Reown project", "requests no signing or payment methods"]) assert.ok(guideText.includes(step), `wallet setup: ${step}`);
     for (const boundary of ["local workspace", "ETH and native USDC", "no seed phrase, private key or signature", "configured RPC providers",
       "missing evidence stays unknown", "previous dated snapshot", "does not establish ownership or authorize spending", "Base transaction-history import",
       "without giving the client refresh or payment authority"]) assert.ok(guideText.includes(boundary), `crypto guide scope: ${boundary}`);

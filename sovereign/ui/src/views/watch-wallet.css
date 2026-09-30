@@ -20,6 +20,12 @@
 .browser-wallet-address:has(input:checked) { border-color: var(--cl-primary); }
 .browser-wallet-address input[type="radio"] { width: 18px; height: 18px; min-height: 0; flex-shrink: 0; margin: 3px 0 0; padding: 0; accent-color: var(--cl-primary); }
 .browser-wallet-address code { min-width: 0; font-family: var(--cl-font-mono); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.phone-wallet-qr { min-width: 0; margin: 20px 0; }
+.phone-wallet-qr canvas { display: block; max-width: 100%; height: auto !important; margin: 0 auto; border-radius: var(--cl-radius-sm); }
+.phone-wallet-qr canvas[hidden] { display: none; }
+.phone-wallet-setup { font-size: 14px; line-height: 1.65; }
+.phone-wallet-setup code { font-family: var(--cl-font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.phone-wallet-picker > .btn-row { margin-top: 20px; }
 @media (max-width: 540px) {
   .watch-wallet-form .btn-row { align-items: stretch; }
   .watch-wallet-form .btn-row > button { width: 100%; }

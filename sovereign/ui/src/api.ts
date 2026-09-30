@@ -37,6 +37,8 @@ import type {
   ZeroneStatus,
 } from "./types";
 import type { SessionInspection } from "./session-lifecycle";
+import type { WalletConnectSetup } from "../../src/connect/walletconnect-config";
+export type { WalletConnectSetup } from "../../src/connect/walletconnect-config";
 
 export interface ActivityPage {
   transactions: Tx[];
@@ -192,6 +194,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 export const api = {
   meta: () => request<Meta>("/api/meta"),
   watchWallet: (body: WatchWalletInput) => request<WatchWalletResult>("/api/connections/crypto/watch", body),
+  walletConnectSetup: () => request<WalletConnectSetup>("/api/connections/crypto/walletconnect"),
 
   vaultInit: (passphrase: string) =>
     request<{ ok: boolean; token: string }>("/api/vault/init", { passphrase }),

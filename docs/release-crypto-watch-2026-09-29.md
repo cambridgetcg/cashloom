@@ -5,7 +5,8 @@ Add crypto wallet** and opens its account. **Check balances** explicitly reads
 finalized ETH and native USDC evidence from two distinct HTTPS RPC providers.
 Accounts and Overview reuse saved evidence without background RPC requests.
 Watching neither establishes ownership nor creates signing or spending authority.
-There is no transaction-history import, token discovery, or WalletConnect flow.
+The initial increment includes no transaction-history import, token discovery,
+or WalletConnect flow. Later browser and phone pairing increments are recorded below.
 
 Creation is owner-only, bounded, and transactional. Repeated requests reuse an
 active account for the same Base address while preserving its name and custody.
@@ -128,7 +129,7 @@ does not prescribe a universal canonicalization rule. No new wallet permission,
 provider object, browser-wallet identity, or signing authority is stored with
 the account or exposed to agents.
 
-WalletConnect pairing remains a separate next integration. Existing code
+At this browser-wallet checkpoint, WalletConnect pairing remained a separate next integration. Existing code
 projects and verifies signed evidence but has no activated pairing transport
 or owner completion coordinator. A usable session needs a configured project,
 approved origins, narrowly requested capabilities, and tested expiry/update/
@@ -199,3 +200,100 @@ Final reports: `/tmp/cashloom-wallet-standards-preview-20260929/result.json`,
 Rollback for this increment: Pages deployment
 `54999b6f-899e-4037-a233-f96100c562be`, source
 `3c188b1efa71384896e47ccdaa4f52b73f5e6e3d`.
+
+## Phone pairing — 30 September 2026
+
+**Connect a phone wallet** adds optional WalletConnect QR pairing to the existing
+Base watch form. Opening it checks owner-only local configuration; **Start
+pairing** is the first relay action. Approval reveals the session's Base addresses,
+with no preselected address. **Use this address** fills the draft and ends the
+temporary pairing. The owner still reviews the address and label and separately
+saves the watch. Balance checks remain explicit and unchanged.
+
+The implementation pins SignClient and Core to `2.25.0`. It requests
+`eip155:8453`, no methods, and account/chain change events. The
+[namespace specification](https://github.com/WalletConnect/walletconnect-specs/blob/main/docs/specs/clients/sign/namespaces.md)
+allows empty method lists and returns approved CAIP-10 accounts in the session.
+It also allows a wallet to grant more than requested. CashLoom consequently
+validates the returned scope and refuses extra chains, methods, or events. It
+never broadens the request to obtain compatibility. There is no signing, sending,
+network switching, balance RPC, or general request method exposed by this picker.
+Existing WalletConnect signing-evidence modules remain a separate foundation.
+
+Each explicit attempt creates its own browser worker with memory-only storage.
+The SDK loads inside that worker from local assets. Its `fetch` and XHR calls
+are blocked; the only allowed WebSocket destination is the pinned Reown relay.
+This supplements SDK
+telemetry settings, which are not a universal collection guarantee. The relay
+still receives IP and protocol metadata. SDK errors are reduced to fixed messages
+and the worker does not log raw error payloads or pairing material.
+
+QR generation uses the locally bundled `qrcode` package. The URI is not placed
+in a URL, text attribute, log, or browser storage. Copying it requires an explicit
+clipboard action with a retention notice. Expiry, account/session changes,
+cancellation, navigation, and locking invalidate the selection. Cleanup attempts
+to notify the wallet, then terminates the worker within a bounded interval even
+if disconnect never responds. This ends local timers and network work; it does
+not guarantee deletion of the wallet's own connection record. There is no
+session restoration. A saved watch remains an independent local record.
+
+Operators configure a dedicated Reown project's public ID using
+`CASHLOOM_WALLETCONNECT_PROJECT_ID` in the node's scoped environment.
+`GET /api/connections/crypto/walletconnect` requires owner account-management
+authority, returns no-store setup state, and makes no provider request. Agents
+and general read-only sessions cannot obtain it. Public website routes expose
+no pairing configuration or wallet form.
+
+See [local phone-pairing setup](../sovereign/README.md#pair-a-phone-wallet).
+Project origins must reflect the actual local workspace, and metadata uses that
+origin rather than impersonating the public website. Domain verification and
+relay authorization are separate; no verified-wallet badge is promised.
+Dashboard Event Tracking should be disabled. Reown's
+[relay documentation](https://github.com/WalletConnect/walletconnect-docs/blob/main/docs/cloud/relay.mdx)
+and [privacy policy](https://reown.com/privacy-policy) describe the external
+service boundary.
+
+No Reown project is configured in this checkout, and no real phone wallet has
+approved a session in this release's verification. Local SDK and synthetic
+browser results do not certify individual wallet interoperability or relay
+authorization. A wallet that rejects empty-method sessions can still be watched
+by pasting its address or using the browser picker. Solana and external-wallet
+payments remain separate future work.
+
+### Phone pairing verification
+
+- Backend connection and local-route suites: 133 tests, 889 assertions passed.
+- Private UI: 229 tests passed, including 25 controller/contract tests and nine
+  phone-picker tests. TypeScript and production build passed.
+- The Vite-built production worker ran the actual pinned SDK through nine
+  scenarios with synthetic relay subscription/publication and remote approval.
+  It verified the empty-method Base proposal, strict scope rejection, session
+  mutation and expiry handling, URI expiry, and ignored late approval. It also
+  checked blocked HTTP/foreign sockets, the allowed relay wrapper, disabled
+  global Core sharing, the actual memory-store instance, and empty storage after
+  close. No live relay or wallet took part.
+- The frozen-source isolated runner passed 22 workspace checks, six actual-node
+  MCP checks, five Base watch groups, nine browser-wallet groups, seven phone
+  groups, 15 daily-use groups, and the money-sources rehearsal. Phone checks use
+  the real UI/controller, local API and SQLite with synthetic worker messages.
+  They cover missing configuration, explicit QR start, address choice, separate
+  saving, deduplication, late results, lock and navigation, bounded normal cleanup,
+  and synchronous pagehide termination before timers could freeze. No backend
+  RPC or external browser request occurred. QR codes were masked in screenshots.
+- Public UI: 238 tests, TypeScript/build, and 21 compiled browser checkpoints
+  passed, including the phone setup handoff and desktop/320px layouts.
+- The release public build matches the checked original across all 30 artifacts.
+  The original private build matches the final isolated build across 10 artifacts.
+
+Vite emits ES-module workers so SDK chunks remain lazy. Its build-time
+substitution of `process.env` required an explicit `DISABLE_GLOBAL_CORE` define;
+the real bundled-worker probe checks that behavior. Worker termination remains
+the lifecycle boundary independently of that flag. The test fixture supplies
+both relay subscription and publication; it does not validate real network
+protocol delivery. Earlier fixture-only startup and asset-path issues were
+corrected before the complete frozen-source run.
+
+Final local evidence: `/tmp/cashloom-walletconnect-integration-20260930.log`,
+`/tmp/cashloom-walletconnect-backend-20260930.log`,
+`/tmp/cashloom-walletconnect-public-review-20260930/result.json`, and
+`/private/var/folders/69/4qnq5h3j1095bfs9psqv13100000gn/T/cashloom-tcg-browser-g_a0sl97`.

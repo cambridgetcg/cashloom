@@ -3,6 +3,7 @@ import { Hono, type Context } from "hono";
 import { getAddress, isAddress } from "viem";
 import { z } from "zod";
 import { BASE_CHAIN_ID, BASE_ETH_ASSET_ID, resolveBaseAccount } from "../wallet/base-account-projection.ts";
+import { walletConnectSetup, type WalletConnectSetup } from "./walletconnect-config.ts";
 
 const refusals = {
   crypto_watch_invalid_request: [400, "Choose Base, a public address, and an account name of 1 to 120 characters."],
@@ -112,12 +113,17 @@ async function jsonBody(c: Context): Promise<unknown> {
   catch { throw new CryptoWatchError("crypto_watch_invalid_request"); }
 }
 
-export function createCryptoWatchRoutes(options: { db: Database; canManage(context: Context): boolean }): Hono {
+export function createCryptoWatchRoutes(options: { db: Database; canManage(context: Context): boolean; walletConnectSetup?: () => WalletConnectSetup }): Hono {
   const app = new Hono();
   app.onError((error, c) => {
     const refusal = error instanceof CryptoWatchError ? error : new CryptoWatchError("crypto_watch_failed");
     c.header("Cache-Control", "private, no-store");
     return c.json({ error: refusal.code, message: refusal.message }, refusal.status);
+  });
+  app.get("/walletconnect", (c) => {
+    c.header("Cache-Control", "private, no-store");
+    if (!options.canManage(c)) throw new CryptoWatchError("crypto_watch_owner_required");
+    return c.json((options.walletConnectSetup ?? walletConnectSetup)());
   });
   app.post("/watch", async (c) => {
     c.header("Cache-Control", "private, no-store");

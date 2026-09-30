@@ -366,6 +366,7 @@ export const requiredScopeForLocalRoute = (
   if (pathname === "/api/connections" || pathname === "/api/transfers" || pathname === "/api/transactions/export") {
     return verb === "GET" || verb === "HEAD" ? "accounts:read" : undefined;
   }
+  if (pathname === "/api/connections/crypto/walletconnect") return verb === "GET" ? "accounts:write" : undefined;
   if (["/api/connections/plaid/link", "/api/connections/plaid/exchange", "/api/connections/crypto/watch", "/api/transfers/link",
     "/api/transactions/import", "/api/transactions/import/preview"].includes(pathname) ||
     /^\/api\/connections\/plaid\/[^/]+\/(sync|disconnect)$/.test(pathname) ||

@@ -253,11 +253,56 @@ discovery, price conversion or automatic refresh. ETH/USDC balances retain
 their own units. Bitcoin, Ethereum-mainnet readers and local-key payment paths
 retain their existing separate setup.
 
-The picker supports compatible EVM browser providers; individual wallet apps
-have not been certified by this release. WalletConnect QR/mobile pairing and
-Solana Wallet Standard need their own session/network integration and are not
-part of this picker. The standards and remaining boundaries are recorded in the
+The browser picker supports compatible EVM providers; individual wallet apps
+have not been certified by this release. Solana Wallet Standard needs its own
+network adapter and balance reader. The standards and boundaries are recorded in the
 [crypto release record](../docs/release-crypto-watch-2026-09-29.md#browser-wallet-standards).
+
+### Pair a phone wallet
+
+Choose **Connect a phone wallet** in the same Base watch form. It checks local
+configuration first. **Start pairing** creates a temporary WalletConnect session
+through Reown's external relay. Scan the QR with a compatible wallet on your
+phone, approve sharing Base addresses, then return to CashLoom. Select the full
+address you want and choose **Use this address**. Review and save the watched
+account separately. The phone connects through the relay; it does not need access
+to your computer's loopback server.
+
+Setup is optional: pasting an address and browser-wallet selection still work
+without a Reown project. To enable pairing:
+
+1. Create a dedicated project in the [Reown Dashboard](https://dashboard.reown.com).
+   Supply its project ID through `CASHLOOM_WALLETCONNECT_PROJECT_ID` in the local
+   node's scoped environment, then restart the node. No Dashboard API secret,
+   seed phrase or wallet key is needed. The owner-only setup endpoint checks the
+   ID's format; successful relay access is established only during pairing.
+2. Review the project's origin settings for the actual local workspace origin,
+   including its scheme and port. Metadata uses that local origin, not
+   `cashloom.io`. Relay authorization does not establish a verified wallet badge.
+   See [Reown's relay configuration](https://github.com/WalletConnect/walletconnect-docs/blob/main/docs/cloud/relay.mdx).
+3. Disable Dashboard Event Tracking for this project. Pairing still contacts
+   Reown, which processes connection metadata including IP addresses and client
+   identifiers under its [privacy policy](https://reown.com/privacy-policy).
+
+The request offers only Base (`eip155:8453`) with an empty methods list. It uses
+the approved session's addresses without asking for signing, sending, chain
+switching, or balance RPC methods. CashLoom rejects sessions granting extra chains
+or methods. Some wallet apps may not support this narrow request; use a pasted
+address or the browser picker instead. No wallet-brand interoperability claim is
+made without a live test.
+
+Treat the QR and pairing link as sensitive. QR generation stays in the local
+browser; **Copy pairing link** is an explicit clipboard action. Do not share it
+or include it in screenshots. The temporary session and keys stay in a dedicated
+worker's memory, without browser storage or session restoration. Closing,
+leaving the form, locking, or expiry clears the local selection and terminates
+the worker after bounded disconnect cleanup. Disconnection is best effort at the
+wallet; remove a remaining CashLoom connection there if necessary. A saved watch
+is a separate local record and remains available after pairing ends.
+
+This address picker is separate from the existing WalletConnect signing-evidence
+foundation. It enables no external-wallet payment execution, and agents cannot
+start it or obtain pairing configuration through their scoped access.
 
 **Agent access** can share selected saved Base holdings. It keeps legacy crypto
 scalar balances unknown and uses a separate `base_holdings` projection with

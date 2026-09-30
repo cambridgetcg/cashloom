@@ -40,6 +40,27 @@ def cache_package(cache, name, version):
     raise RuntimeError(f'Missing cached LOCKED package {name}@{version}; no installation attempted')
 
 
+def locked_package_path(key):
+    """Translate Bun's nested package keys into Node's dependency layout.
+
+    For example @walletconnect/utils/@noble/hashes means
+    node_modules/@walletconnect/utils/node_modules/@noble/hashes, not a
+    package named @walletconnect/utils/@noble/hashes in the Bun cache.
+    """
+    parts = key.split('/')
+    packages = []
+    while parts:
+        name = parts.pop(0)
+        if name.startswith('@'):
+            if not parts:
+                raise RuntimeError(f'Invalid scoped lockfile package key: {key}')
+            name += '/' + parts.pop(0)
+        if not re.fullmatch(r'(?:@[A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+', name) or name in {'.', '..'}:
+            raise RuntimeError(f'Invalid lockfile package key: {key}')
+        packages.append(name)
+    return Path(*[part for name in packages for part in ('node_modules', name)])
+
+
 def prepare(root, cache):
     workspace = root / 'workspace'
     ui = workspace / 'sovereign' / 'ui'
@@ -65,18 +86,24 @@ def prepare(root, cache):
     node_modules = ui / 'node_modules'
     node_modules.mkdir()
     versions = {}
-    for name, entry in lock['packages'].items():
+    layout = {}
+    # Parents must be copied before their nested versions, regardless of the
+    # order used by Bun's JSON lockfile serializer.
+    for key, entry in sorted(lock['packages'].items(), key=lambda item: len(locked_package_path(item[0]).parts)):
         metadata = entry[2]
         if metadata.get('os', 'darwin') != 'darwin' or metadata.get('cpu', 'arm64') != 'arm64':
             continue
-        version = entry[0].rsplit('@', 1)[1]
+        name, version = entry[0].rsplit('@', 1)
         source = cache_package(cache, name, version)
-        destination = node_modules / name
+        relative = locked_package_path(key)
+        destination = ui / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         # Copy (not hardlink): build tools cannot mutate operator cache files.
         shutil.copytree(source, destination, symlinks=False, ignore=shutil.ignore_patterns('node_modules', '.cache'))
-        versions[name] = version
+        versions[key] = version
+        layout[key] = {'name': name, 'version': version, 'path': str(relative)}
     (root / 'locked-versions.json').write_text(json.dumps(versions, indent=2))
+    (root / 'locked-layout.json').write_text(json.dumps(layout, indent=2))
     inputs = [p for name in ['src', 'public', 'tests'] for p in (ui / name).rglob('*') if p.is_file()]
     inputs += [ui / name for name in ['index.html', 'package.json', 'bun.lock', 'tsconfig.json', 'vite.config.ts'] if (ui / name).is_file()]
     digests = {str(p.relative_to(ui)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(inputs)}
@@ -147,10 +174,12 @@ def main():
             [node, str(ui / 'node_modules/vite/bin/vite.js'), 'build', '--mode', 'tcg-smoke'],
         ]
         if not args.build_only:
+            commands.append([node, str(ui / 'tests/walletconnect-worker-browser.mjs')])
             commands.append([node, str(copied_harness / 'journeys.mjs')])
             commands.append([node, str(copied_harness / 'agent-access.mjs')])
             commands.append([node, str(copied_harness / 'crypto-watch.mjs')])
             commands.append([node, str(copied_harness / 'browser-wallet.mjs')])
+            commands.append([node, str(copied_harness / 'walletconnect.mjs')])
             commands.append([node, str(copied_harness / 'daily-use.mjs')])
             commands.append([node, str(ui / 'tests/browser/money-sources.mjs')])
         for command in commands:

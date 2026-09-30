@@ -203,6 +203,10 @@ try {
     const guide = page.locator("#crypto");
     assert.match(await guide.innerText(), /Check balances/);
     assert.match(await guide.innerText(), /Choose from a wallet/);
+    assert.match(await guide.innerText(), /Connect a phone wallet/);
+    assert.match(await guide.innerText(), /configuring a Reown project/);
+    assert.match(await guide.innerText(), /requests no signing or payment methods/);
+    assert.match(await guide.innerText(), /live approval with a configured project and phone wallet has not yet been verified/);
     assert.match(await guide.innerText(), /Use this address/);
     assert.match(await guide.innerText(), /remove any site permission in your wallet/);
     assert.match(await guide.innerText(), /Base transaction-history import/);
@@ -238,7 +242,7 @@ try {
     const result = await publicRequest("/api/meta"); report.api.meta = result;
     assert.equal(result.status, 200); assert.equal(result.json?.mode, "info"); assert.equal(result.json?.name, "cashloom-info");
   });
-  for (const endpoint of ["/api/accounts", "/api/transactions?q=synthetic", "/api/connections", "/api/connections/crypto/watch", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status", "/api/assist/access", "/api/assist/context", "/api/assist/proposals", "/api/assist/review"]) await check(`private route absent: ${endpoint}`, async () => {
+  for (const endpoint of ["/api/accounts", "/api/transactions?q=synthetic", "/api/connections", "/api/connections/crypto/watch", "/api/connections/crypto/walletconnect", "/api/plaid/status", "/api/wallet/positions", "/api/vault/status", "/api/assist/access", "/api/assist/context", "/api/assist/proposals", "/api/assist/review"]) await check(`private route absent: ${endpoint}`, async () => {
     const result = await publicRequest(endpoint); report.api[endpoint] = { status: result.status, type: result.type };
     assert.equal(result.status, 404); assert.ok(result.json && typeof result.json === "object", "Private route must return a JSON refusal, never the SPA or private data.");
   });
