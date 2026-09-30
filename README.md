@@ -15,9 +15,9 @@ private wallet and public information tools.
 - **Money insights, `/world`:** public rates, currencies, and source receipts;
   Capital flows and Network insights remain available as deeper research views.
 
-**Release status — 29 September 2026:** source is published on
+**Release status — 30 September 2026:** source is published on
 `release/service-workspace-20260929` in the private CashLoom repository.
-The website, Base wallet guide, and local-agent setup guide are deployed at [cashloom.io](https://cashloom.io).
+The website, Base browser/phone-wallet guide, and local-agent setup guide are deployed at [cashloom.io](https://cashloom.io).
 The public INFO service has now been updated on Fly, and the Capital flows API
 returns publisher reports through the same website origin. Coverage remains
 partial: source failures and missing observations stay explicit. See the
@@ -28,17 +28,19 @@ Household/group planning is one person's editable plan with an export, not share
 accounts or joint payment authority. The private workspace remains a local
 developer pilot; this website release activates no live banks or private payments.
 
-Website source checkpoint: `637a0a8ac1886fce11630e374be13e889d3001f2`.
-Preview and production each passed all 30 release checks with no failures or
+Website source checkpoint: `193806035e65d0b4cb134f6ec959697bfe605434`.
+Preview and production each passed all 31 release checks with no failures or
 API availability gaps. The `www` redirect returned 308, and deployed entry,
 planner, guide and Connections assets matched the verified build. Setup links
 now reach useful instructions, and clearing a plan retains currency and purpose.
-The local workspace now accepts a pasted Base address or one explicitly selected
-from a compatible browser wallet using EIP-6963/EIP-1193. It keeps address sharing,
-saving a watch, and checking ETH/native USDC balances separate. Watching needs no
-key or signature and grants no spending authority. Agents can read selected saved
-holdings. The browser-wallet increment passed 195 UI tests and nine actual-node
-journeys with synthetic providers; individual wallet brands are not certified.
+The local workspace accepts a pasted Base address, a selection from a compatible
+EIP-6963/EIP-1193 browser wallet, or optional WalletConnect phone pairing. It keeps
+address sharing, saving a watch, and checking ETH/native USDC balances separate.
+Watching needs no key or signature and grants no spending authority. Agents can
+read selected saved holdings. The latest increment passed 229 UI tests, nine
+actual-SDK scenarios and the full isolated browser rehearsal, including seven
+phone-wallet groups. Phone pairing requires a Reown project configured locally;
+live relay authorization and real-phone approval have not yet been verified.
 The prior live balance-provider check settled with two-provider finalized agreement. See the
 [crypto release record](docs/release-crypto-watch-2026-09-29.md) for verification,
 delivery and rollback details. Activity search, older-history browsing and

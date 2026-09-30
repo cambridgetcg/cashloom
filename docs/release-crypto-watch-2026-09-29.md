@@ -297,3 +297,29 @@ Final local evidence: `/tmp/cashloom-walletconnect-integration-20260930.log`,
 `/tmp/cashloom-walletconnect-backend-20260930.log`,
 `/tmp/cashloom-walletconnect-public-review-20260930/result.json`, and
 `/private/var/folders/69/4qnq5h3j1095bfs9psqv13100000gn/T/cashloom-tcg-browser-g_a0sl97`.
+
+### Phone pairing delivery
+
+Implementation source: `193806035e65d0b4cb134f6ec959697bfe605434`, published on
+the private `release/service-workspace-20260929` branch. The private workspace
+ships as local source; the website receives its setup guide and capability copy.
+
+| Environment | Deployment | Verification |
+| --- | --- | --- |
+| Preview | https://2b8a4292.cashloom-atlas.pages.dev, ID `2b8a4292-f4ab-4241-9b62-f2d15c8de815` | 31 passed, zero failures or API availability gaps |
+| Production | https://cashloom.io, Pages ID `35b86287-ea80-46df-a715-2674e0dbec8c` | 31 passed, zero failures or API availability gaps |
+
+HTML and seven entry, planner, guide, and Connections assets matched local hashes
+on both deployments. The `www` redirect returned 308. The owner-only pairing
+setup path returned a public 404, and the guide exposed no private wallet inputs.
+The unchanged INFO service still serves Capital flows with partial source
+coverage. No Fly deployment, real wallet approval, or provider activation was
+performed. The original development checkout and its inherited work remain intact.
+
+Final reports: `/tmp/cashloom-walletconnect-preview-20260930/result.json`,
+`/tmp/cashloom-walletconnect-production-20260930/result.json`, and adjacent
+`asset-verification.json` reports.
+
+Website rollback target: Pages deployment
+`97f32df2-a623-4622-966f-63b8b245fa38`, source
+`637a0a8ac1886fce11630e374be13e889d3001f2`.

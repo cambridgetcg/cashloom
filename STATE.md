@@ -7,12 +7,12 @@ runs-on: this machine
 
 ## state
 phase: active
-health: standards-based browser wallet selection and Base watching published; public guide deployed; public INFO serves Capital flows with partial coverage
+health: browser and optional WalletConnect phone address selection published; public guide deployed; public INFO serves Capital flows with partial coverage
 release-branch: release/service-workspace-20260929
-published-source-snapshot: 637a0a8ac1886fce11630e374be13e889d3001f2
-production-deployment: 97f32df2-a623-4622-966f-63b8b245fa38 at https://cashloom.io
-verified-preview: https://502dca43.cashloom-atlas.pages.dev
-delivery-checks: preview and production each 30 passed with no gaps; www returned 308; seven entry, planner, guide and Connections asset hashes matched the verified build
+published-source-snapshot: 193806035e65d0b4cb134f6ec959697bfe605434
+production-deployment: 35b86287-ea80-46df-a715-2674e0dbec8c at https://cashloom.io
+verified-preview: https://2b8a4292.cashloom-atlas.pages.dev
+delivery-checks: preview and production each 31 passed with no gaps; www returned 308; HTML and seven entry, planner, guide and Connections asset hashes matched the verified build
 source-access: existing private cambridgetcg/cashloom repository; repository access required
 original-development-branch: feature/capital-flows-20260909, preserved with its original worktree and local edits
 original-development-base: e421a1ac4a3e397d0afb8ae65efe2cb5580a515c
@@ -21,9 +21,10 @@ info-deployment: registry.fly.io/cashloom-api:deployment-01M3PP26N8B82ERTK1XNEDJ
 private-workspace: local developer pilot; no live-bank or payment-provider activation
 activity: full saved-history search, older pages, same-session Back context, and preserved draft destinations; 15 actual-node daily-use checks passed
 crypto: local address-only Base watch; explicit finalized ETH/native-USDC checks; default Base/dRPC live probe settled with quorum two; no history import or spending authority
-wallet-standards: EIP-6963 discovery and EIP-1193 address selection into existing CAIP-qualified Base watches; 195 UI tests and nine actual-node synthetic-provider journeys passed; no real-wallet interoperability certification or WalletConnect pairing
+wallet-standards: EIP-6963/EIP-1193 browser selection and temporary WalletConnect Base address pairing; 229 UI tests, nine actual-SDK scenarios and seven actual-node phone groups passed with synthetic transport; no signing methods
+phone-pairing-gap: local Reown project configuration required; no live relay authorization or real-phone approval verified
 agent-layer: selected-account local MCP reads, saved finalized Base holdings, and owner-reviewed category proposals; no hosted model or autonomous financial actions
-freshness: manually verified 2026-09-29
+freshness: manually verified 2026-09-30
 
 ## knows
 - CashLoom
