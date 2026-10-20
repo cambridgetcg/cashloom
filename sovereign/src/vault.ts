@@ -14,7 +14,8 @@
 import { argon2id } from "@noble/hashes/argon2.js";
 import { randomBytes } from "@noble/hashes/utils.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { NETWORK, WIF, p2wpkh } from "@scure/btc-signer";
+import { NETWORK, Transaction, WIF, p2wpkh } from "@scure/btc-signer";
+import type { Hex, TransactionSerializable } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import * as ed25519 from "@noble/ed25519";
 import { db, newId } from "./db.ts";
@@ -190,8 +191,8 @@ const btcAddressFor = (priv: Uint8Array): string => {
 };
 
 // BTC key material is sealed as canonical 64-hex (no 0x — Bitcoin convention),
-// whatever shape it arrived in, so revealForSigning has exactly one format
-// per kind to hand back.
+// whatever shape it arrived in, so in-vault signing has exactly one format
+// per kind to decode.
 const sealBtcKey = async (label: string, priv: Uint8Array): Promise<VaultKeyInfo> => {
   const key = requireKey();
   if (!secp256k1.utils.isValidSecretKey(priv)) {
@@ -240,8 +241,8 @@ export const importBtcKey = async (label: string, secret: string): Promise<Vault
  *  authorization). Signs records, never money: an ed25519 key can't spend an
  *  evm/btc account, so this authority can attest but not move funds. Stored as
  *  kind 'secret'; the address column carries the base64url public key so it is
- *  visible in listKeys. The 32-byte seed is sealed as 64-hex; revealForSigning
- *  hands it back for exactly one signature. */
+ *  visible in listKeys. The 32-byte seed is sealed as 64-hex; signRecord uses
+ *  it inside the vault for one signature at a time. */
 export const generateEd25519Key = async (label: string): Promise<VaultKeyInfo> => {
   const key = requireKey();
   const seed = ed25519.utils.randomPrivateKey();
@@ -256,16 +257,114 @@ export const generateEd25519Key = async (label: string): Promise<VaultKeyInfo> =
   return { id, label, kind: "secret", address, created_at: new Date().toISOString() };
 };
 
-/** Decrypt a key for SIGNING ONLY. Callers must never log, store, or return
- *  the value; it lives for the duration of one signature. Format follows the
- *  key's kind: evm keys reveal as 0x-hex, btc keys as bare 64-hex, secret keys
- *  as their sealed text (ed25519 seed = 64-hex). */
-export const revealForSigning = async (keyId: string): Promise<string> => {
+/* ---------------------------- in-vault signing --------------------------- */
+
+// Private keys never leave this module. Each primitive below decrypts one key
+// for one signature, refuses a key of the wrong kind, and zeroizes the
+// decrypted bytes before it returns, whatever happens. Callers get back only a
+// signature or a signed transaction: @agenttool/wallet's exportable:false.
+
+type KeyKind = "evm" | "btc" | "secret";
+
+interface SealedKeyRow {
+  kind: string;
+  address: string | null;
+  enc_blob: Uint8Array;
+}
+
+const withDecryptedKey = async <T>(
+  keyId: string,
+  kind: KeyKind,
+  use: (plain: Uint8Array, row: SealedKeyRow) => Promise<T>
+): Promise<T> => {
   const key = requireKey();
-  const row = db.query("SELECT enc_blob FROM vault_keys WHERE id = ?").get(keyId) as
-    | { enc_blob: Uint8Array }
-    | null;
+  const row = db
+    .query("SELECT kind, address, enc_blob FROM vault_keys WHERE id = ?")
+    .get(keyId) as SealedKeyRow | null;
   if (!row) throw new Error(`No vault key ${keyId}`);
+  if (row.kind !== kind) {
+    throw new Error(`Vault key ${keyId} is a ${row.kind} key; this signature needs a ${kind} key.`);
+  }
   const plain = await unseal(key, new Uint8Array(row.enc_blob));
-  return new TextDecoder().decode(plain);
+  try {
+    return await use(plain, row);
+  } finally {
+    plain.fill(0);
+  }
+};
+
+const hexNibble = (c: number): number =>
+  c >= 48 && c <= 57 ? c - 48 : c >= 97 && c <= 102 ? c - 87 : c >= 65 && c <= 70 ? c - 55 : -1;
+
+// Decode sealed 64-hex key text straight from the decrypted bytes, so no
+// string copy of the key (which JS could never zeroize) is made.
+const keyBytesFromHexText = (text: Uint8Array): Uint8Array => {
+  const out = new Uint8Array(32);
+  let ok = text.length === 64;
+  for (let i = 0; ok && i < 32; i++) {
+    const hi = hexNibble(text[2 * i]!);
+    const lo = hexNibble(text[2 * i + 1]!);
+    ok = hi >= 0 && lo >= 0;
+    out[i] = (hi << 4) | lo;
+  }
+  if (ok) return out;
+  out.fill(0);
+  throw new Error("Vault key material is not a 32-byte hex key.");
+};
+
+/** Sign one EVM transaction with a vault key and return the serialized signed
+ *  transaction. Refuses unless the key derives `expectedFrom`. viem accepts a
+ *  key only as a hex string, which JS cannot zeroize; that string lives inside
+ *  this call and is never returned. */
+export const signEvmTransaction = async (
+  keyId: string,
+  expectedFrom: string,
+  request: TransactionSerializable
+): Promise<Hex> =>
+  withDecryptedKey(keyId, "evm", async (plain) => {
+    const account = privateKeyToAccount(new TextDecoder().decode(plain) as Hex);
+    if (account.address.toLowerCase() !== expectedFrom.toLowerCase()) {
+      throw new Error("The vault's EVM key does not match the quoted sending address.");
+    }
+    return account.signTransaction(request);
+  });
+
+/** Sign every input of a prepared BTC transaction that this vault key can
+ *  sign, and return how many it signed. Only a real @scure/btc-signer
+ *  Transaction is accepted, so a look-alike object's sign() never receives
+ *  key bytes. */
+export const signBtcTransaction = async (keyId: string, tx: Transaction): Promise<number> => {
+  if (!(tx instanceof Transaction)) {
+    throw new Error("signBtcTransaction needs a @scure/btc-signer Transaction.");
+  }
+  return withDecryptedKey(keyId, "btc", async (plain) => {
+    const priv = keyBytesFromHexText(plain);
+    try {
+      return tx.sign(priv);
+    } finally {
+      priv.fill(0);
+    }
+  });
+};
+
+/** Sign one record digest with a vault-held ed25519 authority key (kind
+ *  'secret') and return the 64-byte signature: @agenttool/wallet's
+ *  RecordSigner.sign_digest with the seed kept inside the vault. Refuses if the
+ *  decrypted seed no longer derives the public key recorded for it. */
+export const signRecord = async (keyId: string, digest: Uint8Array): Promise<Uint8Array> => {
+  if (!(digest instanceof Uint8Array) || digest.byteLength === 0) {
+    throw new Error("signRecord needs a non-empty digest.");
+  }
+  return withDecryptedKey(keyId, "secret", async (plain, row) => {
+    const seed = keyBytesFromHexText(plain);
+    try {
+      const publicKey = Buffer.from(await ed25519.getPublicKeyAsync(seed)).toString("base64url");
+      if (publicKey !== row.address) {
+        throw new Error(`Vault key ${keyId} does not match its recorded public key.`);
+      }
+      return await ed25519.signAsync(digest, seed);
+    } finally {
+      seed.fill(0);
+    }
+  });
 };

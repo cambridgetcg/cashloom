@@ -36,25 +36,22 @@ const openAuthorityDb = (path = ":memory:"): Database => {
   return database;
 };
 
-const seedHex = (seed: Uint8Array): string =>
-  Array.from(seed, (byte) => byte.toString(16).padStart(2, "0")).join("");
-
 interface FakeVault extends V2NodeAuthorityVault {
   readonly generateCalls: number;
-  readonly revealCalls: number;
+  readonly signCalls: number;
 }
 
 function fakeVault(database: Database, seedByte: number): FakeVault {
   const seed = new Uint8Array(32).fill(seedByte);
   let generateCalls = 0;
-  let revealCalls = 0;
+  let signCalls = 0;
   let storedId: string | undefined;
   return {
     get generateCalls() {
       return generateCalls;
     },
-    get revealCalls() {
-      return revealCalls;
+    get signCalls() {
+      return signCalls;
     },
     async generateEd25519Key(label) {
       generateCalls += 1;
@@ -73,10 +70,10 @@ function fakeVault(database: Database, seedByte: number): FakeVault {
       storedId = id;
       return { id, address: publicKey };
     },
-    async revealForSigning(keyId) {
-      revealCalls += 1;
+    async signRecord(keyId, digest) {
+      signCalls += 1;
       if (keyId !== storedId) throw new Error("unexpected test key");
-      return seedHex(seed);
+      return ed25519.signAsync(digest, seed);
     },
   };
 }
@@ -103,7 +100,7 @@ describe("CashLoom v2 node authority", () => {
     database.close();
   });
 
-  test("reveals once for one digest, verifies the key binding, and signs", async () => {
+  test("asks the vault to sign one digest once and verifies the key binding", async () => {
     const database = openAuthorityDb();
     const vault = fakeVault(database, 11);
     const provider = createV2NodeAuthorityProvider({ db: database, vault });
@@ -111,7 +108,7 @@ describe("CashLoom v2 node authority", () => {
     const digest = new Uint8Array(32).fill(19);
 
     const signature = await context.signer.sign_digest(digest);
-    expect(vault.revealCalls).toBe(1);
+    expect(vault.signCalls).toBe(1);
     expect(
       await ed25519.verifyAsync(
         signatureFromBase64Url(signature),
@@ -123,7 +120,7 @@ describe("CashLoom v2 node authority", () => {
     await expect(
       context.signer.sign_digest(new Uint8Array(31)),
     ).rejects.toThrow(/exactly 32 bytes/);
-    expect(vault.revealCalls).toBe(1);
+    expect(vault.signCalls).toBe(1);
     database.close();
   });
 
@@ -143,13 +140,13 @@ describe("CashLoom v2 node authority", () => {
     database.close();
   });
 
-  test("refuses revealed seed material that does not match the persisted public key", async () => {
+  test("refuses a vault signature that does not match the persisted public key", async () => {
     const database = openAuthorityDb();
     const generated = fakeVault(database, 15);
     const vault: V2NodeAuthorityVault = {
       generateEd25519Key: generated.generateEd25519Key.bind(generated),
-      async revealForSigning() {
-        return seedHex(new Uint8Array(32).fill(16));
+      async signRecord(_keyId, digest) {
+        return ed25519.signAsync(digest, new Uint8Array(32).fill(16));
       },
     };
     const provider = createV2NodeAuthorityProvider({ db: database, vault });
@@ -169,7 +166,7 @@ describe("CashLoom v2 node authority", () => {
         attempts += 1;
         throw new Error("test vault unavailable");
       },
-      async revealForSigning() {
+      async signRecord() {
         throw new Error("not reached");
       },
     };
@@ -221,7 +218,7 @@ const processWorker = `
       ).run(id, label, address, seed);
       return { id, address };
     },
-    async revealForSigning() {
+    async signRecord() {
       throw new Error("cross-process ensure test does not sign");
     },
   };

@@ -21,7 +21,7 @@
 import { Address, NETWORK, OutScript, Transaction, selectUTXO } from "@scure/btc-signer";
 import { hex } from "@scure/base";
 import { sha256BytesId } from "@agenttool/wallet";
-import { revealForSigning } from "../vault.ts";
+import { signBtcTransaction } from "../vault.ts";
 import {
   AmbiguousBroadcastError,
   type PaymentInstruction,
@@ -764,14 +764,9 @@ export const btcSender: PaymentSender = {
     // never a fallback: it would sign coins and change the human never saw.
     const tx = compiled.tx;
 
-    // Reveal lives for exactly this scope; the byte copy is zeroized the
-    // moment the signatures exist.
-    const priv = hex.decode(await revealForSigning(ctx.vaultKeyId));
-    try {
-      tx.sign(priv);
-    } finally {
-      priv.fill(0);
-    }
+    // The vault signs in place and zeroizes its decrypted key bytes; no key
+    // material reaches this sender.
+    await signBtcTransaction(ctx.vaultKeyId, tx);
     tx.finalize();
 
     // Belt and braces on the implicit fee: what is about to broadcast pays
