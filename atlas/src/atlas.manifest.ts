@@ -98,7 +98,7 @@ export const MODULES: Module[] = [
     loadBearing: [
       { marker: "It IS custody", note: "No recovery by design. A recoverable vault is a custodial vault wearing a costume." },
       { marker: "One error for every wrong-passphrase shape — no oracle", note: "Unlock failures are indistinguishable, so the error can never become a guessing aid." },
-      { marker: "Private keys never leave this module", note: "The vault signs in place and hands back only signatures. No caller ever holds a key, and the decrypted bytes are zeroized before each signing call returns." },
+      { marker: "Private keys never leave this module", note: "The vault signs inside itself and hands back only signatures or signed transactions; key bytes reach no caller-supplied code. No caller ever holds a key, and the decrypted bytes are zeroized before each signing call returns." },
     ],
     relatesTo: ["pay", "the-node"],
     weave: { x: 0.22, y: 0.4 },

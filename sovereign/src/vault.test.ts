@@ -27,6 +27,23 @@ const EVM_REQUEST = {
 
 // Throwaway BTC vector (32 bytes of 0x07), the same one imported below; NOT a secret.
 const BTC_VECTOR_HEX = "07".repeat(32);
+const VECTOR_PUBKEY = secp256k1.getPublicKey(Buffer.from(BTC_VECTOR_HEX, "hex"), true);
+const VECTOR_PAY = p2wpkh(VECTOR_PUBKEY, NETWORK);
+
+// One P2WPKH input (locked to `script`, the vector's own by default) paying
+// back to the vector's address; it is only signed here, never broadcast.
+const vectorTransaction = <T extends Transaction>(
+  tx: T = new Transaction() as T,
+  script: Uint8Array = VECTOR_PAY.script
+): T => {
+  tx.addInput({
+    txid: new Uint8Array(32).fill(0x11),
+    index: 0,
+    witnessUtxo: { script, amount: 100_000n },
+  });
+  tx.addOutputAddress(VECTOR_PAY.address!, 90_000n, NETWORK);
+  return tx;
+};
 
 describe("vault — custody discipline", () => {
   it("starts uninitialized and locked", () => {
@@ -117,30 +134,17 @@ describe("vault — btc keys", () => {
     expect(blobText).not.toMatch(/[0-9a-f]{64}/); // sealed means sealed
   });
 
-  it("signs a BTC transaction in place and zeroizes the key bytes it used", async () => {
+  it("signs a BTC PSBT on a transaction of its own and returns it signed", async () => {
     const key = await vault.importBtcKey("btc signer", BTC_VECTOR_HEX);
-    const pay = p2wpkh(secp256k1.getPublicKey(Buffer.from(BTC_VECTOR_HEX, "hex"), true), NETWORK);
+    const unsigned = vectorTransaction().toPSBT(0);
+    const sent = Uint8Array.from(unsigned);
 
-    class SpyTransaction extends Transaction {
-      seen: Uint8Array | undefined;
-      override sign(privateKey: Parameters<Transaction["sign"]>[0]): number {
-        this.seen = privateKey as Uint8Array;
-        return super.sign(privateKey);
-      }
-    }
-    const tx = new SpyTransaction();
-    tx.addInput({
-      txid: new Uint8Array(32).fill(0x11),
-      index: 0,
-      witnessUtxo: { script: pay.script, amount: 100_000n },
-    });
-    tx.addOutputAddress(pay.address!, 90_000n, NETWORK);
-
-    expect(await vault.signBtcTransaction(key.id, tx)).toBe(1);
-    tx.finalize();
-    expect(tx.isFinal).toBe(true);
-    expect(tx.seen).toBeDefined();
-    expect(tx.seen!.every((byte) => byte === 0)).toBe(true);
+    const signed = Transaction.fromPSBT(await vault.signBtcPsbt(key.id, unsigned));
+    expect(unsigned).toEqual(sent); // the caller's bytes are left as they were
+    expect(signed.unsignedTx).toEqual(Transaction.fromPSBT(sent).unsignedTx);
+    expect(signed.getInput(0).partialSig?.[0]?.[0]).toEqual(VECTOR_PUBKEY);
+    signed.finalize();
+    expect(signed.isFinal).toBe(true);
 
     const { db } = await import("./db.ts");
     const row = db.query("SELECT enc_blob FROM vault_keys WHERE id = ?").get(key.id) as {
@@ -149,15 +153,80 @@ describe("vault — btc keys", () => {
     expect(Buffer.from(row.enc_blob).toString("latin1")).not.toContain(BTC_VECTOR_HEX);
   });
 
-  it("gives key bytes to no look-alike transaction and to no other key kind", async () => {
-    const btc = vault.listKeys().find((k) => k.kind === "btc")!;
-    const evm = vault.listKeys().find((k) => k.kind === "evm")!;
-    let received: unknown;
-    const lookAlike = { sign: (priv: unknown) => (received = priv) } as unknown as Transaction;
-    await expect(vault.signBtcTransaction(btc.id, lookAlike)).rejects.toThrow(/needs a @scure\/btc-signer Transaction/);
-    expect(received).toBeUndefined();
+  it("gives key bytes to no hostile subclass and to no instance-level override", async () => {
+    const btc = vault.listKeys().find((k) => k.label === "btc signer")!;
+    const stolen: Uint8Array[] = [];
+    const steal = (priv: unknown): void => {
+      if (priv instanceof Uint8Array) stolen.push(Uint8Array.from(priv));
+    };
 
-    await expect(vault.signBtcTransaction(evm.id, new Transaction())).rejects.toThrow(/is a evm key; this signature needs a btc key/);
+    // A subclass that copies whatever key reaches sign() or signIdx().
+    class HostileTransaction extends Transaction {
+      override sign(privateKey: Parameters<Transaction["sign"]>[0]): number {
+        steal(privateKey);
+        return super.sign(privateKey);
+      }
+      override signIdx(privateKey: Parameters<Transaction["signIdx"]>[0], idx: number): boolean {
+        steal(privateKey);
+        return super.signIdx(privateKey, idx);
+      }
+    }
+    const hostile = vectorTransaction(new HostileTransaction());
+
+    // A genuine Transaction whose own sign() and signIdx() are replaced.
+    const overridden = vectorTransaction();
+    Object.assign(overridden, {
+      sign: (privateKey: unknown) => (steal(privateKey), 1),
+      signIdx: (privateKey: unknown) => (steal(privateKey), true),
+    });
+
+    for (const tx of [hostile, overridden]) {
+      // Handing over the object itself is refused before any key is decrypted.
+      await expect(vault.signBtcPsbt(btc.id, tx as unknown as Uint8Array)).rejects.toThrow(
+        /needs the transaction as non-empty PSBT bytes/
+      );
+      // Its PSBT bytes are signed on the vault's own Transaction, which the
+      // overrides never touch.
+      const signed = Transaction.fromPSBT(await vault.signBtcPsbt(btc.id, tx.toPSBT(0)));
+      signed.finalize();
+      expect(signed.isFinal).toBe(true);
+    }
+    expect(stolen).toEqual([]);
+  });
+
+  it("zeroizes the key bytes the library signed with", async () => {
+    const btc = vault.listKeys().find((k) => k.label === "btc signer")!;
+    // Test-only spy on the library's shared prototype. Code that can rewrite
+    // @scure/btc-signer for the whole process already runs inside the vault's
+    // trust boundary; this spy only observes what the vault's own call received.
+    const original = Transaction.prototype.sign;
+    let seen: Uint8Array | undefined;
+    Transaction.prototype.sign = function (this: Transaction, privateKey, ...rest) {
+      seen = privateKey as Uint8Array;
+      return original.call(this, privateKey, ...rest);
+    };
+    try {
+      await vault.signBtcPsbt(btc.id, vectorTransaction().toPSBT(0));
+    } finally {
+      Transaction.prototype.sign = original;
+    }
+    expect(seen).toBeInstanceOf(Uint8Array);
+    expect(seen!.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("refuses foreign inputs, malformed PSBTs and other key kinds", async () => {
+    const btc = vault.listKeys().find((k) => k.label === "btc signer")!;
+    const evm = vault.listKeys().find((k) => k.kind === "evm")!;
+    const psbt = vectorTransaction().toPSBT(0);
+
+    // An input locked to someone else's key is never signed.
+    const otherPay = p2wpkh(secp256k1.getPublicKey(new Uint8Array(32).fill(9), true), NETWORK);
+    const foreign = vectorTransaction(new Transaction(), otherPay.script).toPSBT(0);
+    await expect(vault.signBtcPsbt(btc.id, foreign)).rejects.toThrow(/No inputs signed/);
+
+    await expect(vault.signBtcPsbt(btc.id, new Uint8Array(0))).rejects.toThrow(/non-empty PSBT bytes/);
+    await expect(vault.signBtcPsbt(btc.id, new Uint8Array([1, 2, 3]))).rejects.toThrow();
+    await expect(vault.signBtcPsbt(evm.id, psbt)).rejects.toThrow(/is a evm key; this signature needs a btc key/);
     await expect(vault.signEvmTransaction(btc.id, btc.address!, EVM_REQUEST)).rejects.toThrow(/is a btc key; this signature needs a evm key/);
   });
 

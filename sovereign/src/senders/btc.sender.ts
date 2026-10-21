@@ -21,7 +21,7 @@
 import { Address, NETWORK, OutScript, Transaction, selectUTXO } from "@scure/btc-signer";
 import { hex } from "@scure/base";
 import { sha256BytesId } from "@agenttool/wallet";
-import { signBtcTransaction } from "../vault.ts";
+import { signBtcPsbt } from "../vault.ts";
 import {
   AmbiguousBroadcastError,
   type PaymentInstruction,
@@ -762,11 +762,14 @@ export const btcSender: PaymentSender = {
 
     // Sign the exact transaction compiled above. Re-selection at confirm is
     // never a fallback: it would sign coins and change the human never saw.
-    const tx = compiled.tx;
-
-    // The vault signs in place and zeroizes its decrypted key bytes; no key
-    // material reaches this sender.
-    await signBtcTransaction(ctx.vaultKeyId, tx);
+    // The vault signs its own copy of the quoted PSBT and zeroizes its
+    // decrypted key bytes; no key material reaches this sender.
+    const tx = Transaction.fromPSBT(
+      await signBtcPsbt(ctx.vaultKeyId, compiled.unsignedPayload),
+    );
+    if (!sameBytes(tx.unsignedTx, compiled.tx.unsignedTx)) {
+      throw new Error("The vault signed a different transaction than the one quoted — refusing to broadcast.");
+    }
     tx.finalize();
 
     // Belt and braces on the implicit fee: what is about to broadcast pays

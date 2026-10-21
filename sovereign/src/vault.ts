@@ -262,7 +262,9 @@ export const generateEd25519Key = async (label: string): Promise<VaultKeyInfo> =
 // Private keys never leave this module. Each primitive below decrypts one key
 // for one signature, refuses a key of the wrong kind, and zeroizes the
 // decrypted bytes before it returns, whatever happens. Callers get back only a
-// signature or a signed transaction: @agenttool/wallet's exportable:false.
+// signature or a signed transaction: @agenttool/wallet's exportable:false. Key
+// bytes are only ever handed to library code the vault calls itself, never to
+// an object or callback a caller passed in.
 
 type KeyKind = "evm" | "btc" | "secret";
 
@@ -329,21 +331,28 @@ export const signEvmTransaction = async (
     return account.signTransaction(request);
   });
 
-/** Sign every input of a prepared BTC transaction that this vault key can
- *  sign, and return how many it signed. Only a real @scure/btc-signer
- *  Transaction is accepted, so a look-alike object's sign() never receives
- *  key bytes. */
-export const signBtcTransaction = async (keyId: string, tx: Transaction): Promise<number> => {
-  if (!(tx instanceof Transaction)) {
-    throw new Error("signBtcTransaction needs a @scure/btc-signer Transaction.");
+/** Sign a prepared BTC transaction, given as PSBT bytes, with a vault key and
+ *  return the signed PSBT bytes for the caller to finalize. Every input this
+ *  key can sign is signed with the library's default sighash (ALL for segwit
+ *  v0); it refuses if no input belongs to the key. The vault parses the bytes
+ *  into a Transaction of its own and signs that, so the key bytes go only to
+ *  @scure/btc-signer's own sign(): no object or method a caller supplied ever
+ *  receives them, and a subclass or an overridden sign() has nothing to hook. */
+export const signBtcPsbt = async (keyId: string, psbt: Uint8Array): Promise<Uint8Array> => {
+  if (!(psbt instanceof Uint8Array) || psbt.byteLength === 0) {
+    throw new Error("signBtcPsbt needs the transaction as non-empty PSBT bytes.");
   }
+  // Parse before any decryption, from a private copy, so a malformed PSBT never
+  // reaches the key and a caller can't change the bytes mid-call.
+  const tx = Transaction.fromPSBT(Uint8Array.from(psbt));
   return withDecryptedKey(keyId, "btc", async (plain) => {
     const priv = keyBytesFromHexText(plain);
     try {
-      return tx.sign(priv);
+      tx.sign(priv);
     } finally {
       priv.fill(0);
     }
+    return tx.toPSBT();
   });
 };
 
