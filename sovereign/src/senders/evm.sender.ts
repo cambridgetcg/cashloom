@@ -17,10 +17,9 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { estimateTotalFee } from "viem/op-stack";
-import { revealForSigning } from "../vault.ts";
+import { signEvmTransaction } from "../vault.ts";
 import {
   AmbiguousBroadcastError,
   type PaymentInstruction,
@@ -435,14 +434,9 @@ const defaultDependencies: EvmSenderDependencies = {
   },
 
   async signTransaction(ctx, expectedFrom, request) {
-    // Reveal lives for exactly this scope: derive the signer, sign, done.
-    const account = privateKeyToAccount(
-      (await revealForSigning(ctx.vaultKeyId)) as Hex
-    );
-    if (!sameAddress(account.address, expectedFrom)) {
-      throw new Error("The revealed EVM key does not match the quoted sending address.");
-    }
-    return account.signTransaction(request);
+    // The vault signs in place and refuses a key that is not expectedFrom;
+    // only the signed transaction comes back.
+    return signEvmTransaction(ctx.vaultKeyId, expectedFrom, request);
   },
 
   async sendRawTransaction(serializedTransaction) {

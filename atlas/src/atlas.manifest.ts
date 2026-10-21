@@ -98,7 +98,7 @@ export const MODULES: Module[] = [
     loadBearing: [
       { marker: "It IS custody", note: "No recovery by design. A recoverable vault is a custodial vault wearing a costume." },
       { marker: "One error for every wrong-passphrase shape — no oracle", note: "Unlock failures are indistinguishable, so the error can never become a guessing aid." },
-      { marker: "lives for the duration of one signature", note: "The decrypted key's lifetime is a single call. Exposure is measured in microseconds, never persisted." },
+      { marker: "Private keys never leave this module", note: "The vault signs inside itself and hands back only signatures or signed transactions; key bytes reach no caller-supplied code. No caller ever holds a key, and the decrypted bytes are zeroized before each signing call returns." },
     ],
     relatesTo: ["pay", "the-node"],
     weave: { x: 0.22, y: 0.4 },
@@ -130,7 +130,7 @@ export const MODULES: Module[] = [
     idea: "All money movement goes through PaymentSender — a separate interface from reading, held to stricter rules: validate, disclose the fee, sign locally, broadcast the signed result.",
     doctrine: [
       "Reading a balance and moving money are different acts with different blast radii, so they live behind different interfaces. A sender validates the destination and amount before anything is signed, discloses the fee before anything moves, and signs locally — the key never rides the wire.",
-      "Two rails move money so far: Base L2 (ETH + USDC), a cheap fast stablecoin path chosen so 'everyone pays everyone' is affordable enough to actually mean everyone — and Bitcoin on-chain, which earned its own module because UTXOs carry their own ways to lose money quietly. The quote uses only the public address; the private key surfaces solely inside the send.",
+      "Two rails move money so far: Base L2 (ETH + USDC), a cheap fast stablecoin path chosen so 'everyone pays everyone' is affordable enough to actually mean everyone — and Bitcoin on-chain, which earned its own module because UTXOs carry their own ways to lose money quietly. The quote uses only the public address; at send time the vault signs in place, so the private key never reaches the sender.",
       "Fees are pass-through only — the network's gas, nothing added. The fee summary says so out loud: 'No CashLoom fee, ever.'",
     ],
     loadBearing: [

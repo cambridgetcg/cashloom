@@ -10,7 +10,7 @@
 import type { Database } from "bun:sqlite";
 import * as ed25519 from "@noble/ed25519";
 import {
-  base64UrlEncode,
+  base64UrlDecode,
   signatureToBase64Url,
   type RecordSigner,
 } from "@agenttool/wallet";
@@ -29,7 +29,8 @@ interface GeneratedEd25519Key {
 
 export interface V2NodeAuthorityVault {
   generateEd25519Key(label: string): Promise<GeneratedEd25519Key>;
-  revealForSigning(keyId: string): Promise<string>;
+  /** Sign one digest inside the vault and return the raw signature. */
+  signRecord(keyId: string, digest: Uint8Array): Promise<Uint8Array>;
 }
 
 export interface V2NodeAuthority {
@@ -41,9 +42,9 @@ export interface V2NodeAuthority {
 
 export interface V2NodeSigningContext extends V2NodeAuthority {
   /**
-   * Internal adapter for signV2Record(). Each call reveals the sealed seed for
-   * exactly one 32-byte digest, checks it still matches the public authority,
-   * signs, and drops the mutable seed bytes.
+   * Internal adapter for signV2Record(). Each call asks the vault to sign
+   * exactly one 32-byte digest in place, then checks the signature against
+   * the public authority. No seed reaches this module.
    */
   readonly signer: RecordSigner;
 }
@@ -63,7 +64,6 @@ interface AuthorityRow {
   address: string | null;
 }
 
-const SEED_HEX = /^[0-9a-fA-F]{64}$/u;
 const ED25519_DIGEST_BYTES = 32;
 
 function authorityRow(db: Database): AuthorityRow | null {
@@ -100,19 +100,6 @@ function resolvedAuthority(row: AuthorityRow): V2NodeAuthority {
   });
 }
 
-function seedFromHex(value: string): Uint8Array {
-  if (!SEED_HEX.test(value)) {
-    throw new Error(
-      "CashLoom v2 node authority key material is not a valid Ed25519 seed.",
-    );
-  }
-  const seed = new Uint8Array(32);
-  for (let index = 0; index < seed.length; index += 1) {
-    seed[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
-  }
-  return seed;
-}
-
 function vaultSigner(
   node: V2NodeAuthority,
   vault: V2NodeAuthorityVault,
@@ -132,22 +119,25 @@ function vaultSigner(
       // Clone before awaiting the vault so a caller cannot mutate the bytes
       // between validation and signing.
       const stableDigest = Uint8Array.from(digest);
-      const revealed = await vault.revealForSigning(node.vaultKeyId);
-      const seed = seedFromHex(revealed);
       try {
-        const publicKey = base64UrlEncode(
-          await ed25519.getPublicKeyAsync(seed),
-        );
-        if (publicKey !== node.authority.public_key) {
+        const signature = await vault.signRecord(node.vaultKeyId, stableDigest);
+        // The vault checks its seed against its own row; this checks the
+        // signature against the authority this node publishes, so a
+        // substituted key can never sign as this node.
+        const bound = await ed25519
+          .verifyAsync(
+            signature,
+            stableDigest,
+            base64UrlDecode(node.authority.public_key, "node authority public key"),
+          )
+          .catch(() => false);
+        if (!bound) {
           throw new Error(
             "CashLoom v2 node authority key material does not match its public key.",
           );
         }
-        return signatureToBase64Url(
-          await ed25519.signAsync(stableDigest, seed),
-        );
+        return signatureToBase64Url(signature);
       } finally {
-        seed.fill(0);
         stableDigest.fill(0);
       }
     },

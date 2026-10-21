@@ -318,10 +318,10 @@ describe("btc sender + pay — the quote→confirm rite, end to end", () => {
     expect(BigInt(ledger.amount_minor)).toBe(-(150_000n + BigInt(quote.feeMinor)));
   });
 
-  it("detects a payload-changing detail tamper before attempting key reveal", async () => {
+  it("detects a payload-changing detail tamper before the vault is asked to sign", async () => {
     resetMock({ utxos: [utxo(utxoId("91"), 0, 100_000)] });
     // This row has the right public BTC address but deliberately unusable
-    // encrypted bytes. A test that reached revealForSigning would fail with a
+    // encrypted bytes. A test that reached signBtcPsbt would fail with a
     // vault/decryption error; the exact payload guard must win first.
     const poisonedKeyId = newId();
     db.query(

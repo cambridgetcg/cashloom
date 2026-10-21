@@ -193,7 +193,7 @@ expiry, fee ceiling, stored PSBT bytes and hash, and a freshly keyless
 recompilation. It creates or exactly reuses one private signed
 `ExecutionCommitment`, then atomically advances the payment from `quoted` to
 `confirmed`. The BTC sender recompiles and compares the same PSBT again before
-the vault may reveal the private key. A generic `/api/pay/confirm` call cannot
+the vault may sign with the private key, which never leaves the vault. A generic `/api/pay/confirm` call cannot
 claim a bound payment; concurrent or repeated confirmations cannot sign it a
 second time. An unanswered or non-success response from the untrusted
 broadcast endpoint stays sticky and must be reconciled by its locally persisted
