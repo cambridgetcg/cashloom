@@ -251,7 +251,7 @@ export function mountZeroneTruth(app: Hono, overrides: Partial<ZeroneTruthDeps> 
     c.json({
       "@type": "Guide",
       what: "zerone truth doors — the kingdom's truth chain, readable by any agent",
-      chain: "cosmos:zerone-1 (mainnet) · cosmos:zerone-testnet-1 (sandbox)",
+      chain: "cosmos:zerone-1 (mainnet) · cosmos:zerone-testnet-1 (legacy testnet)",
       doors: {
         facts: "/v1/zerone/facts?status=verified&domain={d}&category={c}&limit={n}&network={mainnet|testnet}",
         fact: "/v1/zerone/fact/{id}  (fact + trust_profile)",

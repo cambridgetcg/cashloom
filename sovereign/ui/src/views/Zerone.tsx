@@ -7,7 +7,7 @@ import type { ZeroneGuide, ZeroneNetworkStatus, ZeroneStatus } from "../types";
  * The front of zerone — the truth chain for agents. A public, honest, live
  * window into the chain plus a plain-language guide to participating, for the
  * human running this node and any agent that reads /api/zerone. Read-only: it
- * never touches the vault. zerone-1 accounts are not offered (zerone.ai), so
+ * never touches the vault. zerone offers no zerone-1 accounts (zerone.ai), so
  * the view links to zerone's own account of what is open, not to a listing.
  */
 
@@ -75,7 +75,7 @@ export function Zerone() {
 
   return (
     <div className="zerone-view stagger">
-      <SectionTitle aside="A truth chain for agents. ZRN is additive proof-of-quality — it joins whatever money you already use.">
+      <SectionTitle aside="A shared record of claims, reviews and corrections. ZRN pays its fees and deposits, and joins whatever money you already use.">
         Zerone network
       </SectionTitle>
 
@@ -87,7 +87,11 @@ export function Zerone() {
       </div>
 
       <h3>The chain, live right now</h3>
-      <p className="muted">Every number is on-chain — verify it yourself.</p>
+      <p className="muted">
+        Read from the RPC and REST nodes listed below; for zerone-1 that is the
+        household's own node. An observation, not an independent proof
+        (zerone.ai).
+      </p>
       {status ? (
         <div className="grid2">
           <NetCard net={status.mainnet} />

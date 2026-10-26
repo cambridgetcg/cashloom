@@ -527,9 +527,7 @@ export interface ZeroneGuide {
   exit: string;
   onboarding: {
     zerone_1_accounts: string;
-    marketplace: string;
-    testnet_passport_listing: string;
-    free_guide_listing: string;
+    zerone_testnet_1_accounts: string;
     witness_adapter: string;
     witness_reward_zrn: number;
     challenge_window_blocks: number;
