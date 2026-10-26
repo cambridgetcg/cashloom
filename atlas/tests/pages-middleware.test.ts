@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { onRequest } from "../functions/_middleware.ts";
 
@@ -237,5 +238,41 @@ describe("CashLoom Pages public threshold", () => {
       code: "upstream_unavailable",
       retryable: true,
     });
+  });
+
+  it("serves a plain allow-all robots.txt with no new limit or training signal", () => {
+    const robots = readFileSync(new URL("../public/robots.txt", import.meta.url), "utf8");
+    expect(robots).toBe("User-agent: *\nAllow: /\n");
+  });
+
+  it.each(["/robots.txt", "/llms.txt", "/llms-full.txt", "/humans.txt", "/sitemap.xml", "/ai.txt", "/zz-quiet-doors-probe.json"])(
+    "answers 404 instead of the human-route shell at %s when no file is published",
+    async (path) => {
+      const response = await onRequest(context(new Request(`https://cashloom.io${path}`)));
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get("Content-Type")).toMatch(/^application\/problem\+json/);
+      expect(await response.json()).toMatchObject({
+        code: "route_not_found",
+        next_actions: [{ rel: "discover", href: "https://cashloom.io/.well-known/agent.json" }],
+      });
+    },
+  );
+
+  it("answers HEAD for a missing discovery file with a bodyless 404", async () => {
+    const response = await onRequest(context(new Request("https://cashloom.io/sitemap.xml", { method: "HEAD" })));
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("");
+  });
+
+  it("passes a published text file through untouched", async () => {
+    const file = new Response("User-agent: *\nAllow: /\n", {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+    const response = await onRequest(context(new Request("https://cashloom.io/robots.txt"), async () => file));
+
+    expect(response).toBe(file);
   });
 });

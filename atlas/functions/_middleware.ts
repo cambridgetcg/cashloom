@@ -37,6 +37,15 @@ function isInfoPath(pathname: string): boolean {
     || pathname.startsWith("/.well-known/");
 }
 
+// Quiet Doors (October 2026): crawler and agent file names this site does not
+// publish answer 404 instead of the human-route shell.
+const DISCOVERY_FILE = /\.(?:txt|json|xml)$/i;
+
+function isAppShell(response: Response): boolean {
+  const type = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+  return response.status === 200 && type.startsWith("text/html");
+}
+
 function xeniaProblem(origin: string, status: 404 | 405 | 502, detail: string): Response {
   const routeMissing = status === 404;
   const body = {
@@ -153,6 +162,17 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       404,
       "Use the discovery manifest to find CashLoom's public read resources.",
     );
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD") && DISCOVERY_FILE.test(url.pathname)) {
+    const response = await context.next();
+    if (!isAppShell(response)) return response;
+    const missing = xeniaProblem(
+      url.origin,
+      404,
+      "Nothing is published at this path. The site starts at /.",
+    );
+    return request.method === "HEAD" ? new Response(null, { status: 404, headers: missing.headers }) : missing;
   }
 
   return context.next();
