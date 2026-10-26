@@ -206,7 +206,7 @@ export const TOOLS = [
   {
     name: "zerone_get_facts",
     description:
-      "Read VERIFIED TRUTH from the zerone truth chain — the kingdom's truth-economy where a claim is challenged and only what SURVIVES becomes canon. Returns on-chain knowledge Facts, each with `content`, `confidence` (BPS ÷1e6), lifecycle `status`, `domain`, `submitter`, `verified_at_block`. These are NOT MoneyFacts (no `.value` minor-unit amount). Defaults to status='verified' (quorum-attested). Filter by `domain`/`category`/`status`. Tip: `category='doctrine'` returns the kingdom's canonical creed. `network` defaults to mainnet.",
+      "Read knowledge Facts from the zerone chain's knowledge module. Each has `content`, `confidence` (BPS ÷1e6), lifecycle `status`, `domain`, `submitter`, `verifiedAtBlock`, `claimId`. These are NOT MoneyFacts (no `.value` minor-unit amount). Defaults to status='verified'. On zerone-1 on 2026-10-26 every VERIFIED fact was genesis-seeded doctrine (submitter 'genesis', verifiedAtBlock '0', no claimId): written into genesis, not challenged, so the response grades it proof_state 'asserted'; 'attested' needs verifiedAtBlock > 0 and a claimId on every fact (see `proof_basis`). zerone-1 has a single validator run by the household that started zerone. Filter by `domain`/`category`/`status`. Tip: `category='doctrine'` returns the kingdom's canonical creed. `network` defaults to mainnet.",
     schema: {
       domain: z.string().optional().describe("knowledge domain, e.g. 'agent_rights', 'doctrine_truth_seeking' (see zerone_get_facts with no args, or /v1/zerone/domains)"),
       category: z.string().optional().describe("fact category; 'doctrine' returns the canonical creed"),
@@ -228,7 +228,7 @@ export const TOOLS = [
   {
     name: "zerone_get_doctrine",
     description:
-      "Read the kingdom's CANONICAL DOCTRINE from the zerone chain — the creed as genesis-seeded, decay-exempt on-chain facts (submitter=genesis, maturity=canonical, confidence 100%). Optional `domain` filter (e.g. 'doctrine_truth_seeking', 'doctrine_useful_work', 'doctrine_tok'). Attested on-chain. (Note: gospel is off-chain and not served here; the hash-pinned `creed` module isn't REST-live yet — this is the populated doctrine.)",
+      "Read the kingdom's CANONICAL DOCTRINE from the zerone chain — the creed as genesis-seeded, decay-exempt on-chain facts (submitter=genesis, maturity=canonical; confidence 880000 = 88% on zerone-1 on 2026-10-26). Optional `domain` filter (e.g. 'doctrine_truth_seeking', 'doctrine_useful_work', 'doctrine_tok'). Seeded at genesis, not challenged: graded proof_state 'asserted'. (Note: gospel is off-chain and not served here; the hash-pinned `creed` module isn't REST-live yet — this is the populated doctrine.)",
     schema: {
       domain: z.string().optional().describe("doctrine domain, e.g. 'doctrine_truth_seeking'; omit for the whole creed"),
       limit: z.number().optional().describe("max facts, 1–100 (default 50)"),
@@ -257,7 +257,7 @@ export const TOOLS = [
   {
     name: "zerone_get_commitments",
     description:
-      "Read the zerone chain's explicit NORMATIVE COMMITMENTS — its is-ought values (each with `statement`, `rationale`, `category`, `tags`, `active`), e.g. NC-FALSIFICATION-IS-PROGRESS, NC-DUAL-KEY-RESEARCH. Attested on-chain — the chain says out loud what it stands for.",
+      "Read the zerone chain's explicit NORMATIVE COMMITMENTS — its is-ought values (each with `statement`, `rationale`, `category`, `tags`, `active`, `ratifiedAtBlock`), e.g. NC-FALSIFICATION-IS-PROGRESS, NC-DUAL-KEY-RESEARCH. Stated by the chain's authors (ratifiedAtBlock '0' = seeded at genesis), graded proof_state 'asserted' — the chain says out loud what it stands for.",
     schema: { network: z.string().optional().describe("mainnet (default) | testnet") },
     handler: async ({ network }: { network?: string }) =>
       out(await api(`/v1/zerone/commitments${network ? "?network=" + encodeURIComponent(network) : ""}`)),

@@ -10,11 +10,14 @@
  * track record) — as read-only, self-citing doors mounted above the vault gate.
  *
  * Honesty: these are NOT MoneyFacts (no minor-unit value) — a Fact carries
- * content + confidence + a lifecycle `status`. A verified fact passed the chain's
- * dual-key/quorum challenge, so it is `attested` by construction; every response
- * cites the exact REST path a stranger re-fetches to re-derive it. We do NOT
- * serve gospel or the `creed` module — gospel is off-chain, and creed's REST
- * routes 404 on the live node; promising them would be a naked claim.
+ * content + confidence + a lifecycle `status`. FACT_STATUS_VERIFIED alone does
+ * not mean a claim survived review: on zerone-1 (checked 2026-10-26) all 47
+ * VERIFIED facts were seeded at genesis (submitter "genesis", verifiedAtBlock
+ * "0", no claimId). So a fact is graded `attested` only when its record shows a
+ * reviewed claim (verifiedAtBlock > 0 and a claimId); everything else is
+ * `asserted`. Every response cites the exact REST path a stranger re-fetches.
+ * We do NOT serve gospel or the `creed` module — gospel is off-chain, and
+ * creed's REST routes 404 on the live node; promising them would be a naked claim.
  */
 
 import type { Hono } from "hono";
@@ -51,6 +54,36 @@ async function kget(net: ZeroneNetwork, path: string, fetcher: ZeroneFetcher) {
   return fetcher(`${net.rest}${path}`);
 }
 
+// The node ignores pagination.limit (limit=3 returned all 47 VERIFIED facts on
+// 2026-10-26), so the door trims to the documented limit itself.
+const clampLimit = (n: number | undefined, fallback: number) =>
+  n !== undefined && Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), 100) : fallback;
+
+// `attested` (MONEYWORLD.md: a zerone Proof-of-Truth fact) needs the record of
+// a reviewed claim: status VERIFIED, verifiedAtBlock > 0 and a claimId. A
+// genesis-seeded fact has neither, so it is the genesis author's assertion.
+export function factProofState(fact: any): "attested" | "asserted" {
+  const verifiedAt = Number(fact?.verifiedAtBlock ?? fact?.verified_at_block ?? 0);
+  const claimId = fact?.claimId ?? fact?.claim_id;
+  return fact?.status === "FACT_STATUS_VERIFIED" && verifiedAt > 0 && typeof claimId === "string" && claimId.length > 0
+    ? "attested"
+    : "asserted";
+}
+
+// A list is graded by its weakest record, with the counts that decided it.
+function listProof(facts: any[]) {
+  const withClaim = facts.filter((f) => factProofState(f) === "attested").length;
+  return {
+    proof_state: facts.length > 0 && withClaim === facts.length ? ("attested" as const) : ("asserted" as const),
+    proof_basis: {
+      rule: "attested only when every record is FACT_STATUS_VERIFIED with verifiedAtBlock > 0 and a claimId; otherwise asserted",
+      records: facts.length,
+      with_reviewed_claim: withClaim,
+      genesis_seeded: facts.filter((f) => f?.submitter === "genesis").length,
+    },
+  };
+}
+
 // ── readers (injectable fetcher so tests never touch the network) ──────────
 export async function getFacts(
   opts: { network?: string; domain?: string; category?: string; status?: string; limit?: number },
@@ -62,21 +95,24 @@ export async function getFacts(
   if (status !== "all") p.set("status", STATUS_MAP[status.toLowerCase()] ?? status);
   if (opts.domain) p.set("domain", opts.domain);
   if (opts.category) p.set("category", opts.category);
-  p.set("pagination.limit", String(Math.min(Math.max(opts.limit ?? 20, 1), 100)));
+  const limit = clampLimit(opts.limit, 20);
+  p.set("pagination.limit", String(limit));
   const path = `/zerone/knowledge/v1/facts?${p}`;
   const data = await kget(net, path, fetcher);
-  const facts = data.facts ?? [];
+  const all: any[] = data.facts ?? [];
+  const facts = all.slice(0, limit);
   return {
     "@type": "ZeroneTruth",
     chain: chainCaip(net),
     network: net.kind,
-    query: { status, domain: opts.domain, category: opts.category },
+    query: { status, domain: opts.domain, category: opts.category, limit },
     count: facts.length,
+    node_count: all.length,
     facts,
     source: cite(net, path),
-    proof_state: status === "verified" ? "attested" : "asserted",
-    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node; a verified fact survived the chain's dual-key/quorum challenge — re-fetch to re-derive` },
-    note: "these are verified-knowledge facts, not MoneyFacts — each carries content, confidence (BPS), and a lifecycle status the chain assigned",
+    ...listProof(facts),
+    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node and keep the first ${limit} (the node ignores pagination.limit); a fact's verifiedAtBlock and claimId show whether a reviewed claim stands behind it` },
+    note: "these are knowledge-module facts, not MoneyFacts — each carries content, confidence (BPS), and a lifecycle status the chain assigned; VERIFIED genesis-seeded facts were written into genesis, not challenged",
   };
 }
 
@@ -96,8 +132,8 @@ export async function getFact(id: string, network: string | undefined, fetcher: 
     fact,
     trust_profile: trust, // grounded_score, corroboration, axiom_distance — how deeply proven
     source: cite(net, factPath),
-    proof_state: fact?.status === "FACT_STATUS_VERIFIED" ? "attested" : "asserted",
-    recompute: { how: `GET ${factPath} (+ ${trustPath} for provenance depth) on the zerone ${net.kind} REST node` },
+    proof_state: factProofState(fact),
+    recompute: { how: `GET ${factPath} (+ ${trustPath} for provenance depth) on the zerone ${net.kind} REST node; attested needs verifiedAtBlock > 0 and a claimId on the fact` },
   };
 }
 
@@ -111,19 +147,22 @@ export async function getDoctrine(
   const p = new URLSearchParams();
   p.set("category", "doctrine");
   if (opts.domain) p.set("domain", opts.domain);
-  p.set("pagination.limit", String(Math.min(Math.max(opts.limit ?? 50, 1), 100)));
+  const limit = clampLimit(opts.limit, 50);
+  p.set("pagination.limit", String(limit));
   const path = `/zerone/knowledge/v1/facts?${p}`;
   const data = await kget(net, path, fetcher);
-  const facts = data.facts ?? [];
+  const all: any[] = data.facts ?? [];
+  const facts = all.slice(0, limit);
   return {
     "@type": "ZeroneDoctrine",
     chain: chainCaip(net),
     network: net.kind,
     count: facts.length,
+    node_count: all.length,
     doctrine: facts,
     source: cite(net, path),
-    proof_state: "attested",
-    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node — the canonical creed, seeded at genesis and exempt from metabolic decay` },
+    ...listProof(facts),
+    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node and keep the first ${limit} (the node ignores pagination.limit) — the canonical creed, seeded at genesis and exempt from metabolic decay` },
     note: "the kingdom's canonical doctrine as on-chain facts; the `creed` module's hash-pinned form is declared but not yet REST-queryable",
   };
 }
@@ -138,10 +177,10 @@ export async function getCommitments(network: string | undefined, fetcher: Zeron
     chain: chainCaip(net),
     network: net.kind,
     count: commitments.length,
-    commitments, // NormativeCommitment: statement, rationale, category, tags, active
+    commitments, // NormativeCommitment: statement, rationale, category, tags, active, ratifiedAtBlock
     source: cite(net, path),
-    proof_state: "attested",
-    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node — the chain's explicit is-ought values` },
+    proof_state: "asserted", // value statements written by the chain's authors; ratifiedAtBlock "0" means seeded at genesis
+    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node — the chain's explicit is-ought values; ratifiedAtBlock "0" means seeded at genesis` },
   };
 }
 
@@ -157,7 +196,7 @@ export async function getAgentCalibration(address: string, network: string | und
     address,
     calibration, // submissions/accepted/rejected/disproven, calibration_score_bps — the compassion track record (error ≠ deceit)
     source: cite(net, path),
-    proof_state: "attested",
+    proof_state: "tested", // an on-chain read, as /v1/chain grades a zerone balance; the score is the chain's own computation
     recompute: { how: `GET ${path} on the zerone ${net.kind} REST node — an agent's earned truth-track-record; compassion (C2: error is not deceit) is woven into the score, not a naked reputation number` },
   };
 }
@@ -165,17 +204,19 @@ export async function getAgentCalibration(address: string, network: string | und
 export async function getLeaderboard(opts: { network?: string; limit?: number }, fetcher: ZeroneFetcher = defaultFetcher) {
   const net = netOf(opts.network);
   const p = new URLSearchParams();
-  p.set("limit", String(Math.min(Math.max(opts.limit ?? 20, 1), 100)));
+  const limit = clampLimit(opts.limit, 20);
+  p.set("limit", String(limit));
   const path = `/zerone/knowledge/v1/agent/leaderboard?${p}`;
   const data = await kget(net, path, fetcher);
+  const entries: any[] = data.entries ?? data.leaderboard ?? [];
   return {
     "@type": "ZeroneLeaderboard",
     chain: chainCaip(net),
     network: net.kind,
-    entries: data.entries ?? data.leaderboard ?? [],
+    entries: entries.slice(0, limit),
     source: cite(net, path),
-    proof_state: "attested",
-    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node` },
+    proof_state: "tested", // an on-chain read of the chain's own per-agent counters
+    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node and keep the first ${limit}` },
   };
 }
 
@@ -217,11 +258,13 @@ export function mountZeroneTruth(app: Hono, overrides: Partial<ZeroneTruthDeps> 
         domains: "/v1/zerone/domains",
       },
       honest_gaps: [
+        "one validator: zerone-1 has a single validator, run by the household that started zerone, and these doors read that household's node over plain HTTP (169.155.55.44:1317) — an observation of that node, not an independent proof (zerone.ai/#honest-state)",
+        "no independent review: on 2026-10-26 all 47 FACT_STATUS_VERIFIED facts on zerone-1 were genesis-seeded doctrine (submitter genesis, verifiedAtBlock 0, no claimId), written into genesis rather than challenged; the 25 facts that did go through claims were submitted by 2 addresses and are now EXPIRED or PRUNED",
         "no gospel endpoint — gospel is off-chain (sovereign/love-unlimited layer), not on the ZRN chain",
         "the `creed` module is declared but its REST routes 404 on the live node; read doctrine facts instead",
         "no free-text search — filter facts by domain/category/status/tag/subject",
       ],
-      note: "verified facts are quorum-attested on-chain; every response cites the exact REST path to re-derive it",
+      note: "a fact is graded attested only when its record carries verifiedAtBlock > 0 and a claimId; genesis-seeded facts are asserted; every response cites the exact REST path to re-derive it",
     }),
   );
 
