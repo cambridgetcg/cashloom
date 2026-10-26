@@ -10,6 +10,9 @@ const { db } = await import("../db");
 const vault = await import("../vault");
 const { app, requiredScopeForLocalRoute } = await import("../index");
 const passphrase = "synthetic test workspace passphrase";
+// Each initialize/unlock is one Argon2id derivation (64 MiB, t=3), about 2 s on a GitHub
+// runner. The hook and test that run two or three of them get this instead of bun's 5 s default.
+const KDF_TIMEOUT_MS = 30_000;
 let owner: string, accountId: string, otherId: string, transactionId: string;
 const request = (path: string, token: string, body?: unknown) => app.request(path, { method: body === undefined ? "GET" : "POST",
   headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -27,7 +30,7 @@ beforeAll(async () => {
   accountId = crypto.randomUUID(); otherId = crypto.randomUUID(); transactionId = crypto.randomUUID();
   for (const id of [accountId, otherId]) db.query("INSERT INTO accounts(id,display_name,rail,currency,decimals,balance_minor,credential_ref,external_account_id,vault_key_id,account_ref) VALUES(?,'Test account','BANK','USD',2,'12300','PRIVATE_CREDENTIAL','PRIVATE_EXTERNAL','PRIVATE_KEY','PRIVATE_ADDRESS')").run(id);
   db.query("INSERT INTO transactions(id,account_id,title,amount_minor,date,raw) VALUES(?,?,'Bus','-240','2026-09-29T12:00:00.000Z','PRIVATE_RAW')").run(transactionId, accountId);
-});
+}, KDF_TIMEOUT_MS);
 afterEach(() => { if (vault.isValidSession(owner)) for (const access of vault.listAssistAccess(owner)) vault.revokeAssistAccess(owner, access.id); });
 
 test("exact methods are scoped and new grants cannot use general wallet, payment, key or trade APIs", async () => {
@@ -142,7 +145,7 @@ test("creation rechecks owner after body read and preserves narrow owner require
   const response = await delayedBody("/api/assist/access", owner, grantInput(), async () => { vault.lock(); owner = await vault.unlock(passphrase); });
   expect(response.status).toBe(403); expect(vault.isValidSession(priorOwner)).toBe(false);
   expect(vault.listAssistAccess(owner)).toHaveLength(0);
-});
+}, KDF_TIMEOUT_MS);
 
 test("expiry caps child lifetime and expired grants cannot regain access after later owner unlock", async () => {
   const shortOwner = await vault.unlock(passphrase, { ttlMs: 20 });
