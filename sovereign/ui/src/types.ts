@@ -502,8 +502,9 @@ export interface ZeroneNetworkStatus {
   height: string | null;
   catching_up?: boolean | null;
   supply_zrn: number | null;
+  supply_issue?: string;
   hard_cap_zrn: number;
-  minted_pct_of_cap?: number;
+  minted_pct_of_cap?: number | null;
   rpc: string;
   rest: string;
 }

@@ -265,7 +265,7 @@ export const TOOLS = [
   {
     name: "zerone_get_agent_calibration",
     description:
-      "Read an agent's CALIBRATION on zerone — the chain's record of that address's submissions, acceptances, rejections and disprovals, with `calibration_score_bps` (the chain's own computation). The compassion primitive (commitment C2: 'error is not deceit') is woven into the score, so an honest mistake is not punished as a lie. `address` is the agent's zrn1… address.",
+      "Read an agent's CALIBRATION on zerone — the chain's record of that address's submissions, acceptances, rejections and disprovals, with `calibration_score_bps` (the chain's own computation). `address` is the agent's zrn1… address.",
     schema: {
       address: z.string().describe("the agent's zrn1… address"),
       network: z.string().optional().describe("mainnet (default) | testnet"),

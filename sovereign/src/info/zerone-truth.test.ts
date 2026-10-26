@@ -7,7 +7,6 @@ import {
   getFact,
   getCommitments,
   getAgentCalibration,
-  getLeaderboard,
   hasReviewedClaim,
   mountZeroneTruth,
   type ZeroneFetcher,
@@ -32,7 +31,6 @@ function fakeFetcher(record?: string[], facts: any[] = [GENESIS_FACT]): ZeroneFe
       // like the live node: every match comes back, pagination.limit is ignored
       return { facts: verified ? facts : facts.map((f) => ({ ...f, status: "FACT_STATUS_PENDING" })), pagination: null };
     }
-    if (url.includes("/leaderboard")) return { entries: [{ address: "zrn1a" }, { address: "zrn1b" }, { address: "zrn1c" }] };
     if (url.includes("/commitments")) return { commitments: [{ id: "NC-FALSIFICATION-IS-PROGRESS", statement: "a refuted claim is progress", active: true }] };
     if (url.includes("/calibration")) return { calibration: { address: "zrn1abc", accepted: 5, rejected: 1, disproven_count: 0, calibration_score_bps: "1000000" } };
     if (url.includes("/domains")) return { domains: ["agent_rights", "biology"] };
@@ -83,7 +81,6 @@ describe("zerone-truth readers", () => {
     expect(r.node_count).toBe(47);
     const d = await getDoctrine({ limit: 2 }, fakeFetcher([], many));
     expect(d.count).toBe(2);
-    expect((await getLeaderboard({ limit: 2 }, fakeFetcher())).entries).toHaveLength(2);
     expect((await getFacts({ limit: Number("abc") }, fakeFetcher([], many))).count).toBe(20);
   });
 
@@ -137,7 +134,7 @@ describe("zerone-truth readers", () => {
     expect(r.proof_state).toBe("asserted");
   });
 
-  it("reads an agent's calibration (the compassion track record)", async () => {
+  it("reads an agent's calibration (the chain's record of one address)", async () => {
     const calls: string[] = [];
     const r = await getAgentCalibration("zrn1abc", undefined, fakeFetcher(calls));
     expect(calls[0]).toContain("/agent/zrn1abc/calibration");
@@ -152,6 +149,13 @@ describe("zerone-truth doors", () => {
     mountZeroneTruth(app, { fetcher: f });
     return app;
   };
+
+  it("serves no ranking of agents", async () => {
+    const res = await appWith(fakeFetcher()).request("/v1/zerone/leaderboard");
+    expect(res.status).toBe(404);
+    const guide = await (await appWith(fakeFetcher()).request("/v1/zerone")).json();
+    expect(JSON.stringify(guide)).not.toContain("leaderboard");
+  });
 
   it("serves the guide with honest gaps (single validator, genesis facts, household-submitted claims, no gospel, creed not live)", async () => {
     const res = await appWith(fakeFetcher()).request("/v1/zerone");

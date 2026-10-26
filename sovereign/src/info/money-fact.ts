@@ -9,9 +9,10 @@
  *   redistribution — the license class       : public-domain | attribution-required | own-data | onchain-rederivable | third-party-restricted
  *
  * proof_state is the trust axis (re-derivable without a secret and without our
- * say-so?); redistribution makes the market-data firewall STRUCTURAL — the
- * server refuses to meter a fact it may not resell. Value is always exact
- * integer minor units as a decimal STRING — a float never touches money here.
+ * say-so?). redistribution records the licence class; doors withhold values
+ * whose licence does not allow public display (world-door, capital-flows
+ * rightsWithheld). Nothing is metered. Value is always exact integer minor
+ * units as a decimal STRING — a float never touches money here.
  */
 
 export const MONEYFACT_MEDIA_TYPE = "application/vnd.cashloom.moneyfact.v1+json";

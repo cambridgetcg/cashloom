@@ -273,7 +273,17 @@ app.get("/api/zerone/balance/:address", async (c) => {
     return c.json({ error: "bad_address", message: "address must be a zrn1... bech32 address" }, 400);
   }
   const net = c.req.query("network") === "testnet" ? ZERONE_NETWORKS.testnet : ZERONE_NETWORKS.mainnet;
-  return c.json(await getAddressBalance(address, net));
+  try {
+    return c.json(await getAddressBalance(address, net));
+  } catch {
+    return c.json({
+      type: "about:blank",
+      title: "source unreachable",
+      status: 502,
+      detail: `${net.label} did not return a balance; no number is served in its place.`,
+      next_actions: ["retry shortly", "GET /api/zerone/status"],
+    }, 502);
+  }
 });
 
 /* ------------------------- moneyworld (public) ---------------------------- */

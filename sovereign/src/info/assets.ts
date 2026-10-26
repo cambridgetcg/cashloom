@@ -41,7 +41,7 @@ export const ASSETS: AssetRow[] = [
     id: "cosmos:zerone-1/denom:uzrn", symbol: "ZRN", name: "Zerone", decimals: 6,
     chain: { caip2: "cosmos:zerone-1", label: "Zerone mainnet (the truth chain)" },
     aliases: ["zrn", "zerone", "uzrn"],
-    notes: "minor unit: uzrn; supply hard-capped at 222,222,222 ZRN, zero premine",
+    notes: "minor unit: uzrn; 222,222,222 ZRN hard cap; no allocation at genesis (13,555 ZRN: validator collateral, gas and a disclosed operating float); see ZERONE.md",
   },
   {
     id: "eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",

@@ -9,6 +9,7 @@ import {
   samePaymentRecoveryReview,
   type PaymentRecoveryReview,
 } from "../components/PaymentActivity";
+import { PaymentFinalNote } from "../components/PaymentFinalNote";
 import { QuoteFeeTerms } from "../components/QuoteFeeTerms";
 import type { WalletNavigate } from "../navigation";
 import {
@@ -598,6 +599,8 @@ export function Pay({ initialAccountId, onGoto }: { initialAccountId?: string; o
               feeDecimals={feeDecimals}
             />
           )}
+
+          <PaymentFinalNote />
 
           {hasClock && (
             <div className={`quote-clock${expired ? " is-expired" : ""}`}>

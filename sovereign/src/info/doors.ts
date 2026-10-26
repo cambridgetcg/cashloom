@@ -9,6 +9,7 @@ import { makeFact } from "./money-fact.ts";
 import { FX_REFERENCE_DATE_TTL_S, fxReferenceIsStale, getFxRate } from "./fx.ts";
 import { readFees, supportedFeeChains } from "./fees.ts";
 import { ASSETS, resolveAsset, searchAssets } from "./assets.ts";
+import { CORRECTIONS } from "./corrections.ts";
 import { listFeeds } from "./price.ts";
 import { applyRate } from "../utils/minor-units.ts";
 import { CAPITAL_FLOWS_MEDIA_TYPE, CAPITAL_FLOWS_SCHEMA, HISTORY_LIMIT } from "./capital-flows/model.ts";
@@ -248,6 +249,7 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         provenance: "every fact carries sources, method, proof_state, redistribution — no naked numbers",
         refusals_that_teach:
           "the XENIA Surface resources and router fall-through use typed problems with next_actions; older data routes retain route-specific JSON errors",
+        corrections: "when a served meaning changes or a door is removed, an entry is appended to corrections below; entries are never rewritten",
       },
       doors: {
         discovery: "/.well-known/agent.json",
@@ -299,7 +301,10 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
         "no delayed-data upsell — freshness is never a paid feature",
         "no fake urgency, no retry pressure, no dark patterns in refusals",
         "no naked numbers — a fact that cannot cite itself is not served",
+        "no ranking or leaderboard of beings or agents",
+        "no invented zero — a source that does not answer is reported as unreachable, never as 0",
       ],
+      corrections: CORRECTIONS,
       layer_boundary:
         "These application-handler practices are not a cross-layer anonymity promise; read /v1/data-practices for Fly.io, Cloudflare, network, operator, browser, and upstream unknowns.",
       not_covered: [

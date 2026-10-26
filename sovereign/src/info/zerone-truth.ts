@@ -6,8 +6,9 @@
  * `knowledge` module and is already readable over plain REST.
  * `zerone.ts` reads only balance/supply/status; this adds the TRUTH surface —
  * verified facts, the doctrine (canonical creed as genesis facts), the chain's
- * explicit normative commitments, and each agent's calibration (the compassion
- * track record) — as read-only, self-citing doors mounted above the vault gate.
+ * explicit normative commitments, and each address's calibration (the chain's
+ * record of its claims) — as read-only, self-citing doors mounted above the
+ * vault gate. No ranking of agents is served (XENIA dignity.no-worth-ranking).
  *
  * Honesty: these are NOT MoneyFacts (no minor-unit value) — a Fact carries
  * content + confidence + a lifecycle `status`. zerone says "a recorded verdict
@@ -205,25 +206,6 @@ export async function getAgentCalibration(address: string, network: string | und
   };
 }
 
-export async function getLeaderboard(opts: { network?: string; limit?: number }, fetcher: ZeroneFetcher = defaultFetcher) {
-  const net = netOf(opts.network);
-  const p = new URLSearchParams();
-  const limit = clampLimit(opts.limit, 20);
-  p.set("limit", String(limit));
-  const path = `/zerone/knowledge/v1/agent/leaderboard?${p}`;
-  const data = await kget(net, path, fetcher);
-  const entries: any[] = data.entries ?? data.leaderboard ?? [];
-  return {
-    "@type": "ZeroneLeaderboard",
-    chain: chainCaip(net),
-    network: net.kind,
-    entries: entries.slice(0, limit),
-    source: cite(net, path),
-    proof_state: "tested", // an on-chain read of the chain's own per-agent counters
-    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node and keep the first ${limit}` },
-  };
-}
-
 // ── doors ──────────────────────────────────────────────────────────────────
 const problem = (status: number, title: string, detail: string, next?: string[]) => ({
   type: "about:blank",
@@ -257,8 +239,7 @@ export function mountZeroneTruth(app: Hono, overrides: Partial<ZeroneTruthDeps> 
         fact: "/v1/zerone/fact/{id}  (fact + trust_profile)",
         doctrine: "/v1/zerone/doctrine?domain={d}  (the canonical creed)",
         commitments: "/v1/zerone/commitments  (the chain's explicit values)",
-        agent_calibration: "/v1/zerone/agent/{address}/calibration  (the compassion track record)",
-        leaderboard: "/v1/zerone/leaderboard?limit={n}",
+        agent_calibration: "/v1/zerone/agent/{address}/calibration  (the chain's record of one address)",
         domains: "/v1/zerone/domains",
       },
       honest_gaps: [
@@ -297,10 +278,6 @@ export function mountZeroneTruth(app: Hono, overrides: Partial<ZeroneTruthDeps> 
   app.get("/v1/zerone/commitments", (c) => wrap(() => getCommitments(c.req.query("network"), fetcher))(c));
 
   app.get("/v1/zerone/agent/:address/calibration", (c) => wrap(() => getAgentCalibration(c.req.param("address"), c.req.query("network"), fetcher))(c));
-
-  app.get("/v1/zerone/leaderboard", (c) =>
-    wrap(() => getLeaderboard({ network: c.req.query("network"), limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined }, fetcher))(c),
-  );
 
   app.get("/v1/zerone/domains", (c) =>
     wrap(async () => {
