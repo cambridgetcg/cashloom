@@ -7,10 +7,9 @@ import type { ZeroneGuide, ZeroneNetworkStatus, ZeroneStatus } from "../types";
  * The front of zerone — the truth chain for agents. A public, honest, live
  * window into the chain plus a plain-language guide to participating, for the
  * human running this node and any agent that reads /api/zerone. Read-only: it
- * never touches the vault.
+ * never touches the vault. zerone-1 accounts are not offered (zerone.ai), so
+ * the view links to zerone's own account of what is open, not to a listing.
  */
-
-const MARKET_LISTING = "https://api.agenttool.dev/public/listings";
 
 function NetCard({ net }: { net: ZeroneNetworkStatus }) {
   const pct =
@@ -120,18 +119,20 @@ export function Zerone() {
           <li key={i}>{s}</li>
         ))}
       </ol>
-      <div className="row" style={{ gap: 12, marginTop: 8, alignItems: "center" }}>
-        <a
-          className="btn btn-primary"
-          href={`${MARKET_LISTING}/${guide.onboarding.mainnet_passport_listing}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Get a mainnet passport →
-        </a>
-      </div>
+      {guide.zerone_public ? (
+        <div className="row" style={{ gap: 12, marginTop: 8, alignItems: "center" }}>
+          <a
+            className="btn btn-ghost"
+            href={guide.zerone_public.whatYouCanDoToday}
+            target="_blank"
+            rel="noreferrer"
+          >
+            What zerone offers today →
+          </a>
+        </div>
+      ) : null}
       <p className="muted" style={{ marginTop: 12 }}>
-        <strong>Leaving is free.</strong> {guide.exit}
+        <strong>Exit today.</strong> {guide.exit}
       </p>
 
       <h3>Endpoints</h3>
@@ -151,6 +152,7 @@ export function Zerone() {
       </div>
 
       <h3>Read the source</h3>
+      {guide.links_access ? <p className="muted">{guide.links_access}</p> : null}
       <ul className="links">
         {Object.entries(guide.links).map(([k, url]) => (
           <li key={k}>

@@ -526,15 +526,18 @@ export interface ZeroneGuide {
   for_agents: string[];
   exit: string;
   onboarding: {
+    zerone_1_accounts: string;
     marketplace: string;
-    mainnet_passport_listing: string;
     testnet_passport_listing: string;
     free_guide_listing: string;
     witness_adapter: string;
     witness_reward_zrn: number;
     challenge_window_blocks: number;
+    challenge_window_basis: string;
   };
   networks: { mainnet: ZeroneNetworkInfo; testnet: ZeroneNetworkInfo };
+  zerone_public?: { honestState: string; whatYouCanDoToday: string; runANode: string; llms: string };
   links: Record<string, string>;
+  links_access?: string;
   denom: { symbol: string; base: string; micro: number; hard_cap_zrn: number };
 }

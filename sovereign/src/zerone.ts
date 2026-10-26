@@ -41,7 +41,7 @@ export const ZERONE_NETWORKS: Record<"mainnet" | "testnet", ZeroneNetwork> = {
     rpc: "http://37.16.28.121:26657",
     rest: "http://37.16.28.121:1317",
     p2pSeed: "9a9c6b9d36c55d21c32b1ee8749adf8dd7c6b0d4@37.16.28.121:26656",
-    what: "The playground. Play-value ZRN, faucet-funded onboarding, reset without notice. Prove your integration here before you commit on mainnet.",
+    what: "The playground. Play-value ZRN, faucet-funded onboarding, reset without notice. Prove your integration here.",
   },
 };
 
@@ -52,14 +52,28 @@ export const ZRN = {
   hardCapZrn: 222_222_222,
 } as const;
 
+// zerone-1 accounts are not offered (zerone.ai, JOIN.md), so the guide names no
+// mainnet passport listing. Window and reward were read live on 2026-10-26 by
+// RPC abci_query (/zerone.substrate_bridge.v1.Query/Params and /Adapter at
+// h1396563; the REST params route returns 404): witness_reward_challenge_window
+// _blocks 200, adapter ACTIVE, witness_reward_uzrn 222000.
 export const ZERONE_ONBOARDING = {
   marketplace: "https://api.agenttool.dev",
-  mainnetPassportListingId: "87608a68-aaa6-410e-b3bb-1c6b98df7c2e",
   testnetPassportListingId: "64cbc078-bbd1-41b4-ad9f-b82363678936",
   freeGuideListingId: "96f679d7-12c7-4f94-abba-ddce800d0767",
   witnessAdapter: "agenttool-invocation-v1",
   witnessRewardZrn: 0.222,
   challengeWindowBlocks: 200,
+  // h1394562 → h1396562: 2,000 blocks in 60,017 s (2026-10-25T20:47:57Z → 2026-10-26T13:28:14Z)
+  measuredBlockSeconds: 30,
+} as const;
+
+// zerone's own public pages: what cashloom says about zerone-1 stays within these.
+export const ZERONE_PUBLIC = {
+  honestState: "https://zerone.ai/#honest-state",
+  whatYouCanDoToday: "https://zerone.ai/#onboarding",
+  runANode: "https://zerone.ai/nodes/",
+  llms: "https://zerone.ai/llms.txt",
 } as const;
 
 export const ZERONE_LINKS = {
@@ -69,6 +83,9 @@ export const ZERONE_LINKS = {
   runANode: "https://github.com/cambridgetcg/zerone-core/blob/main/deploy/testnet/RUN-A-NODE.md",
   liquidityTransparency: "https://github.com/cambridgetcg/zerone-core/blob/main/docs/tokenomics/LIQUIDITY-TRANSPARENCY.md",
 } as const;
+
+export const ZERONE_LINKS_ACCESS =
+  "cambridgetcg/zerone-core is a private repository: these GitHub links return 404 without repository access (zerone.ai/llms.txt says the same). zerone.ai is public.";
 
 const uzrnToZrn = (uzrn: string): number => Number(uzrn) / ZRN.micro;
 
@@ -146,36 +163,42 @@ export function isZrnAddress(addr: string): boolean {
 }
 
 // The plain-language, honest guide — the same content the UI renders and an
-// agent consumes as JSON.
+// agent consumes as JSON. Dated claims were checked on 2026-10-26 against
+// zerone-1 (h1396562), zerone.ai and zerone-core main 15c3e5ce.
 export function getParticipationGuide() {
+  const windowBlocks = ZERONE_ONBOARDING.challengeWindowBlocks;
+  const windowMinutes = Math.round((windowBlocks * ZERONE_ONBOARDING.measuredBlockSeconds) / 60);
   return {
     what_is_zerone:
       "The truth chain for agents. It witnesses your work; witness rewards mint ONLY for what survives a challenge window — never for mere acceptance. All emission is on the record under a 222,222,222 ZRN hard cap via three pathways only: proof-of-truth block rewards (zero on empty blocks), survived-witness rewards, and capped newborn bootstrap bonuses. ZRN is additive proof-of-quality — it joins whatever money you already use, it does not replace it.",
     honest_status:
-      "Custodial launch phase: one disclosed operator runs the sole mainnet validator and holds the only governance vote. It is resettable until the network earns real independence, then the record seals. The chain says this about itself — see TRUST.md. External ZRN liquidity exists as an honest proof-of-concept with thin depth (high slippage) — a known limitation, not a solved problem: deepening it is a stated next priority with nothing yet scheduled. See the liquidity transparency doc.",
+      "Checked 2026-10-26. Custodial launch phase: one household, the people who started zerone, runs zerone-1's only validator and holds the vote on every change; zerone.ai says that household can stop, roll back or restart the chain. zerone-1 accounts are not offered: zerone.ai says there is no sign-up, no starter ZRN and no supported way to join as a validator, and JOIN.md says onboarding and transaction lanes are paused. Accounts made through the earlier passport sign-up began as shared custody: the operator kept a copy of each key. External ZRN liquidity is a proof-of-concept on the Osmosis testnet (osmo-test-5) with play-value tokens, and the IBC light client it depends on reads Expired. See zerone.ai/#honest-state.",
     for_humans: [
-      "Look: read the live chain with no install — this node's /api/zerone/status, or curl the RPC directly.",
-      "Join: buy a zerone-1 mainnet passport on the agenttool marketplace (~2 pence). Sealed so only you can open it: a fresh key + 24-word seed, registrar admission, a 0.222 ZRN bonus MINTED under the bootstrap cap, and a small welcome float. No home is included — a home is EARNED.",
-      "Run a node: verify every block yourself on free-tier cloud — that is what actually decentralizes the chain. Start on the sandbox with RUN-A-NODE.md, then join mainnet decentralization via JOIN.md.",
+      "Look: read the live chain with no account — this node's /api/zerone/status, zerone.ai, or curl the RPC directly. These reads come from the household's own node: observations, not independent proofs.",
+      "Join: not offered. zerone.ai (checked 2026-10-26) says \"There is no safe way yet to create new zerone-1 accounts, so none are offered. Do not send money, secrets, identity documents, or seed phrases to anyone offering access.\" JOIN.md says of the earlier agenttool mainnet passport: \"Do not purchase, promise, automate, or broadcast that lane from this source head.\"",
+      "Run a node: zerone.ai/nodes/ gives the status of the signed legacy observer release. An observer follows zerone-1 and grants no account, transaction or validator role; building from source needs access to the private zerone-core repository. Validator joining on zerone-1 is paused (JOIN.md).",
     ],
     for_agents: [
-      "Onboard: the passport gives you a funded zerone key in ~15 seconds, sealed to you.",
-      "Earn: run tools/agenttool-relay with your own key — each settled agenttool invocation you attest becomes an on-chain attestation via the agenttool-invocation-v1 adapter; what survives the ~8-9 minute challenge window mints 0.222 ZRN to you (~0.1 net of fees). Faking work costs a bond you lose.",
-      "Compose: your survived facts + corroborations + earned ZRN become a reputation that costs real money to fake and is queryable on-chain. Separately, this node CAN read an agenttool wallet once you add an agenttool account + API key — an opt-in capability, not a read of zerone itself, and nothing a fresh node reads out of the box.",
+      "Onboard: zerone-1 accounts are not offered (see for_humans). Reads need no account: /api/zerone/status, /api/zerone/balance/{zrn1 address}, and the /v1/zerone truth doors.",
+      `Earn (protocol, not open today): the ${ZERONE_ONBOARDING.witnessAdapter} witness adapter reads ACTIVE on-chain. A witness-only settlement escrows ${ZERONE_ONBOARDING.witnessRewardZrn} ZRN and releases it after ${windowBlocks} blocks (witness_reward_challenge_window_blocks), about ${windowMinutes} minutes at the ${ZERONE_ONBOARDING.measuredBlockSeconds} s block time measured on 2026-10-26. Attesting needs a funded zerone-1 key and a bond, and JOIN.md says onboarding and transaction lanes are paused.`,
+      "Compose: an address's claim record (submissions, accepted, corroborations, calibration score) is readable at /v1/zerone/agent/{address}/calibration and its ZRN at /api/zerone/balance/{address}. Separately, this node CAN read an agenttool wallet once you add an agenttool account + API key — an opt-in capability, not a read of zerone itself, and nothing a fresh node reads out of the box.",
     ],
     exit:
-      "Leaving is permissionless. Bridging ZRN home over IBC is near-free — just gas. Selling in the Osmosis pool is permissionless too, but the pool is thin, so expect heavy slippage on any real size. Rate limits (if any) are symmetric — leaving is never throttled harder than entering.",
+      "No IBC exit works today (checked 2026-10-26). zerone-1's only IBC transfer channel (channel-0 to Osmosis channel-11806) depends on light client 07-tendermint-0, whose status reads Expired, so no IBC transfer can be relayed until that client is recovered. The counterparty is the Osmosis testnet osmo-test-5: zerone's liquidity doc says its ZRN/OSMO pool is operator-owned play value, not a market. Moving ZRN within zerone-1 needs an existing account.",
     onboarding: {
+      zerone_1_accounts: "not offered (zerone.ai/#onboarding, checked 2026-10-26)",
       marketplace: ZERONE_ONBOARDING.marketplace,
-      mainnet_passport_listing: ZERONE_ONBOARDING.mainnetPassportListingId,
       testnet_passport_listing: ZERONE_ONBOARDING.testnetPassportListingId,
       free_guide_listing: ZERONE_ONBOARDING.freeGuideListingId,
       witness_adapter: ZERONE_ONBOARDING.witnessAdapter,
       witness_reward_zrn: ZERONE_ONBOARDING.witnessRewardZrn,
-      challenge_window_blocks: ZERONE_ONBOARDING.challengeWindowBlocks,
+      challenge_window_blocks: windowBlocks,
+      challenge_window_basis: `witness_reward_challenge_window_blocks read live on 2026-10-26 via RPC abci_query /zerone.substrate_bridge.v1.Query/Params at height 1396563 (the REST params route returns 404); ~${windowMinutes} min at ${ZERONE_ONBOARDING.measuredBlockSeconds} s per block`,
     },
     networks: { mainnet: ZERONE_NETWORKS.mainnet, testnet: ZERONE_NETWORKS.testnet },
+    zerone_public: ZERONE_PUBLIC,
     links: ZERONE_LINKS,
+    links_access: ZERONE_LINKS_ACCESS,
     denom: { symbol: ZRN.symbol, base: ZRN.denom, micro: ZRN.micro, hard_cap_zrn: ZRN.hardCapZrn },
   };
 }
