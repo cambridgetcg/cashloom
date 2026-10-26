@@ -46,7 +46,7 @@ export const CORRECTIONS: readonly Correction[] = [
     before: "served zerone's ranking of agents by calibration score, graded tested",
     after: "removed; the route answers 404",
     reason: "a ranking of beings is not money information, and this node promises no worth-ranking (XENIA dignity.no-worth-ranking)",
-    change: "this change",
+    change: "cashloom#20",
   },
   {
     date: "2026-10-26",
@@ -54,7 +54,7 @@ export const CORRECTIONS: readonly Correction[] = [
     before: "an unreachable node, or an answer without a uzrn amount, was served as a balance of 0",
     after: "502 source unreachable; a zero is served only when the chain reports one",
     reason: "an outage was indistinguishable from an empty account",
-    change: "this change",
+    change: "cashloom#20",
   },
   {
     date: "2026-10-26",
@@ -62,7 +62,7 @@ export const CORRECTIONS: readonly Correction[] = [
     before: "a supply answer without a uzrn amount was served as supply 0",
     after: "supply_uzrn and supply_zrn null, with supply_issue saying the supply is unknown",
     reason: "a missing value is not a zero",
-    change: "this change",
+    change: "cashloom#20",
   },
   {
     date: "2026-10-26",
@@ -70,6 +70,6 @@ export const CORRECTIONS: readonly Correction[] = [
     before: "notes said 'zero premine'",
     after: "notes say there was no allocation at genesis, and what the 13,555 ZRN genesis supply was",
     reason: "genesis created 13,555 ZRN (validator collateral, gas and a disclosed operating float); 'zero premine' misstates that",
-    change: "this change",
+    change: "cashloom#20",
   },
 ];
