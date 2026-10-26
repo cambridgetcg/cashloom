@@ -105,6 +105,21 @@ describe("live status (mocked)", () => {
     expect(s.minted_pct_of_cap).toBeLessThan(0.01);
   });
 
+  it("says supply is unknown, never zero, when the node answers without an amount", async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const body = String(url).includes("/status")
+        ? { result: { sync_info: { latest_block_height: "58549", catching_up: false } } }
+        : {};
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as unknown as typeof fetch;
+    const s = await getNetworkStatus(ZERONE_NETWORKS.mainnet);
+    expect(s.reachable).toBe(true);
+    expect(s.supply_uzrn).toBeNull();
+    expect(s.supply_zrn).toBeNull();
+    expect(s.minted_pct_of_cap).toBeNull();
+    expect(s.supply_issue).toContain("Supply unknown");
+  });
+
   it("degrades honestly to reachable:false instead of throwing", async () => {
     globalThis.fetch = (async () => {
       throw new Error("node down");
@@ -125,6 +140,24 @@ describe("address balance (mocked)", () => {
     expect(b.balance_uzrn).toBe("2222000");
     expect(b.balance_zrn).toBeCloseTo(2.222, 6);
     expect(b.network).toBe(ZERONE_NETWORKS.mainnet.id);
+  });
+
+  it("serves a zero only when the chain reports one", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ balance: { denom: "uzrn", amount: "0" } }), { status: 200 })) as unknown as typeof fetch;
+    expect((await getAddressBalance("zrn1la2g8yzqtpj546x2x9rq42erc6zpj4jqktkhaz")).balance_uzrn).toBe("0");
+  });
+
+  it("refuses instead of inventing a zero when the node is down or the answer has no uzrn amount", async () => {
+    const address = "zrn1la2g8yzqtpj546x2x9rq42erc6zpj4jqktkhaz";
+    globalThis.fetch = (async () => {
+      throw new Error("node down");
+    }) as unknown as typeof fetch;
+    await expect(getAddressBalance(address)).rejects.toThrow();
+    for (const body of [{ balances: [] }, { balance: { denom: "uatom", amount: "5" } }, { balance: { denom: "uzrn", amount: "1.5" } }]) {
+      globalThis.fetch = (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
+      await expect(getAddressBalance(address)).rejects.toThrow("no uzrn balance");
+    }
   });
 });
 

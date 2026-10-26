@@ -102,7 +102,7 @@ async function zeroneFetch<T>(url: string, timeoutMs = 6000): Promise<T> {
 
 type StatusResp = { result?: { sync_info?: { latest_block_height?: string; catching_up?: boolean } } };
 type SupplyResp = { amount?: { denom: string; amount: string } };
-type BalanceResp = { balance?: { amount: string }; balances?: Array<{ denom: string; amount: string }> };
+type BalanceResp = { balance?: { denom?: string; amount: string }; balances?: Array<{ denom: string; amount: string }> };
 
 export async function getNetworkStatus(net: ZeroneNetwork) {
   try {
@@ -110,8 +110,12 @@ export async function getNetworkStatus(net: ZeroneNetwork) {
       zeroneFetch<StatusResp>(`${net.rpc}/status`),
       zeroneFetch<SupplyResp>(`${net.rest}/cosmos/bank/v1beta1/supply/by_denom?denom=${ZRN.denom}`),
     ]);
-    const uzrn = supply.amount?.amount ?? "0";
-    const zrn = uzrnToZrn(uzrn);
+    // A node that answers without a uzrn amount has not told us the supply:
+    // say so, never serve an invented zero (MONEYWORLD.md, "no invented zero").
+    const uzrn = supply.amount?.denom === ZRN.denom && /^\d+$/.test(supply.amount.amount)
+      ? supply.amount.amount
+      : null;
+    const zrn = uzrn === null ? null : uzrnToZrn(uzrn);
     return {
       id: net.id,
       label: net.label,
@@ -121,8 +125,9 @@ export async function getNetworkStatus(net: ZeroneNetwork) {
       catching_up: status.result?.sync_info?.catching_up ?? null,
       supply_uzrn: uzrn,
       supply_zrn: zrn,
+      supply_issue: uzrn === null ? "Supply unknown: the supply query returned no uzrn amount." : undefined,
       hard_cap_zrn: ZRN.hardCapZrn,
-      minted_pct_of_cap: Number(((zrn / ZRN.hardCapZrn) * 100).toFixed(6)),
+      minted_pct_of_cap: zrn === null ? null : Number(((zrn / ZRN.hardCapZrn) * 100).toFixed(6)),
       rpc: net.rpc,
       rest: net.rest,
     };
@@ -133,8 +138,10 @@ export async function getNetworkStatus(net: ZeroneNetwork) {
       kind: net.kind,
       reachable: false,
       height: null as string | null,
+      supply_uzrn: null as string | null,
       supply_zrn: null as number | null,
       hard_cap_zrn: ZRN.hardCapZrn,
+      minted_pct_of_cap: null as number | null,
       rpc: net.rpc,
       rest: net.rest,
     };
@@ -149,11 +156,18 @@ export async function getAllStatus() {
   return { mainnet, testnet };
 }
 
+// Throws when the node does not answer or answers without a uzrn amount. An
+// empty account still comes back as an explicit "0", so a zero we serve is
+// one the chain reported, never one we filled in for an outage.
 export async function getAddressBalance(address: string, net: ZeroneNetwork = ZERONE_NETWORKS.mainnet) {
   const resp = await zeroneFetch<BalanceResp>(
     `${net.rest}/cosmos/bank/v1beta1/balances/${address}/by_denom?denom=${ZRN.denom}`,
-  ).catch(() => null);
-  const uzrn = resp?.balance?.amount ?? resp?.balances?.find((b) => b.denom === ZRN.denom)?.amount ?? "0";
+  );
+  const one = resp.balance && (resp.balance.denom ?? ZRN.denom) === ZRN.denom ? resp.balance.amount : undefined;
+  const uzrn = one ?? resp.balances?.find((b) => b.denom === ZRN.denom)?.amount;
+  if (uzrn === undefined || !/^\d+$/.test(uzrn)) {
+    throw new Error(`zerone REST gave no uzrn balance for ${address}`);
+  }
   return { address, network: net.id, balance_uzrn: uzrn, balance_zrn: uzrnToZrn(uzrn) };
 }
 

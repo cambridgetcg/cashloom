@@ -803,6 +803,12 @@ input[type="date"] { color-scheme: light; }
   margin: 12px 0 0;
 }
 
+.pay-final-note {
+  font-size: 13px;
+  color: var(--cl-subtle);
+  margin: 14px 0 0;
+}
+
 .pay-result h3 { font-size: 24px; margin-bottom: 8px; }
 .pay-result.is-ok::before { background: var(--cl-primary); opacity: 0.8; }
 .pay-result.is-failed::before { background: var(--cl-danger); opacity: 0.8; }

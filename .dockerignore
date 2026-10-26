@@ -35,6 +35,7 @@ sovereign/src/info/*
 !sovereign/src/info/assets.ts
 !sovereign/src/info/cash-rates.ts
 !sovereign/src/info/chains.ts
+!sovereign/src/info/corrections.ts
 !sovereign/src/info/doors.ts
 !sovereign/src/info/fed-announcements.ts
 !sovereign/src/info/fees.ts

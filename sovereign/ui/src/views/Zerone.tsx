@@ -30,10 +30,10 @@ function NetCard({ net }: { net: ZeroneNetworkStatus }) {
           <div>
             <dt>ZRN supply</dt>
             <dd className="mono">
-              {net.supply_zrn?.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {net.supply_zrn?.toLocaleString(undefined, { maximumFractionDigits: 2 }) ?? "unknown"}
             </dd>
           </div>
-          <div><dt>of 222,222,222 cap</dt><dd className="mono">{pct}%</dd></div>
+          <div><dt>of 222,222,222 cap</dt><dd className="mono">{pct === null ? "unknown" : `${pct}%`}</dd></div>
         </dl>
       ) : (
         <p className="muted">
