@@ -1,9 +1,11 @@
 name: CI
 
-# Typecheck + test the sovereign node and its wallet UI, then build Atlas on
-# every push to main or a release line (the live surfaces deploy from
-# release/service-workspace-20260929) and every PR into them, so a regression
-# can't merge quietly. Bun is pinned to the version local checks run.
+# Typecheck + test the sovereign node and its wallet UI, build Atlas, and build
+# and smoke-test the public INFO image on every push to main or a release line
+# (the live surfaces deploy from release/service-workspace-20260929) and every
+# PR into main, release/** or feature/**, so a regression can't merge quietly.
+# setup-bun is pinned to 1.3.13, the Bun main's amplify.yml installs; the image
+# job builds with the Bun its Dockerfile pins.
 on:
   push:
     branches:
