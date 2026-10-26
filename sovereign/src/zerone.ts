@@ -54,9 +54,9 @@ export const ZRN = {
 
 // zerone-1 accounts are not offered (zerone.ai, JOIN.md), so the guide names no
 // mainnet passport listing. Window and reward were read live on 2026-10-26 by
-// RPC abci_query (/zerone.substrate_bridge.v1.Query/Params and /Adapter at
-// h1396563; the REST params route returns 404): witness_reward_challenge_window
-// _blocks 200, adapter ACTIVE, witness_reward_uzrn 222000.
+// RPC abci_query at h1396563 (the REST params route returns 404):
+// substrate_bridge Params.witness_reward_challenge_window_blocks = 200, and
+// Adapter(agenttool-invocation-v1) = ACTIVE with witness_reward_uzrn 222000.
 export const ZERONE_ONBOARDING = {
   marketplace: "https://api.agenttool.dev",
   testnetPassportListingId: "64cbc078-bbd1-41b4-ad9f-b82363678936",
