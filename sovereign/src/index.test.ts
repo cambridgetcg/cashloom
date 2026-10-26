@@ -25,8 +25,8 @@ const { BasePositionServiceError } = await import("./wallet/base-position-servic
 
 const PASSPHRASE = "correct horse battery staple";
 // Each vault initialize/unlock is one Argon2id derivation (64 MiB, t=3), about
-// 2 s on a GitHub runner. Hooks and tests that run two or more of them get this
-// instead of bun's 5 s default.
+// 2 s on a GitHub runner. Hooks and tests that run two or more of them, or one
+// in a child bun process, get this instead of bun's 5 s default.
 const KDF_TIMEOUT_MS = 30_000;
 let readToken = "";
 let ownerToken = "";
@@ -289,7 +289,7 @@ describe("local API vault-session authority", () => {
     const record = await (await app.request(`/api/tcg/trades/${first.trade.id}`, authorized(ownerToken))).json();
     expect(record.trade.evidence).toEqual([]);
     expect(record.trade.protection).toBe("unavailable");
-  });
+  }, KDF_TIMEOUT_MS);
 
   it("keeps scheduler status and saved positions networkless on GET", async () => {
     const status = await app.request(
