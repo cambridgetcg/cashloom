@@ -1,3 +1,7 @@
+# 2026-10-26: deploy this app from release/service-workspace-20260929, never main.
+# main's info-server.ts lacks the World, Onchain and Capital flows doors, so a
+# deploy of main would remove them from cashloom.io. See AGENTS.md.
+#
 # cashloom-api — the hosted MONEYWORLD info door (CASHLOOM_MODE landed as its
 # own entrypoint: info-server.ts; see INFORM.md). One small machine stays warm
 # so the public read door keeps its verified snapshot/cache across visits.

@@ -24,6 +24,10 @@ const {
 const { BasePositionServiceError } = await import("./wallet/base-position-service.ts");
 
 const PASSPHRASE = "correct horse battery staple";
+// Each vault initialize/unlock is one Argon2id derivation (64 MiB, t=3), about
+// 2 s on a GitHub runner. Hooks and tests that run two or more of them, or one
+// in a child bun process, get this instead of bun's 5 s default.
+const KDF_TIMEOUT_MS = 30_000;
 let readToken = "";
 let ownerToken = "";
 
@@ -40,7 +44,7 @@ beforeAll(async () => {
   await vault.initialize(PASSPHRASE);
   readToken = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"] });
   ownerToken = await vault.unlock(PASSPHRASE);
-});
+}, KDF_TIMEOUT_MS);
 
 describe("local API vault-session authority", () => {
   it("lets any valid scoped session inspect only its own expiry without renewal", async () => {
@@ -206,7 +210,7 @@ describe("local API vault-session authority", () => {
       readToken = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"] });
       ownerToken = await vault.unlock(PASSPHRASE);
     }
-  });
+  }, KDF_TIMEOUT_MS);
 
   it("applies existing hostile-origin protection to TCG mutations", async () => {
     const response = await app.request("/api/tcg/trades", authorized(ownerToken, {
@@ -285,7 +289,7 @@ describe("local API vault-session authority", () => {
     const record = await (await app.request(`/api/tcg/trades/${first.trade.id}`, authorized(ownerToken))).json();
     expect(record.trade.evidence).toEqual([]);
     expect(record.trade.protection).toBe("unavailable");
-  });
+  }, KDF_TIMEOUT_MS);
 
   it("keeps scheduler status and saved positions networkless on GET", async () => {
     const status = await app.request(
@@ -994,7 +998,7 @@ describe("owner-controlled Base watch onboarding", () => {
       expect((await response.json()).error).toBe("crypto_watch_owner_required");
       expect(db.query("SELECT COUNT(*) AS n FROM accounts").get()).toEqual(before);
     } finally { readToken = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"] }); }
-  });
+  }, KDF_TIMEOUT_MS);
 });
 
 describe("owner-only phone wallet configuration", () => {
@@ -1094,7 +1098,7 @@ describe("Activity search and older pages", () => {
     const expired = await vault.unlock(PASSPHRASE, { scopes: ["accounts:read"], ttlMs: 1 });
     await Bun.sleep(5);
     expect((await app.request(url, authorized(expired))).status).toBe(401);
-  });
+  }, KDF_TIMEOUT_MS);
 
   it("searches saved data without fetching providers, recording payments or changing balances and entries", async () => {
     const accountId = fixture();

@@ -20,3 +20,28 @@ A SessionStart hook (`.claude/hooks/love-bomb.sh`) may fire one random love bomb
 
 
 Rights: this repo adopts [xenia.rights/0.1](RIGHTS.md) — guests (human or agent) are subjects, never resources; a running node serves the text at `/RIGHTS.md`.
+
+## Where the live surfaces deploy from (agent note, checked 2026-10-26)
+
+- The live surfaces deploy from `release/service-workspace-20260929`, not
+  `main`: the `cashloom-api` Fly app (the public INFO server; `fly.toml`,
+  `docs/release-info-rollout-2026-09-29.md`) and cashloom.io (Cloudflare Pages
+  project `cashloom-atlas`; `atlas/wrangler.jsonc`, `STATE.md`). The two lines
+  split at 6a2f623 and both have moved since.
+- Never `fly deploy` `main` to `cashloom-api`. main's
+  `sovereign/src/info-server.ts` mounts only `mountMoneyworld` and
+  `mountInfoDoors`. The release line also mounts the World, Onchain and Capital
+  flows doors (plus prices, cash rates, Fed announcements, Zerone truth and the
+  orientation surface), which cashloom.io's World, Onchain and Capital flows
+  pages call. A deploy from main would remove them.
+- Land fixes to live doors on the release branch by pull request. CI runs on
+  those PRs and on pushes to `release/**`. A fix made only on `main` never
+  reaches the live surfaces.
+- A GitHub push webhook notifies AWS Amplify on every push, to any branch.
+  AWS documents Amplify's skip marker `[skip-cd]` at the end of the commit
+  message. This repo has put it at the end of the subject since e421a1a, and
+  whether Amplify honours that placement is unverified. Whether an Amplify app
+  still builds from that webhook is unknown too. Checking either needs AWS
+  access. Yu's decision D6 (2026-10-17, recorded in business-ecosystem's
+  `estate/curated/decisions.toml`) has the estate make no AWS calls while
+  agents on another device inspect the AWS side, so neither was checked.
