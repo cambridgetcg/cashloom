@@ -288,6 +288,40 @@ describe("onchain snapshot", () => {
     expect(JSON.stringify(snapshot)).not.toContain("private-secret-key");
   });
 
+  it("keeps the v1 shape for clients that ask for v1 by name", async () => {
+    const snapshot = await buildOnchainSnapshot(fixtureDeps());
+    const app = new Hono();
+    mountOnchainDoor(app, async () => snapshot);
+    const v1Accept = { Accept: "application/vnd.cashloom.onchain.v1+json, application/json;q=0.9" };
+    const composite = await app.request("/v1/onchain", { headers: v1Accept });
+    expect(composite.headers.get("content-type")).toBe("application/vnd.cashloom.onchain.v1+json");
+    const body = await composite.json();
+    expect(body.schema).toBe("cashloom.onchain/1");
+    const graded: Array<Record<string, unknown>> = [];
+    const collect = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(collect);
+      if (!value || typeof value !== "object") return;
+      const record = value as Record<string, unknown>;
+      if ("proof_state" in record) graded.push(record);
+      Object.values(record).forEach(collect);
+    };
+    collect(body);
+    expect(graded.length).toBeGreaterThan(0);
+    for (const receipt of graded) {
+      expect(receipt).not.toHaveProperty("anchoring");
+      expect(["pinned-block", "finalized-slot", "chain-tip", "rpc-observation", "external-reference"]).toContain(receipt.proof_state);
+    }
+    const section = await app.request("/v1/onchain/pools", {
+      headers: { Accept: "application/vnd.cashloom.onchain-section.v1+json" },
+    });
+    expect(section.headers.get("content-type")).toBe("application/vnd.cashloom.onchain-section.v1+json");
+    expect((await section.json()).schema).toBe("cashloom.onchain-section/1");
+    const v2 = await app.request("/v1/onchain", {
+      headers: { Accept: `${ONCHAIN_MEDIA_TYPE}, application/vnd.cashloom.onchain.v1+json;q=0.9` },
+    });
+    expect((await v2.json()).schema).toBe("cashloom.onchain/2");
+  });
+
   it("serves the vendor JSON composite and section doors", async () => {
     const snapshot = await buildOnchainSnapshot(fixtureDeps());
     const app = new Hono();

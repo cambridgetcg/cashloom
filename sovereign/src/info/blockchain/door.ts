@@ -15,6 +15,29 @@ import { UNISWAP_USDC_WETH_POOLS, UNISWAP_V3_SOURCE_ID } from "./uniswap.ts";
 
 export type OnchainBuilder = () => Promise<OnchainSnapshot>;
 
+// Clients built against v1 (an open cashloom.io tab, a rolled-back site, an
+// older MCP server) name the v1 media type. They keep the v1 shape, with the
+// anchoring words under `proof_state`, until they ask for v2.
+const ONCHAIN_V1_MEDIA_TYPE = "application/vnd.cashloom.onchain.v1+json";
+const ONCHAIN_SECTION_V1_MEDIA_TYPE = "application/vnd.cashloom.onchain-section.v1+json";
+
+function wantsV1(c: Context, v1: string, v2: string): boolean {
+  const accept = c.req.header("Accept") ?? "";
+  return accept.includes(v1) && !accept.includes(v2);
+}
+
+function serializeV1(body: unknown): string {
+  return JSON.stringify(body, (key, value) => {
+    if (key === "schema" && value === "cashloom.onchain/2") return "cashloom.onchain/1";
+    if (key === "schema" && value === "cashloom.onchain-section/2") return "cashloom.onchain-section/1";
+    if (value && typeof value === "object" && !Array.isArray(value) && typeof value.anchoring === "string") {
+      const { anchoring, ...rest } = value;
+      return { ...rest, proof_state: anchoring };
+    }
+    return value;
+  });
+}
+
 export type OnchainCacheState = "miss" | "fresh" | "stale";
 
 interface CachedSnapshot {
@@ -253,6 +276,9 @@ export function mountOnchainDoor(
   const composite = async (c: Context) => {
     try {
       const result = await snapshotCache.read();
+      if (wantsV1(c, ONCHAIN_V1_MEDIA_TYPE, ONCHAIN_MEDIA_TYPE)) {
+        return jsonSnapshot(c, result.snapshot, result, ONCHAIN_V1_MEDIA_TYPE, serializeV1(result.snapshot));
+      }
       return jsonSnapshot(
         c,
         result.snapshot,
@@ -289,7 +315,8 @@ export function mountOnchainDoor(
       const result = await snapshotCache.read();
       const snapshot = result.snapshot;
       const relevantSources = SECTION_SOURCE_IDS[key];
-      return jsonSnapshot(c, {
+      const v1 = wantsV1(c, ONCHAIN_SECTION_V1_MEDIA_TYPE, ONCHAIN_SECTION_MEDIA_TYPE);
+      const body = {
         "@type": "OnchainSection",
         schema: "cashloom.onchain-section/2",
         generated_at: snapshot.generated_at,
@@ -299,7 +326,10 @@ export function mountOnchainDoor(
         unavailable: snapshot.status.unavailable.filter((item) => item.section === key),
         items: snapshot[key],
         sources: snapshot.sources.filter((source) => relevantSources.has(source.id)),
-      }, result, ONCHAIN_SECTION_MEDIA_TYPE);
+      };
+      return v1
+        ? jsonSnapshot(c, body, result, ONCHAIN_SECTION_V1_MEDIA_TYPE, serializeV1(body))
+        : jsonSnapshot(c, body, result, ONCHAIN_SECTION_MEDIA_TYPE);
     } catch {
       return c.json(problem(`The ${selector} section could not be assembled inside the server-enforced whole-snapshot deadline.`), 503);
     }
