@@ -10,6 +10,8 @@ import {
   CASHLOOM_API_ORIGIN,
   CASHLOOM_PUBLIC_ORIGIN_HEADER,
   CASHLOOM_WEBSITE_ORIGIN,
+  CASHLOOM_WORLD_RUN_LOCALLY_URL,
+  CASHLOOM_WORLD_SOURCE_URL,
   defineCashLoomSurfaceManifest,
   mountXeniaSurface,
   resolveCashLoomPublicOrigin,
@@ -31,6 +33,16 @@ function testApp(): Hono {
 async function json(response: Response): Promise<Record<string, any>> {
   return await response.json() as Record<string, any>;
 }
+
+describe("CashLoom World source links", () => {
+  // release/moneyworld-wallet-kernel-v2-20260823 was deleted (gh api: 404 Branch not found, 2026-10-26).
+  it("name the live release branch and a heading the root README has", () => {
+    expect(CASHLOOM_WORLD_SOURCE_URL).toBe("https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929");
+    const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf-8");
+    expect(readme).toContain("\n## Run the existing information tools locally\n");
+    expect(CASHLOOM_WORLD_RUN_LOCALLY_URL).toBe(`${CASHLOOM_WORLD_SOURCE_URL}#run-the-existing-information-tools-locally`);
+  });
+});
 
 function expectVaryAccept(response: Response): void {
   const vary = response.headers.get("Vary")?.split(",").map((token) => token.trim().toLowerCase());
@@ -222,8 +234,9 @@ describe("CashLoom agent recovery and disclosures", () => {
           ? "public_read_only_information_process"
           : "local_sovereign_public_read_floor",
         runtime,
-        source_code: "https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823",
-        documentation: "https://github.com/cambridgetcg/cashloom/blob/release/moneyworld-wallet-kernel-v2-20260823/MONEYWORLD.md",
+        source_code: "https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929",
+        documentation: "https://github.com/cambridgetcg/cashloom/blob/release/service-workspace-20260929/MONEYWORLD.md",
+        source_access: expect.stringContaining("private repository"),
       },
     });
     expect(body.surface.declared_scope).toEqual(manifest.resources.map((resource: any) => resource.href));
