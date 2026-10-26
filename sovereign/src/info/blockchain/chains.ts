@@ -11,6 +11,7 @@ import type {
   ReferenceBlock,
 } from "./types.ts";
 import {
+  anchored,
   exactValue,
   exactValueFromDecimal,
   referenceBlockIsStale,
@@ -44,11 +45,11 @@ function receipt(
   return {
     id,
     method: "observed_onchain",
-    proof_state: reference.family === "solana"
+    ...anchored(reference.family === "solana"
       ? "finalized-slot"
       : reference.family === "bitcoin"
         ? "chain-tip"
-        : "pinned-block",
+        : "pinned-block"),
     observed_at: reference.block_time?.iso ?? null,
     fetched_at: reference.fetched_at || now,
     reference_block: reference,
@@ -68,7 +69,7 @@ function rpcObservationReceipt(
   return {
     id,
     method: "observed_onchain",
-    proof_state: "rpc-observation",
+    ...anchored("rpc-observation"),
     observed_at: null,
     fetched_at: fetchedAt,
     source_ids: [sourceId(listBlockchainChains().find((row) => row.key === chainKey)!)],

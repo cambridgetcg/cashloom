@@ -3,7 +3,8 @@ import { Hono } from "hono";
 import { listBlockchainChains } from "./registry.ts";
 import type { BlockchainRpcClient } from "./rpc.ts";
 import type { ChainRegistryEntry, ReferenceBlock } from "./types.ts";
-import { exactValue, ONCHAIN_MEDIA_TYPE, ONCHAIN_SECTION_MEDIA_TYPE, type BridgeRoute, type ChainPulse, type LendingMarket, type LiquidityPool, type MetricReceipt, type StablecoinObservation } from "./model.ts";
+import { strayProofStates } from "../proof-states.ts";
+import { anchored, exactValue, ONCHAIN_MEDIA_TYPE, ONCHAIN_SECTION_MEDIA_TYPE, type BridgeRoute, type ChainPulse, type LendingMarket, type LiquidityPool, type MetricReceipt, type StablecoinObservation } from "./model.ts";
 import { AAVE_USDC_MARKETS } from "./aave.ts";
 import { CCTP_ROUTES } from "./bridges.ts";
 import { NATIVE_USDC_DEPLOYMENTS } from "./stablecoins.ts";
@@ -49,7 +50,7 @@ function receipt(id: string, ref?: ReferenceBlock): MetricReceipt {
   return {
     id,
     method: ref ? "observed_onchain" : "official_reference",
-    proof_state: ref ? (ref.family === "solana" ? "finalized-slot" : ref.family === "bitcoin" ? "chain-tip" : "pinned-block") : "external-reference",
+    ...anchored(ref ? (ref.family === "solana" ? "finalized-slot" : ref.family === "bitcoin" ? "chain-tip" : "pinned-block") : "external-reference"),
     observed_at: ref?.block_time?.iso ?? null,
     fetched_at: NOW.toISOString(),
     ...(ref ? { reference_block: ref } : {}),
@@ -184,7 +185,7 @@ function fixtureDeps(): Partial<OnchainDependencies> {
 describe("onchain snapshot", () => {
   it("assembles a complete, typed latest-state snapshot", async () => {
     const snapshot = await buildOnchainSnapshot(fixtureDeps());
-    expect(snapshot.schema).toBe("cashloom.onchain/1");
+    expect(snapshot.schema).toBe("cashloom.onchain/2");
     expect(snapshot.status).toMatchObject({ state: "ready", complete: true, available_sources: 12, total_sources: 12 });
     expect(snapshot).toMatchObject({ chains: { length: 8 }, stablecoins: { length: 6 }, lending_markets: { length: 4 }, pools: { length: 4 }, bridge_routes: { length: 10 } });
     expect(JSON.stringify(snapshot)).not.toContain("RPC_URL");
@@ -287,6 +288,40 @@ describe("onchain snapshot", () => {
     expect(JSON.stringify(snapshot)).not.toContain("private-secret-key");
   });
 
+  it("keeps the v1 shape for clients that ask for v1 by name", async () => {
+    const snapshot = await buildOnchainSnapshot(fixtureDeps());
+    const app = new Hono();
+    mountOnchainDoor(app, async () => snapshot);
+    const v1Accept = { Accept: "application/vnd.cashloom.onchain.v1+json, application/json;q=0.9" };
+    const composite = await app.request("/v1/onchain", { headers: v1Accept });
+    expect(composite.headers.get("content-type")).toBe("application/vnd.cashloom.onchain.v1+json");
+    const body = await composite.json();
+    expect(body.schema).toBe("cashloom.onchain/1");
+    const graded: Array<Record<string, unknown>> = [];
+    const collect = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(collect);
+      if (!value || typeof value !== "object") return;
+      const record = value as Record<string, unknown>;
+      if ("proof_state" in record) graded.push(record);
+      Object.values(record).forEach(collect);
+    };
+    collect(body);
+    expect(graded.length).toBeGreaterThan(0);
+    for (const receipt of graded) {
+      expect(receipt).not.toHaveProperty("anchoring");
+      expect(["pinned-block", "finalized-slot", "chain-tip", "rpc-observation", "external-reference"]).toContain(receipt.proof_state);
+    }
+    const section = await app.request("/v1/onchain/pools", {
+      headers: { Accept: "application/vnd.cashloom.onchain-section.v1+json" },
+    });
+    expect(section.headers.get("content-type")).toBe("application/vnd.cashloom.onchain-section.v1+json");
+    expect((await section.json()).schema).toBe("cashloom.onchain-section/1");
+    const v2 = await app.request("/v1/onchain", {
+      headers: { Accept: `${ONCHAIN_MEDIA_TYPE}, application/vnd.cashloom.onchain.v1+json;q=0.9` },
+    });
+    expect((await v2.json()).schema).toBe("cashloom.onchain/2");
+  });
+
   it("serves the vendor JSON composite and section doors", async () => {
     const snapshot = await buildOnchainSnapshot(fixtureDeps());
     const app = new Hono();
@@ -294,12 +329,14 @@ describe("onchain snapshot", () => {
     const composite = await app.request("/v1/onchain");
     expect(composite.status).toBe(200);
     expect(composite.headers.get("content-type")).toContain(ONCHAIN_MEDIA_TYPE);
-    expect((await composite.json()).schema).toBe("cashloom.onchain/1");
+    const compositeBody = await composite.json();
+    expect(compositeBody.schema).toBe("cashloom.onchain/2");
+    expect(strayProofStates(compositeBody)).toEqual([]);
     const section = await app.request("/v1/onchain/pools");
     expect(section.status).toBe(200);
     expect(section.headers.get("content-type")).toBe(ONCHAIN_SECTION_MEDIA_TYPE);
     const sectionBody = await section.json();
-    expect(sectionBody).toMatchObject({ schema: "cashloom.onchain-section/1", section: "pools", items: { length: 4 } });
+    expect(sectionBody).toMatchObject({ schema: "cashloom.onchain-section/2", section: "pools", items: { length: 4 } });
     expect(sectionBody.sources.map((source: { id: string }) => source.id).sort()).toEqual([
       "chain-state-arbitrum",
       "chain-state-base",

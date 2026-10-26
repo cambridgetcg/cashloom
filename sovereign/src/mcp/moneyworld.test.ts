@@ -98,7 +98,7 @@ describe("public snapshots through the MCP protocol (offline)", () => {
 
   it("reads Onchain once with a deadline longer than the server snapshot budget and preserves exact metrics", async () => {
     const snapshot = {
-      schema: "cashloom.onchain/1", status: { state: "partial" },
+      schema: "cashloom.onchain/2", status: { state: "partial" },
       stablecoins: [{ supply: { raw: "9007199254740993123456", decimals: 6 },
         receipt: { observed_at: "2026-08-20T15:58:00Z", reference_block: { number: "23000000" } } }],
     };

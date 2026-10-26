@@ -1,7 +1,10 @@
+import type { ProofState } from "../money-fact.ts";
 import type { ReferenceBlock } from "./types.ts";
 
-export const ONCHAIN_MEDIA_TYPE = "application/vnd.cashloom.onchain.v1+json";
-export const ONCHAIN_SECTION_MEDIA_TYPE = "application/vnd.cashloom.onchain-section.v1+json";
+// v2: `proof_state` now carries the same XENIA grade as every other door, and
+// the anchoring words it used to carry in v1 moved to `anchoring`.
+export const ONCHAIN_MEDIA_TYPE = "application/vnd.cashloom.onchain.v2+json";
+export const ONCHAIN_SECTION_MEDIA_TYPE = "application/vnd.cashloom.onchain-section.v2+json";
 
 export type OnchainSection =
   | "chains"
@@ -38,10 +41,39 @@ export interface OnchainSource {
   note: string;
 }
 
+/** How a value is tied to chain state: which block, slot or publisher it rests on. */
+export type Anchoring =
+  | "pinned-block"
+  | "finalized-slot"
+  | "chain-tip"
+  | "rpc-observation"
+  | "external-reference";
+
+/**
+ * One meaning for `proof_state` across every door (money-fact.ts): can a
+ * stranger re-derive this without a secret and without our say-so? A read of
+ * public chain state at a recorded block or slot can be re-run against any
+ * node, so it is `tested`. A node's own view (mempool, fee estimate, recent
+ * performance samples) differs from node to node and pins nothing, and a
+ * publisher's reference rests on the publisher's word: both are `asserted`.
+ */
+const PROOF_BY_ANCHORING: Record<Anchoring, ProofState> = {
+  "pinned-block": "tested",
+  "finalized-slot": "tested",
+  "chain-tip": "tested",
+  "rpc-observation": "asserted",
+  "external-reference": "asserted",
+};
+
+export function anchored(anchoring: Anchoring): Pick<MetricReceipt, "anchoring" | "proof_state"> {
+  return { anchoring, proof_state: PROOF_BY_ANCHORING[anchoring] };
+}
+
 export interface MetricReceipt {
   id: string;
   method: "observed_onchain" | "derived_onchain" | "official_reference";
-  proof_state: "pinned-block" | "finalized-slot" | "chain-tip" | "rpc-observation" | "external-reference";
+  anchoring: Anchoring;
+  proof_state: ProofState;
   pinning?: "block-hash-canonical" | "height-with-canonical-pre-postcheck";
   observed_at: string | null;
   fetched_at: string;
@@ -225,7 +257,7 @@ export interface SectionStatus {
 
 export interface OnchainSnapshot {
   "@type": "OnchainSnapshot";
-  schema: "cashloom.onchain/1";
+  schema: "cashloom.onchain/2";
   generated_at: string;
   scope: "latest_state";
   status: {

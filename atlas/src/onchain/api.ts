@@ -95,14 +95,15 @@ export class OnchainApiError extends Error {
 
 /**
  * Validate the versioned envelope and section containers while accepting new
- * fields within a v1 row. This lets the evidence contract grow additively
- * without teaching the UI to trust an unrelated JSON response.
+ * fields within a row. This lets the evidence contract grow additively
+ * without teaching the UI to trust an unrelated JSON response. v2 moved the
+ * anchoring words out of `proof_state` into `anchoring`; both versions render.
  */
 export function parseOnchainSnapshot(body: unknown, status?: number): OnchainSnapshot {
   if (!isRecord(body)) {
     throw new OnchainApiError("The onchain feed returned an unreadable document.", status);
   }
-  if (body.schema !== "cashloom.onchain/1") {
+  if (body.schema !== "cashloom.onchain/1" && body.schema !== "cashloom.onchain/2") {
     throw new OnchainApiError(
       "The endpoint returned JSON, but not a CashLoom Onchain snapshot.",
       status,
@@ -193,7 +194,7 @@ export async function fetchOnchain(options: OnchainFetchOptions = {}): Promise<O
     response = await fetch(endpoint("/v1/onchain"), {
       method: "GET",
       headers: {
-        Accept: "application/vnd.cashloom.onchain.v1+json, application/json;q=0.9",
+        Accept: "application/vnd.cashloom.onchain.v2+json, application/vnd.cashloom.onchain.v1+json;q=0.9, application/json;q=0.8",
         ...(requestEtag ? { "If-None-Match": requestEtag } : {}),
       },
       signal: options.signal,

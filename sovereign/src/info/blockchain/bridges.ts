@@ -1,5 +1,6 @@
 import { resolveBlockchainChain } from "./registry.ts";
 import {
+  anchored,
   exactValue,
   type BridgeFeeMode,
   type BridgeRoute,
@@ -239,7 +240,7 @@ async function readRoute(
     receipt: {
       id: `cctp-v2-${definition.source}-${definition.destination}-receipt`,
       method: "official_reference",
-      proof_state: "external-reference",
+      ...anchored("external-reference"),
       observed_at: null,
       fetched_at: fetchedAt,
       source_ids: [CCTP_SOURCE_ID],

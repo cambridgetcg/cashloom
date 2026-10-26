@@ -205,9 +205,17 @@ function StateBadge({ state }: { state?: string }) {
   );
 }
 
+// v2 receipts carry the shared grade in `proof_state` and what it rests on in
+// `anchoring`; v1 receipts carried only the anchoring words, under `proof_state`.
+function proofText(receipt: OnchainRecord | undefined): string | undefined {
+  const parts = [pickText(receipt, "proof_state"), pickText(receipt, "anchoring")]
+    .filter((part): part is string => Boolean(part))
+    .map((part) => part.replaceAll("-", " "));
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
 function proofLabel(item: OnchainRecord): string | undefined {
-  const receipt = pickRecord(item, "receipt") ?? inferredReceipt(item);
-  return pickText(receipt, "proof_state")?.replaceAll("-", " ");
+  return proofText(pickRecord(item, "receipt") ?? inferredReceipt(item));
 }
 
 function sourceIdsFor(item: OnchainRecord, receipt?: OnchainRecord): string[] {
@@ -607,7 +615,7 @@ function StablecoinSection({
                 <dl>
                   <div><dt>Representation</dt><dd>{pickText(item, "representation")?.replaceAll("_", " ") ?? "not supplied"}</dd></div>
                   <div><dt>Token / mint</dt><dd title={pickText(item, "token_address")}>{shortIdentity(pickText(item, "token_address")) ?? "pending"}</dd></div>
-                  <div><dt>Proof</dt><dd>{pickText(receipt, "proof_state")?.replaceAll("-", " ") ?? "pending"}</dd></div>
+                  <div><dt>Proof</dt><dd>{proofText(receipt) ?? "pending"}</dd></div>
                 </dl>
                 <footer className="onchain-card-foot">
                   <div><span>{dateTimeText(pickText(receipt, "observed_at", "fetched_at")) ?? "Time pending"}</span>{source && <span>{sourceLabel(source)}</span>}</div>
@@ -947,6 +955,7 @@ function metadataRows(item: OnchainRecord, receipt?: OnchainRecord): Array<[stri
     ["Status", pick(item, "status", "state")],
     ["Method", pick(receipt, "method")],
     ["Proof state", pick(receipt, "proof_state")],
+    ["Anchoring", pick(receipt, "anchoring")],
     ["Pinning", pick(receipt, "pinning")],
     ["Observed", pick(receipt, "observed_at") ?? pick(item, "observed_at")],
     ["Fetched", pick(receipt, "fetched_at") ?? pick(item, "fetched_at")],
@@ -1048,7 +1057,7 @@ function ReceiptDrawer({
         <section className="onchain-drawer__reported">
           <span>{selection.kind === "source" ? "Source state" : "Exact reported value"}</span>
           <strong>{selection.kind === "source" ? pickText(item, "status") ?? "Metadata supplied" : value ? exactView(value).text : "See machine-readable record"}</strong>
-          <div><StateBadge state={observationState(item)} />{receipt && <span>{pickText(receipt, "method")?.replaceAll("_", " ")}</span>}{receipt && <span>{pickText(receipt, "proof_state")?.replaceAll("-", " ")}</span>}</div>
+          <div><StateBadge state={observationState(item)} />{receipt && <span>{pickText(receipt, "method")?.replaceAll("_", " ")}</span>}{receipt && <span>{proofText(receipt)}</span>}</div>
         </section>
         {linkedSources.map((source) => {
           const url = safeUrl(source.url);

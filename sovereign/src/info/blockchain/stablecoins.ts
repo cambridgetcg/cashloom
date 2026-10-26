@@ -7,6 +7,7 @@ import type {
   SolanaReferenceBlock,
 } from "./types.ts";
 import {
+  anchored,
   exactValue,
   referenceBlockIsStale,
   type StablecoinObservation,
@@ -76,7 +77,7 @@ async function readEvmUsdc(
     receipt: {
       id: `usdc-supply-${deployment.chain_key}-receipt`,
       method: "observed_onchain",
-      proof_state: "pinned-block",
+      ...anchored("pinned-block"),
       pinning: result.pinning,
       observed_at: reference.block_time?.iso ?? null,
       fetched_at: result.reference.fetched_at,
@@ -176,7 +177,7 @@ async function readSolanaUsdc(
     receipt: {
       id: "usdc-supply-solana-receipt",
       method: "observed_onchain",
-      proof_state: "finalized-slot",
+      ...anchored("finalized-slot"),
       observed_at: reference.block_time?.iso ?? null,
       fetched_at: baseReference.fetched_at,
       reference_block: reference,

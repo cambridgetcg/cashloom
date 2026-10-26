@@ -108,13 +108,13 @@ describe("network metric proof states", () => {
     );
     expect(independent).toHaveLength(3);
     independent.forEach((metric) => {
-      expect(metric.receipt.proof_state).toBe("rpc-observation");
+      expect(metric.receipt).toMatchObject({ anchoring: "rpc-observation", proof_state: "asserted" });
       expect(metric.receipt.observed_at).toBeNull();
       expect(metric.receipt).not.toHaveProperty("reference_block");
       expect(metric.receipt).not.toHaveProperty("pinning");
     });
     expect(pulse.metrics.find((metric) => metric.id === "bitcoin-reference-height")?.receipt)
-      .toMatchObject({ proof_state: "chain-tip", reference_block: reference });
+      .toMatchObject({ anchoring: "chain-tip", proof_state: "tested", reference_block: reference });
   });
 
   it("does not pin independent Solana performance and priority-fee reads to the displayed slot", async () => {
@@ -138,13 +138,13 @@ describe("network metric proof states", () => {
     const independent = pulse.metrics.filter((metric) => metric.id.startsWith("solana-recent"));
     expect(independent).toHaveLength(2);
     independent.forEach((metric) => {
-      expect(metric.receipt.proof_state).toBe("rpc-observation");
+      expect(metric.receipt).toMatchObject({ anchoring: "rpc-observation", proof_state: "asserted" });
       expect(metric.receipt.observed_at).toBeNull();
       expect(metric.receipt).not.toHaveProperty("reference_block");
       expect(metric.receipt).not.toHaveProperty("pinning");
     });
     expect(pulse.metrics.find((metric) => metric.id === "solana-reference-height")?.receipt)
-      .toMatchObject({ proof_state: "finalized-slot", reference_block: reference });
+      .toMatchObject({ anchoring: "finalized-slot", proof_state: "tested", reference_block: reference });
   });
 
   it("retains pinned-block proof for hash-verified EVM block metrics", async () => {
@@ -161,6 +161,6 @@ describe("network metric proof states", () => {
     } as unknown as BlockchainRpcClient;
     const pulse = await readChainPulse(resolveBlockchainChain("ethereum")!, client, NOW);
     const gas = pulse.metrics.find((metric) => metric.id === "ethereum-block-gas-used")!;
-    expect(gas.receipt).toMatchObject({ proof_state: "pinned-block", reference_block: reference });
+    expect(gas.receipt).toMatchObject({ anchoring: "pinned-block", proof_state: "tested", reference_block: reference });
   });
 });

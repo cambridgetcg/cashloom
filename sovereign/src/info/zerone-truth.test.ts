@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
+import { strayProofStates } from "./proof-states.ts";
 import {
   getFacts,
   getDoctrine,
@@ -170,7 +171,9 @@ describe("zerone-truth doors", () => {
   it("serves verified facts over the door, graded by their record", async () => {
     const res = await appWith(fakeFetcher()).request("/v1/zerone/facts");
     expect(res.status).toBe(200);
-    expect((await res.json()).proof_state).toBe("asserted");
+    const body = await res.json();
+    expect(body.proof_state).toBe("asserted");
+    expect(strayProofStates(body)).toEqual([]);
   });
 
   it("honours ?limit on the facts door", async () => {

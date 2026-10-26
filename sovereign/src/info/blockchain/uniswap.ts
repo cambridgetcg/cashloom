@@ -8,6 +8,7 @@ import type { BlockchainRpcClient } from "./rpc.ts";
 import type { EvmReferenceBlock, ReferenceBlock } from "./types.ts";
 import { chainSourceId } from "./chains.ts";
 import {
+  anchored,
   exactValue,
   referenceBlockIsStale,
   type LiquidityPool,
@@ -201,7 +202,7 @@ export async function readUniswapPool(
     receipt: {
       id: `uniswap-v3-usdc-weth-005-${definition.chain_key}-receipt`,
       method: "observed_onchain",
-      proof_state: "pinned-block",
+      ...anchored("pinned-block"),
       pinning: reads.pinning,
       observed_at: reference.block_time?.iso ?? null,
       fetched_at: reads.reference.fetched_at,

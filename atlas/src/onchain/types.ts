@@ -12,6 +12,7 @@ export interface MetricReceipt extends OnchainRecord {
   id?: string;
   method?: string;
   proof_state?: string;
+  anchoring?: string;
   pinning?: string;
   observed_at?: string | null;
   fetched_at?: string;
@@ -62,7 +63,7 @@ export interface OnchainStatus extends OnchainRecord {
  */
 export interface OnchainSnapshot extends OnchainRecord {
   "@type"?: "OnchainSnapshot";
-  schema: "cashloom.onchain/1";
+  schema: "cashloom.onchain/1" | "cashloom.onchain/2";
   generated_at?: string;
   request?: OnchainRecord;
   status?: OnchainStatus;

@@ -9,6 +9,7 @@ import type { BlockchainRpcClient } from "./rpc.ts";
 import type { EvmReferenceBlock, ReferenceBlock } from "./types.ts";
 import { chainSourceId } from "./chains.ts";
 import {
+  anchored,
   exactValue,
   referenceBlockIsStale,
   type LendingMarket,
@@ -136,7 +137,7 @@ export async function readAaveUsdcMarket(
     receipt: {
       id: `aave-v3-usdc-${definition.chain_key}-receipt`,
       method: "derived_onchain",
-      proof_state: "pinned-block",
+      ...anchored("pinned-block"),
       pinning: batch.pinning,
       observed_at: reference.block_time?.iso ?? null,
       fetched_at: batch.reference.fetched_at,

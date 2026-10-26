@@ -126,7 +126,7 @@ describe("direct onchain protocol adapters", () => {
     } as unknown as BlockchainRpcClient;
     const sol = await readNativeUsdcSupply(solDeployment, solClient, new Map([["solana", solRef]]), NOW);
     expect(sol.supply.decimal).toBe("999.000001");
-    expect(sol.receipt.proof_state).toBe("finalized-slot");
+    expect(sol.receipt).toMatchObject({ anchoring: "finalized-slot", proof_state: "tested" });
   });
 
   it("verifies a curated Uniswap pool through its factory and keeps pool fields semantically narrow", async () => {

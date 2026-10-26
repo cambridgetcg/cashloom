@@ -288,7 +288,7 @@ export function cashLoomOrientation(
         input: { location: "none", parameters: [] },
         response: {
           media_type: ONCHAIN_MEDIA_TYPE,
-          schema: { id: "cashloom.onchain/1", version_field: "schema" },
+          schema: { id: "cashloom.onchain/2", version_field: "schema" },
           freshness: "Use generated_at plus receipt observed_at/fetched_at, reference blocks, and stale fields; latest-state is not history.",
           cache: "Cache-Control, ETag, Age, and CashLoom delivery headers are authoritative when present.",
           partial: "Allowed and explicit by section, source, observation status, unavailable entries, and limitations.",
@@ -310,7 +310,7 @@ export function cashLoomOrientation(
         },
         response: {
           media_type: ONCHAIN_SECTION_MEDIA_TYPE,
-          schema: { id: "cashloom.onchain-section/1", version_field: "schema" },
+          schema: { id: "cashloom.onchain-section/2", version_field: "schema" },
           freshness: "Uses the same generated_at, source, receipt, reference-block, and stale semantics as the composite snapshot.",
           cache: "Read response caching headers; section delivery may reuse the same bounded composite snapshot.",
           partial: "Allowed and named; a section never implies protocol-wide or chain-wide completeness.",
