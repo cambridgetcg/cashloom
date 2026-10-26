@@ -16,6 +16,9 @@ const vault = await import("./vault.ts");
 const { db, newId } = await import("./db.ts");
 const { WalletKernelStore } = await import("./wallet/infrastructure/sqlite/index.ts");
 const kernel = new WalletKernelStore(db);
+// Each initialize/unlock is one Argon2id derivation (64 MiB, t=3), about 2 s on
+// a GitHub runner. Tests that run two of them get this instead of bun's 5 s default.
+const KDF_TIMEOUT_MS = 30_000;
 
 const authorize = (input: {
   keyId: string;
@@ -106,7 +109,7 @@ describe("vault — custody discipline", () => {
     expect(vault.isUnlocked()).toBe(true);
     const token = await vault.unlock("correct horse battery staple");
     expect(vault.isValidSession(token)).toBe(true);
-  });
+  }, KDF_TIMEOUT_MS);
 
   it("refuses re-initialization (would orphan sealed keys)", async () => {
     await expect(vault.initialize("another passphrase")).rejects.toThrow(/already initialized/);
@@ -220,7 +223,7 @@ describe("vault — custody discipline", () => {
     const expiring = await vault.unlock("correct horse battery staple", { ttlMs: 1 });
     await Bun.sleep(5);
     expect(vault.isValidSession(expiring)).toBe(false);
-  });
+  }, KDF_TIMEOUT_MS);
 
   it("lock drops the master key and every session", async () => {
     const token = await vault.unlock("correct horse battery staple");
