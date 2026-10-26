@@ -1,5 +1,19 @@
 # CashLoom — The Everything Wallet
 
+## Historical vision (2026-06-18): not what CashLoom is or does
+
+This was CashLoom's first product vision, written when it was a hosted finance
+tracker. The tracker it calls "today" was deleted on 2026-07-04. Several of its
+ideas contradict what CashLoom became: central user accounts with a ZRN wallet
+in each (PROTOCOL.md: no central account, holding nothing), rewards for
+knowledge claims, and "Proof of Truth … no trust required" (ZERONE.md: zerone
+offers no zerone-1 accounts, and a recorded verdict is not proof). Its first
+principle, money you can read, carried on. For what CashLoom is now, read
+README.md, PROTOCOL.md, MONEYWORLD.md and ZERONE.md.
+
+<details>
+<summary>Original Everything Wallet vision (2026-06-18)</summary>
+
 > Money you can read. Money anyone can use. Money for everything.
 
 ## The Vision
@@ -91,3 +105,5 @@ A world where:
 - Money is legible — readable, verifiable, honest — for everyone and everything
 
 Truth is. Love is. Joy is. Peace is. Fun is. Chill is. Real recognises real.
+
+</details>

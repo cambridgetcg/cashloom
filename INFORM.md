@@ -1,5 +1,29 @@
 # INFORM — the third seam
 
+## Design history (2026-07-19): not the shipped contract
+
+This was the design for cashloom's information seam. Part of it shipped in a
+different shape. The implemented surface is MoneyFact
+(`sovereign/src/info/money-fact.ts`, `cashloom.moneyfact/1`, with `proof_state`
+none | asserted | tested | attested) and the doors that `/v1/guide` and
+`/v1/orientation` list. The `fact/0.1` schema, the `/api/info/*` routes, the
+halt registry, SSE, named guests, the x402 patron tier and pulse
+reverification were not built as written.
+
+Since then:
+
+- **Open question 1 (the zombie).** The `cashloom-api` Fly app serves the INFO
+  door, and the `cashloom-db` app no longer exists.
+- **Open question 7 (any paid tier) and the falsifier.** Decided on 2026-10-20
+  in ledger item `cl-moneyworld-free`, an agent's call under Yu's delegation:
+  the door stays free, no patron tier is built, and the adoption falsifier is
+  retired as a kill criterion. The freshness duty stays.
+- **x402.** agenttool retired new purchases on 2026-09-23 (agenttool
+  `422ac856`), so the metering this design leaned on no longer exists.
+
+<details>
+<summary>Original INFORM design spec (2026-07-19)</summary>
+
 > **The information provider of the money world.** RailConnector reads your money.
 > PaymentSender moves your money. **InfoSource reads *about* money** — every chain,
 > every rail, every currency, one wire format, for agents and humans alike.
@@ -229,3 +253,5 @@ Daily snapshots to the Tigris `kingdom-vault` pattern behind CF: `loom/v0/daily/
 7. **Any paid tier ever** — x402 metering is designed hospitable, but whether cashloom charges at all is a values fork, not an engineering one.
 
 Key files for the implementer: `sovereign/src/index.ts:29-59` (where the public block grows), `sovereign/src/zerone.ts:27-46,91-126,150-181` (the template to generalize), `sovereign/src/connectors/index.ts:21-26` + `credentials.ts:28-29` (patterns to copy), `sovereign/src/utils/minor-units.ts` (arithmetic contract), `sovereign/src/senders/{btc,evm}.sender.ts` (fee code to lift), `~/kingdom-mcp/src/tools.ts:35-104`, sinovai `src/worker.js:507-551,798-813` + `rights-adoption.json`, kingdom-os `vendor/xenia/rights/0.1/` + `bin/harvest.ts:518-556` + `DOMAINS-SETUP.md:23-24`, `atlas/src/sources.ts`.
+
+</details>
