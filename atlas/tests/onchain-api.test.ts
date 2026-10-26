@@ -4,6 +4,7 @@ import {
   ONCHAIN_STORAGE_KEY,
   fetchOnchain,
   loadPersistedOnchainSnapshot,
+  parseOnchainSnapshot,
   persistOnchainSnapshot,
 } from "../src/onchain/api.ts";
 import type { OnchainSnapshot } from "../src/onchain/types.ts";
@@ -37,6 +38,15 @@ function snapshot(generatedAt: number): OnchainSnapshot {
     sources: [],
   };
 }
+
+describe("onchain snapshot versions", () => {
+  it("reads v2 and still reads v1, so the site and the API can deploy in either order", () => {
+    const now = Date.parse("2026-10-26T12:00:00.000Z");
+    expect(parseOnchainSnapshot({ ...snapshot(now), schema: "cashloom.onchain/2" }).schema).toBe("cashloom.onchain/2");
+    expect(parseOnchainSnapshot(snapshot(now)).schema).toBe("cashloom.onchain/1");
+    expect(() => parseOnchainSnapshot({ ...snapshot(now), schema: "cashloom.onchain/3" })).toThrow();
+  });
+});
 
 describe("persisted public onchain snapshot", () => {
   it("round-trips the versioned body, validator, and received timestamp", () => {

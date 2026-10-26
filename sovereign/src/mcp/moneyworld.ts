@@ -87,10 +87,10 @@ export const TOOLS = [
   {
     name: "moneyworld_get_onchain",
     description:
-      "Read cashloom.onchain/1: selected network state, native USDC supply, Aave credit markets, Uniswap pools and Circle CCTP fee references. Exact metric values, pinned chain references and source receipts retain their timestamps and limits. Inspect status.sections, unavailable and stale fields. Supply is not reserve or peg verification; fee references and latest state are not completed transfers or capital flows. A cold read can take up to the server's 25-second snapshot budget. No wallet connection or execution.",
+      "Read cashloom.onchain/2: selected network state, native USDC supply, Aave credit markets, Uniswap pools and Circle CCTP fee references. Exact metric values, pinned chain references and source receipts retain their timestamps and limits. Each receipt's `proof_state` is the same grade as every other door (none|asserted|tested|attested): reads of public chain state at a recorded block or slot are tested; a node's own mempool, fee or performance view and Circle's fee references are asserted. `anchoring` says what the value rests on (pinned-block, finalized-slot, chain-tip, rpc-observation, external-reference). Inspect status.sections, unavailable and stale fields. Supply is not reserve or peg verification; fee references and latest state are not completed transfers or capital flows. A cold read can take up to the server's 25-second snapshot budget. No wallet connection or execution.",
     schema: {},
     handler: async () => out(await api("/v1/onchain", {
-      accept: "application/vnd.cashloom.onchain.v1+json, application/json;q=0.9", timeoutMs: 30_000,
+      accept: "application/vnd.cashloom.onchain.v2+json, application/json;q=0.9", timeoutMs: 30_000,
     })),
   },
   {

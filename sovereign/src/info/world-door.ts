@@ -22,7 +22,7 @@ import {
   type CashRateObservation,
   type CashRateSource,
 } from "./cash-rates.ts";
-import { formatMinor, type MoneyFact, type Source } from "./money-fact.ts";
+import { formatMinor, type MoneyFact, type ProofState, type Source } from "./money-fact.ts";
 import {
   MACRO_SOURCE_DEFINITIONS,
   CALENDAR_VERIFICATION_MAX_AGE_DAYS,
@@ -144,7 +144,7 @@ export interface WorldCard {
   source_id?: string;
   source?: WorldSource;
   method?: string;
-  proof_state?: string;
+  proof_state?: ProofState;
   note?: string;
   receipt?: Record<string, unknown>;
   [key: string]: unknown;
@@ -481,7 +481,7 @@ function sovereignCards(observations: MacroObservation[], now: Date): WorldCard[
       source_id: source.id,
       source,
       method: first.method,
-      proof_state: "asserted",
+      proof_state: "asserted" as const,
       note: rows.length === 1
         ? `Only the official ${maturities} reference observation is available; another requested tenor is missing.`
         : sameDate

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { makeFact } from "./money-fact.ts";
+import { strayProofStates } from "./proof-states.ts";
 import {
   NY_FED_AFFILIATION_NOTICE,
   NY_FED_REFERENCE_RATE_NOTICE,
@@ -243,6 +244,7 @@ describe("World snapshot", () => {
   it("composes independent official and on-chain sections with receipts", async () => {
     const world = await buildWorldSnapshot("GBP", deps);
     expect(world.schema).toBe("cashloom.world/1");
+    expect(strayProofStates(world)).toEqual([]);
     expect(world.base_currency).toBe("GBP");
     expect(world.policy).toHaveLength(3);
     expect(world.policy.map((card) => card.symbol)).toEqual(["US", "EFFR", "SOFR"]);

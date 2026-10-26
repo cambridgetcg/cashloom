@@ -291,7 +291,7 @@ export function mountOnchainDoor(
       const relevantSources = SECTION_SOURCE_IDS[key];
       return jsonSnapshot(c, {
         "@type": "OnchainSection",
-        schema: "cashloom.onchain-section/1",
+        schema: "cashloom.onchain-section/2",
         generated_at: snapshot.generated_at,
         scope: snapshot.scope,
         section: selector,

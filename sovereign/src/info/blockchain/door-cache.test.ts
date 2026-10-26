@@ -13,7 +13,7 @@ const BASE_TIME = Date.parse("2026-08-21T12:00:00.000Z");
 function snapshot(generatedAt: number, marker = "one"): OnchainSnapshot {
   return {
     "@type": "OnchainSnapshot",
-    schema: "cashloom.onchain/1",
+    schema: "cashloom.onchain/2",
     generated_at: new Date(generatedAt).toISOString(),
     scope: "latest_state",
     status: {

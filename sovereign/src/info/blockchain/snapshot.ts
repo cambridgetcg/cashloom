@@ -520,7 +520,7 @@ async function assembleOnchainSnapshot(
 
   return {
     "@type": "OnchainSnapshot",
-    schema: "cashloom.onchain/1",
+    schema: "cashloom.onchain/2",
     generated_at: generatedAt,
     scope: "latest_state",
     status: {
