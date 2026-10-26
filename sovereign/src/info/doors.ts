@@ -9,7 +9,7 @@ import { makeFact } from "./money-fact.ts";
 import { FX_REFERENCE_DATE_TTL_S, fxReferenceIsStale, getFxRate } from "./fx.ts";
 import { readFees, supportedFeeChains } from "./fees.ts";
 import { ASSETS, resolveAsset, searchAssets } from "./assets.ts";
-import { listFeeds, resolveFeed } from "./price.ts";
+import { listFeeds } from "./price.ts";
 import { applyRate } from "../utils/minor-units.ts";
 import { CAPITAL_FLOWS_MEDIA_TYPE, CAPITAL_FLOWS_SCHEMA, HISTORY_LIMIT } from "./capital-flows/model.ts";
 
@@ -23,6 +23,14 @@ const problem = (status: number, title: string, detail: string, next?: string[])
 });
 
 const INTEGER_STRING = /^-?\d+$/;
+
+// A price feed by symbol, CAIP-19 base or alias. price.ts resolveFeed decodes
+// again, and Hono has already decoded the query: a raw '%' would throw (see
+// resolveAsset in assets.ts), so match the decoded text as it is.
+const feedFor = (q: string) => {
+  const key = q.trim().toLowerCase();
+  return listFeeds().find((f) => [f.symbol, f.base, ...f.aliases].some((k) => k.toLowerCase() === key));
+};
 
 export interface InfoDoorDeps {
   fxRate: typeof getFxRate;
@@ -132,7 +140,7 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
     const to = resolveAsset(toQ);
     if (!from || !to) {
       const missing = !from ? fromQ : toQ;
-      const feed = resolveFeed(missing);
+      const feed = feedFor(missing);
       return c.json(
         problem(
           422,
@@ -149,7 +157,13 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
       const fiatCodes = ASSETS.filter((a) => fiat(a.id)).map((a) => a.symbol).join(", ");
       const priced = listFeeds().map((f) => f.symbol).join(" and ");
       const legs = [from, to].filter((a) => !fiat(a.id));
-      const unpriced = legs.filter((a) => !resolveFeed(a.symbol)).map((a) => a.symbol);
+      const unpriced = legs.filter((a) => !feedFor(a.symbol)).map((a) => a.symbol);
+      // The registry's Base ETH row has no feed of its own: /v1/price/ETH prices it
+      // with the Ethereum mainnet ETH/USD feed, so say so.
+      const borrowed = legs.flatMap((a) => {
+        const f = feedFor(a.symbol);
+        return f && f.base !== a.id ? [`${a.id} (${a.name}) has no feed of its own: the ${f.symbol} doors price it with the ${f.symbol}/USD feed for ${f.base}`] : [];
+      });
       const next: string[] = [];
       if (legs.length === 1 && !unpriced.length) {
         const crypto = legs[0].symbol;
@@ -165,6 +179,7 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
           `/v1/convert converts only between the registry's fiat currencies (${fiatCodes}) at the ECB reference rate. ` +
             `For crypto, /v1/value/{amount_minor}/{asset}/{quote} and /v1/price/{asset}/{quote} on this service price ${priced} from Chainlink on-chain feeds, quoted in USD or an ECB reference currency` +
             (unpriced.length ? `; ${unpriced.join(" and ")} ${unpriced.length > 1 ? "have" : "has"} no price source here` : "") +
+            borrowed.map((b) => `; ${b}`).join("") +
             ".",
           next,
         ),
