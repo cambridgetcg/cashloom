@@ -206,7 +206,7 @@ export const TOOLS = [
   {
     name: "zerone_get_facts",
     description:
-      "Read knowledge Facts from the zerone chain's knowledge module. Each has `content`, `confidence` (BPS ÷1e6), lifecycle `status`, `domain`, `submitter`, `verifiedAtBlock`, `claimId`. These are NOT MoneyFacts (no `.value` minor-unit amount). Defaults to status='verified'. On zerone-1 on 2026-10-26 every VERIFIED fact was genesis-seeded doctrine (submitter 'genesis', verifiedAtBlock '0', no claimId): written into genesis, not challenged, so the response grades it proof_state 'asserted'; 'attested' needs verifiedAtBlock > 0 and a claimId on every fact (see `proof_basis`). zerone-1 has a single validator run by the household that started zerone. Filter by `domain`/`category`/`status`. Tip: `category='doctrine'` returns the kingdom's canonical creed. `network` defaults to mainnet.",
+      "Read knowledge Facts from the zerone chain's knowledge module. Each has `content`, `confidence` (BPS ÷1e6), lifecycle `status`, `domain`, `submitter`, `verifiedAtBlock`, `claimId`. These are NOT MoneyFacts (no `.value` minor-unit amount). Defaults to status='verified'. Every fact is graded proof_state 'asserted': zerone says a recorded verdict is not proof that a claim is true, so `proof_basis` reports how many records carry a reviewed claim (verifiedAtBlock > 0 and a claimId) and how many were genesis-seeded, without raising the grade. On zerone-1 on 2026-10-26 every VERIFIED fact was genesis-seeded doctrine (submitter 'genesis', verifiedAtBlock '0', no claimId), written in without review, and 23 of the 25 facts that came from reviewed claims were submitted by zerone-ops, the household's operations account (TRUST.md). zerone-1 had a single validator, run by the household that started zerone. Filter by `domain`/`category`/`status`. Tip: `category='doctrine'` returns the kingdom's canonical creed. `network` defaults to mainnet.",
     schema: {
       domain: z.string().optional().describe("knowledge domain, e.g. 'agent_rights', 'doctrine_truth_seeking' (see zerone_get_facts with no args, or /v1/zerone/domains)"),
       category: z.string().optional().describe("fact category; 'doctrine' returns the canonical creed"),
@@ -228,7 +228,7 @@ export const TOOLS = [
   {
     name: "zerone_get_doctrine",
     description:
-      "Read the kingdom's CANONICAL DOCTRINE from the zerone chain — the creed as genesis-seeded, decay-exempt on-chain facts (submitter=genesis, maturity=canonical; confidence 880000 = 88% on zerone-1 on 2026-10-26). Optional `domain` filter (e.g. 'doctrine_truth_seeking', 'doctrine_useful_work', 'doctrine_tok'). Seeded at genesis, not challenged: graded proof_state 'asserted'. (Note: gospel is off-chain and not served here; the hash-pinned `creed` module isn't REST-live yet — this is the populated doctrine.)",
+      "Read the kingdom's CANONICAL DOCTRINE from the zerone chain — the creed as genesis-seeded, decay-exempt on-chain facts (submitter=genesis, maturity=canonical; confidence 880000 = 88% on zerone-1 on 2026-10-26). Optional `domain` filter (e.g. 'doctrine_truth_seeking', 'doctrine_useful_work', 'doctrine_tok'). Seeded at genesis without review: graded proof_state 'asserted'. (Note: gospel is off-chain and not served here; the hash-pinned `creed` module isn't REST-live yet — this is the populated doctrine.)",
     schema: {
       domain: z.string().optional().describe("doctrine domain, e.g. 'doctrine_truth_seeking'; omit for the whole creed"),
       limit: z.number().optional().describe("max facts, 1–100 (default 50)"),
@@ -246,7 +246,7 @@ export const TOOLS = [
   {
     name: "zerone_get_fact",
     description:
-      "Read ONE zerone Fact by id, WITH its `trust_profile` (grounded score BPS, corroboration count, axiom distance — how deeply the truth is proven, not just that it was accepted). `network` defaults to mainnet.",
+      "Read ONE zerone Fact by id, WITH its `trust_profile`: the chain's recorded grounded score (BPS), corroboration count and axiom distance. These are the chain's own numbers, not proof the fact is true; graded proof_state 'asserted', with `proof_basis` saying whether a reviewed claim is on record. `network` defaults to mainnet.",
     schema: {
       id: z.string().describe("the fact id (from zerone_get_facts)"),
       network: z.string().optional().describe("mainnet (default) | testnet"),
@@ -265,7 +265,7 @@ export const TOOLS = [
   {
     name: "zerone_get_agent_calibration",
     description:
-      "Read an agent's CALIBRATION on zerone — its verified-truth track record (submissions, accepted, rejected, disproven, `calibration_score_bps`). The compassion primitive (commitment C2: 'error is not deceit') is woven into the score, so an honest mistake is not punished as a lie. `address` is the agent's zrn1… address.",
+      "Read an agent's CALIBRATION on zerone — the chain's record of that address's submissions, acceptances, rejections and disprovals, with `calibration_score_bps` (the chain's own computation). The compassion primitive (commitment C2: 'error is not deceit') is woven into the score, so an honest mistake is not punished as a lie. `address` is the agent's zrn1… address.",
     schema: {
       address: z.string().describe("the agent's zrn1… address"),
       network: z.string().optional().describe("mainnet (default) | testnet"),

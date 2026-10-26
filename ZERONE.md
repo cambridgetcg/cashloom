@@ -94,9 +94,12 @@ is `GET http://169.155.55.44:1317/ibc/core/client/v1/client_status/07-tendermint
    blocks (~100 min). Attesting needs a funded zerone-1 key and a 1 ZRN bond,
    and JOIN.md says onboarding and transaction lanes are paused.
 3. **Compose** — an address's claim record is readable at
-   `/v1/zerone/agent/{address}/calibration`. On zerone-1 on 2026-10-26 every
-   VERIFIED fact was genesis-seeded doctrine, so the truth doors grade those
-   facts `asserted`, not `attested`.
+   `/v1/zerone/agent/{address}/calibration`. zerone says a recorded verdict is
+   not proof that a claim is true, so the truth doors grade every fact
+   `asserted` and report in `proof_basis` whether a reviewed claim is on
+   record. On zerone-1 on 2026-10-26 every VERIFIED fact was genesis-seeded
+   doctrine, and 23 of the 25 facts that came from reviewed claims were
+   submitted by zerone-ops, the household's operations account (TRUST.md).
 
 ### Exit today
 

@@ -55,6 +55,17 @@ describe("public snapshots through the MCP protocol (offline)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // zerone.ai/llms.txt (2026-10-26): "a recorded verdict is not proof that a claim is true".
+  it("describes the zerone tools as the chain's record, not as proof", async () => {
+    const { tools } = await client.listTools();
+    const zerone = tools.filter(tool => tool.name.startsWith("zerone_"));
+    expect(zerone.length).toBeGreaterThanOrEqual(5);
+    for (const tool of zerone) {
+      expect(tool.description).not.toMatch(/quorum|\bproven\b|verified-truth|attested on-chain|'attested' needs/i);
+    }
+    expect(zerone.find(tool => tool.name === "zerone_get_facts")?.description).toContain("not proof that a claim is true");
+  });
+
   it("uses USD by default and preserves World partial coverage and receipt timestamps", async () => {
     const snapshot = {
       schema: "cashloom.world/1", base_currency: "USD", generated_at: "2026-08-20T16:00:00Z",

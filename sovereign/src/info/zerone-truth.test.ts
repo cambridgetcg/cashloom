@@ -7,7 +7,7 @@ import {
   getCommitments,
   getAgentCalibration,
   getLeaderboard,
-  factProofState,
+  hasReviewedClaim,
   mountZeroneTruth,
   type ZeroneFetcher,
 } from "./zerone-truth";
@@ -15,7 +15,9 @@ import {
 // Record shapes as the zerone-1 knowledge REST returns them (camelCase). On
 // 2026-10-26 every VERIFIED fact there looked like GENESIS_FACT.
 const GENESIS_FACT = { id: "fact-1", content: "methodology over statement", domain: "doctrine_truth_seeking", category: "doctrine", confidence: "880000", status: "FACT_STATUS_VERIFIED", submitter: "genesis", verifiedAtBlock: "0", claimId: "" };
-const REVIEWED_FACT = { id: "fact-2", content: "a reviewed claim", domain: "biology", category: "empirical", confidence: "770000", status: "FACT_STATUS_VERIFIED", submitter: "zrn1reviewed", verifiedAtBlock: "1200", claimId: "claim-9" };
+// A reviewed claim still VERIFIED, from the household's zerone-ops account
+// (TRUST.md), which submitted 23 of the 25 claim-backed facts on zerone-1.
+const REVIEWED_FACT = { id: "fact-2", content: "a reviewed claim", domain: "biology", category: "empirical", confidence: "770000", status: "FACT_STATUS_VERIFIED", submitter: "zrn17h5scv3zu7xa8ep9kaqy47ae08h9x6c5fanwkh", verifiedAtBlock: "1200", claimId: "claim-9" };
 
 // A fake zerone REST — inspects the URL and returns canned knowledge-module
 // JSON. No network anywhere; also lets us assert the exact query the reader built.
@@ -56,15 +58,20 @@ describe("zerone-truth readers", () => {
     expect(r["@type"]).toBe("ZeroneTruth");
   });
 
-  it("grades attested only when every fact carries verifiedAtBlock > 0 and a claimId", async () => {
-    expect(factProofState(GENESIS_FACT)).toBe("asserted");
-    expect(factProofState(REVIEWED_FACT)).toBe("attested");
-    expect(factProofState({ ...REVIEWED_FACT, claimId: "" })).toBe("asserted");
-    expect(factProofState({ ...REVIEWED_FACT, verifiedAtBlock: "0" })).toBe("asserted");
-    expect(factProofState({ ...REVIEWED_FACT, status: "FACT_STATUS_EXPIRED" })).toBe("asserted");
-    expect((await getFacts({}, fakeFetcher([], [REVIEWED_FACT]))).proof_state).toBe("attested");
-    expect((await getFacts({}, fakeFetcher([], [REVIEWED_FACT, GENESIS_FACT]))).proof_state).toBe("asserted");
+  // zerone.ai/llms.txt: "a recorded verdict is not proof that a claim is true".
+  it("never grades a fact attested; a reviewed claim is reported in proof_basis", async () => {
+    expect(hasReviewedClaim(GENESIS_FACT)).toBe(false);
+    expect(hasReviewedClaim(REVIEWED_FACT)).toBe(true);
+    expect(hasReviewedClaim({ ...REVIEWED_FACT, claimId: "" })).toBe(false);
+    expect(hasReviewedClaim({ ...REVIEWED_FACT, verifiedAtBlock: "0" })).toBe(false);
+    const reviewed = await getFacts({}, fakeFetcher([], [REVIEWED_FACT]));
+    expect(reviewed.proof_state).toBe("asserted");
+    expect(reviewed.proof_basis).toMatchObject({ records: 1, with_reviewed_claim: 1, genesis_seeded: 0 });
+    expect(reviewed.proof_basis.rule).toContain("not proof");
+    const mixed = await getFacts({}, fakeFetcher([], [REVIEWED_FACT, GENESIS_FACT]));
+    expect(mixed.proof_basis).toMatchObject({ records: 2, with_reviewed_claim: 1, genesis_seeded: 1 });
     expect((await getFacts({}, fakeFetcher([], []))).proof_state).toBe("asserted");
+    expect(JSON.stringify(reviewed)).not.toContain('"attested"');
   });
 
   it("enforces limit itself, because the node ignores pagination.limit", async () => {
@@ -104,7 +111,7 @@ describe("zerone-truth readers", () => {
     const r = await getDoctrine({}, fakeFetcher(calls));
     expect(calls[0]).toContain("category=doctrine");
     expect(r["@type"]).toBe("ZeroneDoctrine");
-    expect(r.proof_state).toBe("asserted"); // seeded at genesis, never challenged
+    expect(r.proof_state).toBe("asserted"); // seeded at genesis, without review
     expect(r.count).toBe(1);
   });
 
@@ -116,7 +123,10 @@ describe("zerone-truth readers", () => {
     expect(r.fact.id).toBe("fact-1");
     expect(r.trust_profile.grounded_score_bps).toBe("900000");
     expect(r.proof_state).toBe("asserted"); // VERIFIED, but genesis-seeded: no claim behind it
-    expect((await getFact("fact-2", undefined, fakeFetcher([], [REVIEWED_FACT]))).proof_state).toBe("attested");
+    expect(r.proof_basis.reviewed_claim_on_record).toBe(false);
+    const reviewed = await getFact("fact-2", undefined, fakeFetcher([], [REVIEWED_FACT]));
+    expect(reviewed.proof_state).toBe("asserted");
+    expect(reviewed.proof_basis).toMatchObject({ reviewed_claim_on_record: true, submitter: REVIEWED_FACT.submitter });
   });
 
   it("reads the chain's normative commitments", async () => {
@@ -142,13 +152,15 @@ describe("zerone-truth doors", () => {
     return app;
   };
 
-  it("serves the guide with honest gaps (single validator, genesis facts, no gospel, creed not live)", async () => {
+  it("serves the guide with honest gaps (single validator, genesis facts, household-submitted claims, no gospel, creed not live)", async () => {
     const res = await appWith(fakeFetcher()).request("/v1/zerone");
     expect(res.status).toBe(200);
     const body = await res.json();
     const gaps = body.honest_gaps.join(" ");
-    expect(gaps).toContain("single validator");
+    expect(gaps).toContain("on 2026-10-26 zerone-1 had a single validator");
     expect(gaps).toContain("genesis-seeded");
+    expect(gaps).toContain("not proof");
+    expect(gaps).toContain("zerone-ops");
     expect(gaps).toContain("gospel");
     expect(gaps).toContain("creed");
     expect(body.note).not.toMatch(/quorum/i);

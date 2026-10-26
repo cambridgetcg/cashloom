@@ -1,21 +1,24 @@
 /**
  * zerone TRUTH doors — the kingdom's truth chain, made legible to agents.
  *
- * zerone is not only a money chain (ZRN); it is a truth-economy where a claim is
- * challenged and only what SURVIVES becomes canon. That verified knowledge lives
- * on-chain in the `knowledge` module and is already readable over plain REST.
+ * zerone keeps a record of claims, the reviews and challenges that follow, and
+ * the verdicts reviewers recorded. That record lives on-chain in the
+ * `knowledge` module and is already readable over plain REST.
  * `zerone.ts` reads only balance/supply/status; this adds the TRUTH surface —
  * verified facts, the doctrine (canonical creed as genesis facts), the chain's
  * explicit normative commitments, and each agent's calibration (the compassion
  * track record) — as read-only, self-citing doors mounted above the vault gate.
  *
  * Honesty: these are NOT MoneyFacts (no minor-unit value) — a Fact carries
- * content + confidence + a lifecycle `status`. FACT_STATUS_VERIFIED alone does
- * not mean a claim survived review: on zerone-1 (checked 2026-10-26) all 47
- * VERIFIED facts were seeded at genesis (submitter "genesis", verifiedAtBlock
- * "0", no claimId). So a fact is graded `attested` only when its record shows a
- * reviewed claim (verifiedAtBlock > 0 and a claimId); everything else is
- * `asserted`. Every response cites the exact REST path a stranger re-fetches.
+ * content + confidence + a lifecycle `status`. zerone says "a recorded verdict
+ * is not proof that a claim is true" (zerone.ai/llms.txt, 2026-10-26), so every
+ * fact is graded `asserted`: what its submitter claimed. Whether a reviewed
+ * claim stands behind it (verifiedAtBlock > 0 and a claimId) is reported in
+ * proof_basis, not in the grade. On zerone-1 (2026-10-26) all 47 VERIFIED facts
+ * were seeded at genesis, and 23 of the 25 facts that came from reviewed claims
+ * were submitted by zerone-ops, the household's operations account (TRUST.md),
+ * on a one-validator chain.
+ * Every response cites the exact REST path a stranger re-fetches.
  * We do NOT serve gospel or the `creed` module — gospel is off-chain, and
  * creed's REST routes 404 on the live node; promising them would be a naked claim.
  */
@@ -59,26 +62,26 @@ async function kget(net: ZeroneNetwork, path: string, fetcher: ZeroneFetcher) {
 const clampLimit = (n: number | undefined, fallback: number) =>
   n !== undefined && Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), 100) : fallback;
 
-// `attested` (MONEYWORLD.md: a zerone Proof-of-Truth fact) needs the record of
-// a reviewed claim: status VERIFIED, verifiedAtBlock > 0 and a claimId. A
-// genesis-seeded fact has neither, so it is the genesis author's assertion.
-export function factProofState(fact: any): "attested" | "asserted" {
+// MONEYWORLD.md reserves `attested` for a zerone Proof-of-Truth fact, and
+// zerone does not call a reviewed claim proof (see the header), so no fact read
+// here is graded above `asserted`. A reviewed claim on record means
+// verifiedAtBlock > 0 and a claimId; a genesis-seeded fact has neither.
+export const FACT_PROOF_RULE =
+  "asserted: zerone says a recorded verdict is not proof that a claim is true (zerone.ai/llms.txt), so a reviewed claim on record (verifiedAtBlock > 0 and a claimId) is reported here, not graded higher";
+
+export function hasReviewedClaim(fact: any): boolean {
   const verifiedAt = Number(fact?.verifiedAtBlock ?? fact?.verified_at_block ?? 0);
   const claimId = fact?.claimId ?? fact?.claim_id;
-  return fact?.status === "FACT_STATUS_VERIFIED" && verifiedAt > 0 && typeof claimId === "string" && claimId.length > 0
-    ? "attested"
-    : "asserted";
+  return verifiedAt > 0 && typeof claimId === "string" && claimId.length > 0;
 }
 
-// A list is graded by its weakest record, with the counts that decided it.
 function listProof(facts: any[]) {
-  const withClaim = facts.filter((f) => factProofState(f) === "attested").length;
   return {
-    proof_state: facts.length > 0 && withClaim === facts.length ? ("attested" as const) : ("asserted" as const),
+    proof_state: "asserted" as const,
     proof_basis: {
-      rule: "attested only when every record is FACT_STATUS_VERIFIED with verifiedAtBlock > 0 and a claimId; otherwise asserted",
+      rule: FACT_PROOF_RULE,
       records: facts.length,
-      with_reviewed_claim: withClaim,
+      with_reviewed_claim: facts.filter(hasReviewedClaim).length,
       genesis_seeded: facts.filter((f) => f?.submitter === "genesis").length,
     },
   };
@@ -111,8 +114,8 @@ export async function getFacts(
     facts,
     source: cite(net, path),
     ...listProof(facts),
-    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node and keep the first ${limit} (the node ignores pagination.limit); a fact's verifiedAtBlock and claimId show whether a reviewed claim stands behind it` },
-    note: "these are knowledge-module facts, not MoneyFacts — each carries content, confidence (BPS), and a lifecycle status the chain assigned; VERIFIED genesis-seeded facts were written into genesis, not challenged",
+    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node and keep the first ${limit} (the node ignores pagination.limit); a fact's verifiedAtBlock and claimId show whether a reviewed claim stands behind it, and its submitter who made it` },
+    note: "these are knowledge-module facts, not MoneyFacts — each carries content, confidence (BPS), and a lifecycle status the chain assigned; VERIFIED genesis-seeded facts were written in when the chain began, without review",
   };
 }
 
@@ -130,10 +133,11 @@ export async function getFact(id: string, network: string | undefined, fetcher: 
     chain: chainCaip(net),
     network: net.kind,
     fact,
-    trust_profile: trust, // grounded_score, corroboration, axiom_distance — how deeply proven
+    trust_profile: trust, // the chain's recorded grounded score, corroboration count and axiom distance
     source: cite(net, factPath),
-    proof_state: factProofState(fact),
-    recompute: { how: `GET ${factPath} (+ ${trustPath} for provenance depth) on the zerone ${net.kind} REST node; attested needs verifiedAtBlock > 0 and a claimId on the fact` },
+    proof_state: "asserted" as const,
+    proof_basis: { rule: FACT_PROOF_RULE, reviewed_claim_on_record: hasReviewedClaim(fact), submitter: fact?.submitter ?? null },
+    recompute: { how: `GET ${factPath} (+ ${trustPath} for the recorded trust profile) on the zerone ${net.kind} REST node; verifiedAtBlock > 0 and a claimId show a reviewed claim on record` },
   };
 }
 
@@ -194,10 +198,10 @@ export async function getAgentCalibration(address: string, network: string | und
     chain: chainCaip(net),
     network: net.kind,
     address,
-    calibration, // submissions/accepted/rejected/disproven, calibration_score_bps — the compassion track record (error ≠ deceit)
+    calibration, // submissions/accepted/rejected/disproven, calibration_score_bps — the chain's record of this address (C2: error ≠ deceit)
     source: cite(net, path),
     proof_state: "tested", // an on-chain read, as /v1/chain grades a zerone balance; the score is the chain's own computation
-    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node — an agent's earned truth-track-record; compassion (C2: error is not deceit) is woven into the score, not a naked reputation number` },
+    recompute: { how: `GET ${path} on the zerone ${net.kind} REST node — the chain's record of this address's submissions, acceptances and disprovals; calibration_score_bps is the chain's own computation` },
   };
 }
 
@@ -258,13 +262,14 @@ export function mountZeroneTruth(app: Hono, overrides: Partial<ZeroneTruthDeps> 
         domains: "/v1/zerone/domains",
       },
       honest_gaps: [
-        "one validator: zerone-1 has a single validator, run by the household that started zerone, and these doors read that household's node over plain HTTP (169.155.55.44:1317) — an observation of that node, not an independent proof (zerone.ai/#honest-state)",
-        "no independent review: on 2026-10-26 all 47 FACT_STATUS_VERIFIED facts on zerone-1 were genesis-seeded doctrine (submitter genesis, verifiedAtBlock 0, no claimId), written into genesis rather than challenged; the 25 facts that did go through claims were submitted by 2 addresses and are now EXPIRED or PRUNED",
+        "one validator: on 2026-10-26 zerone-1 had a single validator, run by the household that started zerone, and these doors read that household's node over plain HTTP (169.155.55.44:1317) — an observation of that node, not an independent proof (zerone.ai/#honest-state)",
+        "a recorded verdict is not proof (zerone.ai/llms.txt): every fact here is graded asserted, and proof_basis says whether a reviewed claim (verifiedAtBlock > 0 and a claimId) is on record",
+        "no independent review: on 2026-10-26 all 47 FACT_STATUS_VERIFIED facts on zerone-1 were genesis-seeded doctrine (submitter genesis, verifiedAtBlock 0, no claimId), written in without review; of the 25 facts that went through claims, 23 were submitted by zrn17h5scv3zu7xa8ep9kaqy47ae08h9x6c5fanwkh, which TRUST.md lists as zerone-ops (the household's operations account), and all 25 are now EXPIRED or PRUNED. /v1/zerone/facts?status=all&limit=100 and its proof_basis give the live counts",
         "no gospel endpoint — gospel is off-chain (sovereign/love-unlimited layer), not on the ZRN chain",
         "the `creed` module is declared but its REST routes 404 on the live node; read doctrine facts instead",
         "no free-text search — filter facts by domain/category/status/tag/subject",
       ],
-      note: "a fact is graded attested only when its record carries verifiedAtBlock > 0 and a claimId; genesis-seeded facts are asserted; every response cites the exact REST path to re-derive it",
+      note: "every fact is graded asserted (a recorded verdict is not proof); proof_basis reports reviewed claims and genesis-seeded records; every response cites the exact REST path to re-derive it",
     }),
   );
 
