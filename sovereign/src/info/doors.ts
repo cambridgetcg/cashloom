@@ -9,6 +9,7 @@ import { makeFact } from "./money-fact.ts";
 import { FX_REFERENCE_DATE_TTL_S, fxReferenceIsStale, getFxRate } from "./fx.ts";
 import { readFees, supportedFeeChains } from "./fees.ts";
 import { ASSETS, resolveAsset, searchAssets } from "./assets.ts";
+import { listFeeds, resolveFeed } from "./price.ts";
 import { applyRate } from "../utils/minor-units.ts";
 import { CAPITAL_FLOWS_MEDIA_TYPE, CAPITAL_FLOWS_SCHEMA, HISTORY_LIMIT } from "./capital-flows/model.ts";
 
@@ -89,8 +90,9 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
   });
 
   // ── convert: exact arithmetic that shows its work ───────────────────────
-  // Fiat↔fiat today (the ECB leg exists); crypto conversion waits for an
-  // honest price source — refusing loudly beats converting on a rumor.
+  // Fiat↔fiat between the registry's fiat rows, at the ECB reference rate. A
+  // crypto leg is refused here and pointed at /v1/value and /v1/price
+  // (price-door.ts), which price BTC and ETH from Chainlink on-chain feeds.
   app.get("/v1/convert", async (c) => {
     const amountMinor = c.req.query("amount_minor");
     const fromQ = c.req.query("from");
@@ -129,19 +131,42 @@ export function mountInfoDoors(app: Hono, overrides: Partial<InfoDoorDeps> = {})
     const from = resolveAsset(fromQ);
     const to = resolveAsset(toQ);
     if (!from || !to) {
+      const missing = !from ? fromQ : toQ;
+      const feed = resolveFeed(missing);
       return c.json(
-        problem(422, "unknown asset", `'${!from ? fromQ : toQ}' is not in the registry`, ["GET /v1/assets"]),
+        problem(
+          422,
+          "unknown asset",
+          `'${missing}' is not in the registry` +
+            (feed ? `; /v1/price/${feed.symbol}/{quote} and /v1/value/{amount_minor}/${feed.symbol}/{quote} price ${feed.symbol} from a Chainlink on-chain feed` : ""),
+          [...(feed ? [`GET /v1/price/${feed.symbol}/USD`] : []), "GET /v1/assets", "GET /v1/rates/fiat for ECB reference rates"],
+        ),
         422,
       );
     }
     const fiat = (id: string) => id.startsWith("iso4217:");
     if (!fiat(from.id) || !fiat(to.id)) {
+      const fiatCodes = ASSETS.filter((a) => fiat(a.id)).map((a) => a.symbol).join(", ");
+      const priced = listFeeds().map((f) => f.symbol).join(" and ");
+      const legs = [from, to].filter((a) => !fiat(a.id));
+      const unpriced = legs.filter((a) => !resolveFeed(a.symbol)).map((a) => a.symbol);
+      const next: string[] = [];
+      if (legs.length === 1 && !unpriced.length) {
+        const crypto = legs[0].symbol;
+        const quote = fiat(from.id) ? from.symbol : to.symbol;
+        if (!fiat(from.id)) next.push(`GET /v1/value/${amountMinor}/${crypto}/${quote} for this amount's value`);
+        next.push(`GET /v1/price/${crypto}/${quote} for the unit price`);
+      }
+      next.push("GET /v1/prices for every priced asset", "GET /v1/rates/fiat for fiat reference rates", "GET /v1/assets for the registry");
       return c.json(
         problem(
           422,
           "conversion not yet served",
-          "only fiat↔fiat conversion is offered today; crypto pricing has no honest source here yet, and converting on a rumor is worse than refusing",
-          ["GET /v1/rates/fiat for what exists", "GET /v1/assets for the registry"],
+          `/v1/convert converts only between the registry's fiat currencies (${fiatCodes}) at the ECB reference rate. ` +
+            `For crypto, /v1/value/{amount_minor}/{asset}/{quote} and /v1/price/{asset}/{quote} on this service price ${priced} from Chainlink on-chain feeds, quoted in USD or an ECB reference currency` +
+            (unpriced.length ? `; ${unpriced.join(" and ")} ${unpriced.length > 1 ? "have" : "has"} no price source here` : "") +
+            ".",
+          next,
         ),
         422,
       );
