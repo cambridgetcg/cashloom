@@ -36,8 +36,13 @@ export const CASHLOOM_WEBSITE_ORIGIN = "https://cashloom.io";
 export const CASHLOOM_PUBLIC_ORIGIN_HEADER = "X-CashLoom-Public-Origin";
 
 // Published World release source and guide, not an attestation of the deployed commit.
-export const CASHLOOM_WORLD_SOURCE_URL = "https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823";
-export const CASHLOOM_WORLD_DOCUMENTATION_URL = "https://github.com/cambridgetcg/cashloom/blob/release/moneyworld-wallet-kernel-v2-20260823/MONEYWORLD.md";
+// release/moneyworld-wallet-kernel-v2-20260823 was deleted; the live doors are
+// built from release/service-workspace-20260929. The repository is private.
+export const CASHLOOM_WORLD_SOURCE_URL = "https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929";
+export const CASHLOOM_WORLD_DOCUMENTATION_URL = "https://github.com/cambridgetcg/cashloom/blob/release/service-workspace-20260929/MONEYWORLD.md";
+export const CASHLOOM_WORLD_RUN_LOCALLY_URL = `${CASHLOOM_WORLD_SOURCE_URL}#run-the-existing-information-tools-locally`;
+export const CASHLOOM_WORLD_SOURCE_ACCESS =
+  "private repository: github.com/cambridgetcg/cashloom returns 404 without repository access; the public read doors need none";
 
 export type CashLoomSurfaceRuntime = "hosted_info" | "local_sovereign";
 
@@ -220,6 +225,7 @@ export function cashLoomOrientation(
       runtime,
       source_code: CASHLOOM_WORLD_SOURCE_URL,
       documentation: CASHLOOM_WORLD_DOCUMENTATION_URL,
+      source_access: CASHLOOM_WORLD_SOURCE_ACCESS,
     },
     surface: {
       profile: SURFACE_PROFILE,

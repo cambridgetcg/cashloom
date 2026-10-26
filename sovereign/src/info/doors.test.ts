@@ -149,6 +149,46 @@ describe("/v1/convert", () => {
     expect(body.next_actions).toBeDefined();
   });
 
+  it("names the fiat registry and sends a crypto leg to the value and price doors", async () => {
+    const body = await (await app.request("/v1/convert?amount_minor=100000000&from=BTC&to=EUR")).json();
+    expect(body.detail).toContain("GBP, USD, EUR");
+    expect(body.detail).toContain("/v1/value/{amount_minor}/{asset}/{quote}");
+    expect(body.detail).toContain("/v1/price/{asset}/{quote}");
+    expect(body.detail).not.toMatch(/no honest source/);
+    expect(body.next_actions).toContain("GET /v1/value/100000000/BTC/EUR for this amount's value");
+    expect(body.next_actions).toContain("GET /v1/price/BTC/EUR for the unit price");
+
+    const toCrypto = await (await app.request("/v1/convert?amount_minor=10000&from=GBP&to=eth-base")).json();
+    expect(toCrypto.next_actions).toContain("GET /v1/price/ETH/GBP for the unit price");
+    expect(toCrypto.next_actions.join(" ")).not.toContain("/v1/value/");
+    // the Base ETH row is priced by the Ethereum mainnet feed, and the detail says so
+    expect(toCrypto.detail).toContain("eip155:8453/slip44:60 (Ether (Base)) has no feed of its own");
+    expect(toCrypto.detail).toContain("ETH/USD feed for eip155:1/slip44:60");
+    expect(body.detail).not.toContain("has no feed of its own");
+
+    // bare "ETH" is not a registry alias (the row is Base ETH), but it is priced
+    const bare = await (await app.request("/v1/convert?amount_minor=1&from=ETH&to=USD")).json();
+    expect(bare.title).toBe("unknown asset");
+    expect(bare.next_actions[0]).toBe("GET /v1/price/ETH/USD");
+  });
+
+  // Hono has already decoded the query; decoding again threw URIError (500).
+  it("refuses an unknown asset holding a raw '%' with 422, not a crash", async () => {
+    for (const q of ["amount_minor=1&from=%25&to=USD", "amount_minor=1&from=GBP&to=%25zz"]) {
+      const res = await app.request(`/v1/convert?${q}`);
+      expect(res.status).toBe(422);
+      expect((await res.json()).title).toBe("unknown asset");
+    }
+  });
+
+  it("says when a crypto leg has no price source at all", async () => {
+    const body = await (await app.request("/v1/convert?amount_minor=1000000&from=ZRN&to=USD")).json();
+    expect(body.status).toBe(422);
+    expect(body.detail).toContain("ZRN has no price source here");
+    expect(body.next_actions.join(" ")).not.toContain("/v1/value/1000000/ZRN");
+    expect(body.next_actions).toContain("GET /v1/prices for every priced asset");
+  });
+
   it("applies half-even at the conversion's final digit", async () => {
     // 0.25 GBP @ 0.5: 25 × 50000000 × 10^-8 = 12.5 → 12 (even)
     const tieFx: typeof fakeFx = async (b, q) => ({

@@ -14,8 +14,9 @@ its application scope and external-layer caveats, not a wallet-wide privacy guar
 ## Choose an entrypoint
 
 - **World — read-only information:** `src/info-server.ts` runs without the wallet
-  vault, ledger, or signers. Follow [Run World locally](https://github.com/cambridgetcg/cashloom/tree/release/moneyworld-wallet-kernel-v2-20260823#run-world-locally)
-  in the root README for the loopback INFO + World frontend setup.
+  vault, ledger, or signers. Follow [Run the existing information tools locally](https://github.com/cambridgetcg/cashloom/tree/release/service-workspace-20260929#run-the-existing-information-tools-locally)
+  in the root README for the loopback INFO + World frontend setup (private
+  repository: the link needs repository access).
 - **Local wallet — advanced:** `bun start` runs `src/index.ts`, with local custody
   and owner-controlled signing capabilities. The instructions below are for this
   wallet, not the hosted World service; integration activation limits still apply.
