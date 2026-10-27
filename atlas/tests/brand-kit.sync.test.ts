@@ -18,8 +18,20 @@ const served = [
 ];
 const kitHead = readFileSync(new URL("head-snippet.html", kitWeb), "utf8");
 const indexHead = readFileSync(new URL("../index.html", import.meta.url), "utf8").replace(/\s*\/>/g, ">");
+// Every <meta> tag's attributes, in any order, quoting or line breaks, so a second tag can't hide in other formatting.
+const metaTags = (html: string) =>
+  [...html.matchAll(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)].map(([tag]) =>
+    Object.fromEntries(
+      [...tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g)].map(m => [
+        m[1].toLowerCase(),
+        m[2] ?? m[3] ?? m[4],
+      ]),
+    ) as Record<string, string | undefined>,
+  );
 const metas = (html: string, key: string) =>
-  [...html.matchAll(new RegExp(`<meta (?:name|property)="${key}" content="([^"]*)"`, "g"))].map(m => m[1]);
+  metaTags(html)
+    .filter(attrs => (attrs.name ?? attrs.property) === key)
+    .map(attrs => attrs.content);
 
 describe("brand kit served from atlas/public", () => {
   it.each(served)("public/%s matches the kit", name => {
@@ -43,8 +55,12 @@ describe("index.html head from the kit", () => {
     const [scheme] = metas(kitHead, "color-scheme");
     expect(scheme, "the kit has no color-scheme meta").toBeDefined();
     expect(metas(indexHead, "color-scheme")).toEqual([scheme]);
-    const lower = (colours: string[]) => colours.map(colour => colour.toLowerCase());
-    expect(lower(metas(indexHead, "theme-color"))).toEqual(lower(metas(kitHead, "theme-color")));
+    const themeColours = (html: string) =>
+      metaTags(html)
+        .filter(attrs => attrs.name === "theme-color")
+        .map(attrs => [attrs.content?.toLowerCase(), attrs.media]);
+    expect(themeColours(kitHead).length, "the kit has no theme-color meta").toBeGreaterThan(0);
+    expect(themeColours(indexHead)).toEqual(themeColours(kitHead));
   });
 
   it("names the kit's share card by an absolute URL", () => {
