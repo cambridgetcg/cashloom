@@ -1,0 +1,968 @@
+{
+ "generator": "artcraft-brand brandkit.py 1.8",
+ "tools": {
+  "vectorcraft-cli": "vectorcraft-cli 0.17.0"
+ },
+ "source_date_epoch": 1793094213,
+ "spec": {
+  "name": "CashLoom",
+  "short_name": "CashLoom",
+  "slug": "cashloom",
+  "lang": "en",
+  "lang_given": true,
+  "url": "https://cashloom.io/",
+  "description": "Make a money plan, keep your records together, and understand your options. Practical tools for individuals, households, independent work, and shared projects.",
+  "colours": {
+   "primary": "#255B46",
+   "accent": "#648045",
+   "neutral": "#57685E"
+  },
+  "ground": {
+   "light": "#F7F8F2",
+   "dark": "#183A30"
+  },
+  "wordmark": {
+   "text": "CashLoom",
+   "font": "Inter",
+   "style": "SemiBold",
+   "tracking": -33,
+   "colour": "#183A30",
+   "colour_dark": null
+  },
+  "mark": {
+   "kind": "monogram",
+   "letter": "c",
+   "font": "Source Serif 4",
+   "style": "Regular",
+   "shape": "rounded",
+   "tracking": 0,
+   "auto": false
+  },
+  "icon": {
+   "tile": "primary",
+   "ink": "#DCEBB9",
+   "padding": 0.2,
+   "radius": 0.28,
+   "ink_given": true,
+   "radius_given": true
+  },
+  "og": {
+   "title": "Your money. Your direction.",
+   "subtitle": "Make a money plan, keep your records together, and understand your options.",
+   "theme": "light",
+   "alt": null
+  },
+  "app": {
+   "display": "browser",
+   "theme": "light",
+   "color_scheme": "light"
+  },
+  "pages": []
+ },
+ "colours": {
+  "primary": "#255B46",
+  "on_primary": "#FFFFFF",
+  "monogram_solo": "#255B46"
+ },
+ "facts": {
+  "schemes": {
+   "mark": {
+    "mode": "original",
+    "ground": null,
+    "colours": {},
+    "lifted": {},
+    "knockouts": [],
+    "gaps": []
+   },
+   "mark-mono-black": {
+    "mode": "mono",
+    "ground": null,
+    "colours": {},
+    "lifted": {},
+    "knockouts": [
+     [
+      "letter",
+      "badge"
+     ]
+    ],
+    "gaps": []
+   },
+   "mark-mono-white": {
+    "mode": "mono",
+    "ground": null,
+    "colours": {},
+    "lifted": {},
+    "knockouts": [
+     [
+      "letter",
+      "badge"
+     ]
+    ],
+    "gaps": []
+   },
+   "lockup-horizontal": {
+    "mode": "original",
+    "ground": null,
+    "colours": {},
+    "lifted": {},
+    "knockouts": [],
+    "gaps": []
+   },
+   "lockup-horizontal-reversed": {
+    "mode": "mapped",
+    "ground": "#183A30",
+    "colours": {
+     "#255B46": "#5E937C",
+     "#FFFFFF": "#181F1B"
+    },
+    "lifted": {
+     "#255B46": {
+      "to": "#5E937C",
+      "step": "primary 500, the dark-mode UI colour",
+      "ratio": 3.52,
+      "apca": -32.6,
+      "letters": 4.75,
+      "knockout": false,
+      "letter_ink": "#181F1B",
+      "ui": true,
+      "chosen": false
+     }
+    },
+    "knockouts": [],
+    "gaps": []
+   },
+   "lockup-stacked": {
+    "mode": "original",
+    "ground": null,
+    "colours": {},
+    "lifted": {},
+    "knockouts": [],
+    "gaps": []
+   },
+   "lockup-stacked-reversed": {
+    "mode": "mapped",
+    "ground": "#183A30",
+    "colours": {
+     "#255B46": "#5E937C",
+     "#FFFFFF": "#181F1B"
+    },
+    "lifted": {
+     "#255B46": {
+      "to": "#5E937C",
+      "step": "primary 500, the dark-mode UI colour",
+      "ratio": 3.52,
+      "apca": -32.6,
+      "letters": 4.75,
+      "knockout": false,
+      "letter_ink": "#181F1B",
+      "ui": true,
+      "chosen": false
+     }
+    },
+    "knockouts": [],
+    "gaps": []
+   },
+   "og": {
+    "mode": "original",
+    "ground": null,
+    "colours": {},
+    "lifted": {},
+    "knockouts": [],
+    "gaps": []
+   }
+  },
+  "mark": {
+   "size": [
+    256,
+    256
+   ]
+  },
+  "wordmark": {
+   "size": [
+    423,
+    66
+   ],
+   "cap": 64,
+   "colour": "#183A30",
+   "colour_dark": "#FFFFFF"
+  },
+  "lockup-horizontal": {
+   "size": [
+    442,
+    96
+   ],
+   "mark_height": 96,
+   "cap_height": 48.0,
+   "gap": 28.8,
+   "clear_space": 48.0,
+   "shared_baseline": false
+  },
+  "lockup-stacked": {
+   "size": [
+    271,
+    197
+   ],
+   "mark_height": 128,
+   "cap_height": 40.96,
+   "gap": 26.88,
+   "clear_space": 40.96,
+   "shared_baseline": false
+  },
+  "on_ground": {
+   "light": "#F7F8F2",
+   "dark": "#183A30",
+   "scale": 2,
+   "boards": {
+    "light/lockup-horizontal": {
+     "size": [
+      538,
+      192
+     ],
+     "clear_space": 48
+    },
+    "light/lockup-stacked": {
+     "size": [
+      353,
+      279
+     ],
+     "clear_space": 41
+    },
+    "light/wordmark": {
+     "size": [
+      551,
+      194
+     ],
+     "clear_space": 64
+    },
+    "light/mark": {
+     "size": [
+      384,
+      384
+     ],
+     "clear_space": 64
+    },
+    "dark/lockup-horizontal": {
+     "size": [
+      538,
+      192
+     ],
+     "clear_space": 48
+    },
+    "dark/lockup-stacked": {
+     "size": [
+      353,
+      279
+     ],
+     "clear_space": 41
+    },
+    "dark/wordmark": {
+     "size": [
+      551,
+      194
+     ],
+     "clear_space": 64
+    },
+    "dark/mark": {
+     "size": [
+      384,
+      384
+     ],
+     "clear_space": 64
+    }
+   }
+  },
+  "app": {
+   "tile": "#255B46",
+   "ink": "#DCEBB9",
+   "ink_mode": "#DCEBB9",
+   "ink_brand": false,
+   "ink_default": false,
+   "subset": "letter",
+   "remapped": {},
+   "mark_extent": 0.6
+  },
+  "maskable": {
+   "tile": "#255B46",
+   "predicted_radius": 160.3,
+   "safe_radius": 204.8,
+   "mark_extent": 0.6
+  },
+  "favicon": {
+   "small_mark": false,
+   "dark_plan": {},
+   "merged": [],
+   "tile": "#255B46",
+   "radius": 0.28,
+   "radius_reason": "",
+   "ink": "#DCEBB9",
+   "ink_mode": "#DCEBB9",
+   "colours": [
+    "#DCEBB9"
+   ],
+   "outer_colours": [
+    "#DCEBB9"
+   ],
+   "ground_colours": [],
+   "cuts": {
+    "32": {
+     "label": "regular",
+     "size": 32,
+     "longest": 26,
+     "box": [
+      5,
+      3,
+      22,
+      26
+     ],
+     "centre": "box",
+     "margins": [
+      5,
+      3,
+      5,
+      3
+     ],
+     "centred": true,
+     "centred_alternative": null,
+     "clear_of_corners": true,
+     "letter_px": 24.7,
+     "letter_basis": "x-height",
+     "letter_min": 7,
+     "predicted": {
+      "ink_pixels": 239,
+      "clean_pixels": 170,
+      "crisp": 0.711
+     },
+     "fidelity": {
+      "strokes": 2,
+      "lost_strokes": 0,
+      "collapsed": 0,
+      "where": [],
+      "welded_points": 0,
+      "pockets_filled": [],
+      "specks": []
+     },
+     "reference": {
+      "d": [
+       "M 17.12 29 C 13.31 29 10.34 27.88 8.2 25.63 C 6.07 23.38 5 20.26 5 16.29 C 5 13.48 5.58 11.1 6.74 9.12 C 7.89 7.15 9.41 5.64 11.3 4.58 C 13.19 3.53 15.2 3 17.33 3 C 18.94 3 20.41 3.29 21.77 3.88 C 23.12 4.47 24.24 5.27 25.13 6.3 C 26.02 7.32 26.57 8.47 26.79 9.75 C 26.54 11.06 25.72 11.72 24.33 11.72 C 23.44 11.72 22.77 11.49 22.33 11.02 C 21.88 10.55 21.57 9.95 21.39 9.23 L 20.43 5.8 C 19.93 5.63 19.44 5.52 18.94 5.47 C 18.44 5.41 17.98 5.39 17.55 5.39 C 15.27 5.39 13.39 6.27 11.92 8.03 C 10.44 9.8 9.7 12.38 9.7 15.77 C 9.7 18.08 10.09 19.97 10.87 21.42 C 11.66 22.88 12.7 23.94 14 24.61 C 15.3 25.29 16.75 25.63 18.35 25.63 C 19.7 25.63 20.98 25.39 22.19 24.93 C 23.4 24.46 24.61 23.55 25.83 22.2 L 27 23.14 C 25.97 25 24.69 26.45 23.16 27.47 C 21.62 28.49 19.61 29 17.12 29 Z"
+      ],
+      "rules": [
+       "nonzero"
+      ]
+     },
+     "seam": {
+      "d": [
+       "M 17.12 29 C 13.31 29 10.34 27.88 8.2 25.63 C 6.07 23.38 5 20.26 5 16.29 C 5 13.48 5.58 11.1 6.74 9.12 C 7.89 7.15 9.41 5.64 11.3 4.58 C 13.19 3.53 15.2 3 17.33 3 C 18.94 3 20.41 3.29 21.77 3.88 C 23.12 4.47 24.24 5.27 25.13 6.3 C 26.02 7.32 26.57 8.47 26.79 9.75 C 26.54 11.06 25.72 11.72 24.33 11.72 C 23.44 11.72 22.77 11.49 22.33 11.02 C 21.88 10.55 21.57 9.95 21.39 9.23 L 20.43 5.8 C 19.93 5.63 19.44 5.52 18.94 5.47 C 18.44 5.41 17.98 5.39 17.55 5.39 C 15.27 5.39 13.39 6.27 11.92 8.03 C 10.44 9.8 9.7 12.38 9.7 15.77 C 9.7 18.08 10.09 19.97 10.87 21.42 C 11.66 22.88 12.7 23.94 14 24.61 C 15.3 25.29 16.75 25.63 18.35 25.63 C 19.7 25.63 20.98 25.39 22.19 24.93 C 23.4 24.46 24.61 23.55 25.83 22.2 L 27 23.14 C 25.97 25 24.69 26.45 23.16 27.47 C 21.62 28.49 19.61 29 17.12 29 Z"
+      ],
+      "rules": [
+       "nonzero"
+      ],
+      "knocked": [],
+      "gap_fronts": []
+     },
+     "extent": 0.812,
+     "considered": [
+      {
+       "label": "regular",
+       "letter_px": 24.7,
+       "crisp": 0.711,
+       "faithful": true
+      }
+     ],
+     "full": true
+    },
+    "48": {
+     "label": "regular",
+     "size": 48,
+     "longest": 38,
+     "box": [
+      8,
+      5,
+      32,
+      38
+     ],
+     "centre": "box",
+     "margins": [
+      8,
+      5,
+      8,
+      5
+     ],
+     "centred": true,
+     "centred_alternative": null,
+     "clear_of_corners": true,
+     "letter_px": 36.0,
+     "letter_basis": "x-height",
+     "letter_min": 10,
+     "predicted": {
+      "ink_pixels": 475,
+      "clean_pixels": 391,
+      "crisp": 0.823
+     },
+     "fidelity": {
+      "strokes": 2,
+      "lost_strokes": 0,
+      "collapsed": 0,
+      "where": [],
+      "welded_points": 0,
+      "pockets_filled": [],
+      "specks": []
+     },
+     "reference": {
+      "d": [
+       "M 25.63 43 C 20.09 43 15.77 41.36 12.66 38.07 C 9.55 34.78 8 30.23 8 24.42 C 8 20.32 8.84 16.83 10.52 13.95 C 12.21 11.07 14.42 8.86 17.17 7.31 C 19.91 5.77 22.83 5 25.94 5 C 28.27 5 30.42 5.43 32.39 6.29 C 34.36 7.15 35.99 8.32 37.28 9.82 C 38.58 11.31 39.38 12.99 39.69 14.86 C 39.33 16.78 38.14 17.74 36.12 17.74 C 34.82 17.74 33.85 17.4 33.2 16.72 C 32.56 16.04 32.1 15.16 31.84 14.1 L 30.45 9.1 C 29.72 8.84 29 8.68 28.27 8.6 C 27.55 8.53 26.87 8.49 26.25 8.49 C 22.94 8.49 20.21 9.78 18.06 12.36 C 15.91 14.94 14.83 18.7 14.83 23.66 C 14.83 27.05 15.4 29.8 16.54 31.93 C 17.68 34.05 19.2 35.6 21.09 36.59 C 22.98 37.58 25.09 38.07 27.42 38.07 C 29.39 38.07 31.25 37.73 33.01 37.05 C 34.77 36.36 36.53 35.04 38.29 33.06 L 40 34.43 C 38.5 37.16 36.63 39.27 34.41 40.76 C 32.18 42.25 29.26 43 25.63 43 Z"
+      ],
+      "rules": [
+       "nonzero"
+      ]
+     },
+     "seam": {
+      "d": [
+       "M 25.63 43 C 20.09 43 15.77 41.36 12.66 38.07 C 9.55 34.78 8 30.23 8 24.42 C 8 20.32 8.84 16.83 10.52 13.95 C 12.21 11.07 14.42 8.86 17.17 7.31 C 19.91 5.77 22.83 5 25.94 5 C 28.27 5 30.42 5.43 32.39 6.29 C 34.36 7.15 35.99 8.32 37.28 9.82 C 38.58 11.31 39.38 12.99 39.69 14.86 C 39.33 16.78 38.14 17.74 36.12 17.74 C 34.82 17.74 33.85 17.4 33.2 16.72 C 32.56 16.04 32.1 15.16 31.84 14.1 L 30.45 9.1 C 29.72 8.84 29 8.68 28.27 8.6 C 27.55 8.53 26.87 8.49 26.25 8.49 C 22.94 8.49 20.21 9.78 18.06 12.36 C 15.91 14.94 14.83 18.7 14.83 23.66 C 14.83 27.05 15.4 29.8 16.54 31.93 C 17.68 34.05 19.2 35.6 21.09 36.59 C 22.98 37.58 25.09 38.07 27.42 38.07 C 29.39 38.07 31.25 37.73 33.01 37.05 C 34.77 36.36 36.53 35.04 38.29 33.06 L 40 34.43 C 38.5 37.16 36.63 39.27 34.41 40.76 C 32.18 42.25 29.26 43 25.63 43 Z"
+      ],
+      "rules": [
+       "nonzero"
+      ],
+      "knocked": [],
+      "gap_fronts": []
+     },
+     "extent": 0.792,
+     "considered": [
+      {
+       "label": "regular",
+       "letter_px": 36.0,
+       "crisp": 0.823,
+       "faithful": true
+      }
+     ],
+     "full": true
+    },
+    "16": {
+     "label": "regular",
+     "size": 16,
+     "longest": 12,
+     "box": [
+      3,
+      2,
+      10,
+      12
+     ],
+     "centre": "box",
+     "margins": [
+      3,
+      2,
+      3,
+      2
+     ],
+     "centred": true,
+     "centred_alternative": null,
+     "clear_of_corners": true,
+     "letter_px": 11.4,
+     "letter_basis": "x-height",
+     "letter_min": 5,
+     "predicted": {
+      "ink_pixels": 53,
+      "clean_pixels": 34,
+      "crisp": 0.642
+     },
+     "fidelity": {
+      "strokes": 2,
+      "lost_strokes": 0,
+      "collapsed": 0,
+      "where": [],
+      "welded_points": 0,
+      "pockets_filled": [],
+      "specks": []
+     },
+     "reference": {
+      "d": [
+       "M 8.51 14 C 6.78 14 5.43 13.48 4.46 12.44 C 3.49 11.41 3 9.97 3 8.13 C 3 6.84 3.26 5.74 3.79 4.83 C 4.31 3.92 5.01 3.22 5.86 2.73 C 6.72 2.24 7.64 2 8.61 2 C 9.33 2 10.01 2.14 10.62 2.41 C 11.24 2.68 11.75 3.05 12.15 3.52 C 12.56 3.99 12.81 4.52 12.9 5.11 C 12.79 5.72 12.42 6.02 11.79 6.02 C 11.38 6.02 11.08 5.92 10.88 5.7 C 10.67 5.49 10.53 5.21 10.45 4.87 L 10.01 3.29 C 9.79 3.21 9.56 3.16 9.33 3.14 C 9.11 3.11 8.9 3.1 8.7 3.1 C 7.67 3.1 6.81 3.51 6.14 4.32 C 5.47 5.14 5.14 6.33 5.14 7.89 C 5.14 8.96 5.31 9.83 5.67 10.5 C 6.03 11.17 6.5 11.66 7.09 11.98 C 7.68 12.29 8.34 12.44 9.07 12.44 C 9.68 12.44 10.27 12.34 10.82 12.12 C 11.37 11.9 11.92 11.49 12.47 10.86 L 13 11.29 C 12.53 12.16 11.95 12.82 11.25 13.29 C 10.56 13.76 9.64 14 8.51 14 Z"
+      ],
+      "rules": [
+       "nonzero"
+      ]
+     },
+     "seam": {
+      "d": [
+       "M 8.51 14 C 6.78 14 5.43 13.48 4.46 12.44 C 3.49 11.41 3 9.97 3 8.13 C 3 6.84 3.26 5.74 3.79 4.83 C 4.31 3.92 5.01 3.22 5.86 2.73 C 6.72 2.24 7.64 2 8.61 2 C 9.33 2 10.01 2.14 10.62 2.41 C 11.24 2.68 11.75 3.05 12.15 3.52 C 12.56 3.99 12.81 4.52 12.9 5.11 C 12.79 5.72 12.42 6.02 11.79 6.02 C 11.38 6.02 11.08 5.92 10.88 5.7 C 10.67 5.49 10.53 5.21 10.45 4.87 L 10.01 3.29 C 9.79 3.21 9.56 3.16 9.33 3.14 C 9.11 3.11 8.9 3.1 8.7 3.1 C 7.67 3.1 6.81 3.51 6.14 4.32 C 5.47 5.14 5.14 6.33 5.14 7.89 C 5.14 8.96 5.31 9.83 5.67 10.5 C 6.03 11.17 6.5 11.66 7.09 11.98 C 7.68 12.29 8.34 12.44 9.07 12.44 C 9.68 12.44 10.27 12.34 10.82 12.12 C 11.37 11.9 11.92 11.49 12.47 10.86 L 13 11.29 C 12.53 12.16 11.95 12.82 11.25 13.29 C 10.56 13.76 9.64 14 8.51 14 Z"
+      ],
+      "rules": [
+       "nonzero"
+      ],
+      "knocked": [],
+      "gap_fronts": []
+     },
+     "extent": 0.75,
+     "considered": [
+      {
+       "label": "regular",
+       "letter_px": 11.4,
+       "crisp": 0.642,
+       "faithful": true
+      }
+     ],
+     "full": true
+    }
+   },
+   "dark_mapping": {}
+  },
+  "og": {
+   "theme": "light",
+   "bg": "#F7F8F2",
+   "fg": "#181F1B",
+   "muted": "#57685E",
+   "title_size": 84,
+   "wordmark": false,
+   "title_lines": [
+    "Your money.",
+    "Your direction."
+   ],
+   "subtitle_lines": [
+    "Make a money plan, keep your records",
+    "together, and understand your options."
+   ],
+   "title_cut": false,
+   "subtitle_cut": false,
+   "contrast_title": 15.72,
+   "contrast_subtitle": 5.54,
+   "mark_colours": [
+    "#255B46",
+    "#FFFFFF"
+   ],
+   "badge": "#255B46",
+   "column": [
+    88,
+    612
+   ],
+   "rule_top": 121,
+   "lines": [
+    {
+     "role": "title",
+     "text": "Your money.",
+     "width": 507.8,
+     "x": 88,
+     "baseline": 230.1,
+     "size": 84
+    },
+    {
+     "role": "title",
+     "text": "Your direction.",
+     "width": 594.2,
+     "x": 88,
+     "baseline": 322.5,
+     "size": 84
+    },
+    {
+     "role": "subtitle",
+     "text": "Make a money plan, keep your records",
+     "width": 542.3,
+     "x": 88,
+     "baseline": 411.5,
+     "size": 30
+    },
+    {
+     "role": "subtitle",
+     "text": "together, and understand your options.",
+     "width": 541.1,
+     "x": 88,
+     "baseline": 453.5,
+     "size": 30
+    }
+   ],
+   "floor": 524.0,
+   "footer": {
+    "text": "CashLoom  ·  cashloom.io",
+    "width": 288.8,
+    "x": 88,
+    "baseline": 566,
+    "size": 24
+   },
+   "mark_box": [
+    782.3,
+    155.3,
+    1101.7,
+    474.7
+   ]
+  },
+  "og_pages": {},
+  "colour_sheet": {
+   "size": [
+    1200,
+    1128
+   ]
+  },
+  "cmyk": {
+   "#255B46": {
+    "cmyk": [
+     72,
+     19,
+     63,
+     44
+    ],
+    "out_of_gamut": false
+   },
+   "#648045": {
+    "cmyk": [
+     58,
+     21,
+     80,
+     19
+    ],
+    "out_of_gamut": false
+   },
+   "#57685E": {
+    "cmyk": [
+     53,
+     26,
+     45,
+     36
+    ],
+    "out_of_gamut": false
+   },
+   "#F7F8F2": {
+    "cmyk": [
+     4,
+     1,
+     5,
+     0
+    ],
+    "out_of_gamut": false
+   },
+   "#183A30": {
+    "cmyk": [
+     68,
+     21,
+     55,
+     68
+    ],
+    "out_of_gamut": false
+   }
+  },
+  "ground_light": "#F7F8F2",
+  "ground_dark": "#183A30",
+  "measured": {
+   "maskable_radius": 159.1,
+   "maskable_extent": 0.602,
+   "app_extent": 0.602,
+   "favicon": {
+    "16": {
+     "left": 3,
+     "top": 2,
+     "right": 3,
+     "bottom": 2
+    },
+    "32": {
+     "left": 5,
+     "top": 3,
+     "right": 5,
+     "bottom": 3
+    },
+    "48": {
+     "left": 8,
+     "top": 5,
+     "right": 8,
+     "bottom": 5
+    }
+   }
+  }
+ },
+ "fonts": {
+  "wordmark": [
+   "Inter",
+   "SemiBold"
+  ],
+  "mark": [
+   "Source Serif 4",
+   "Regular"
+  ],
+  "mark_bold_cut": null,
+  "labels": [
+   "JetBrains Mono",
+   "Regular"
+  ],
+  "og": {
+   "title": [
+    "Inter",
+    "SemiBold"
+   ],
+   "subtitle": [
+    "Inter",
+    "Light"
+   ]
+  },
+  "cap_height_em": 0.7275,
+  "also_installed": [
+   "Inter"
+  ],
+  "stacks": {
+   "display": [
+    "Inter",
+    "system-ui",
+    "sans-serif"
+   ],
+   "body": [
+    "Inter",
+    "system-ui",
+    "sans-serif"
+   ],
+   "mono": [
+    "JetBrains Mono",
+    "ui-monospace",
+    "Menlo",
+    "monospace"
+   ]
+  }
+ },
+ "mark": {
+  "kind": "monogram",
+  "shapes": 2,
+  "names": [
+   "badge",
+   "letter"
+  ],
+  "colours": [
+   "#255B46",
+   "#FFFFFF"
+  ],
+  "outer_colours": [
+   "#255B46"
+  ],
+  "coverage": 0.958,
+  "knockouts": {
+   "0": [
+    1
+   ]
+  },
+  "shape_colours": [
+   "#255B46",
+   "#FFFFFF"
+  ]
+ },
+ "swatches": [
+  [
+   "cashloom primary",
+   "#255B46"
+  ],
+  [
+   "cashloom accent",
+   "#648045"
+  ],
+  [
+   "cashloom neutral",
+   "#57685E"
+  ],
+  [
+   "cashloom ground light",
+   "#F7F8F2"
+  ],
+  [
+   "cashloom ground dark",
+   "#183A30"
+  ],
+  [
+   "cashloom primary 50",
+   "#F2F9F5"
+  ],
+  [
+   "cashloom primary 100",
+   "#E1EFE8"
+  ],
+  [
+   "cashloom primary 200",
+   "#C7E0D4"
+  ],
+  [
+   "cashloom primary 300",
+   "#A5CBB9"
+  ],
+  [
+   "cashloom primary 400",
+   "#7DAE98"
+  ],
+  [
+   "cashloom primary 500",
+   "#5E937C"
+  ],
+  [
+   "cashloom primary 600",
+   "#437862"
+  ],
+  [
+   "cashloom primary 700",
+   "#255B46"
+  ],
+  [
+   "cashloom primary 800",
+   "#234C3B"
+  ],
+  [
+   "cashloom primary 900",
+   "#18372B"
+  ],
+  [
+   "cashloom primary 950",
+   "#0B2219"
+  ],
+  [
+   "cashloom accent 50",
+   "#F4F8F1"
+  ],
+  [
+   "cashloom accent 100",
+   "#E6EEDF"
+  ],
+  [
+   "cashloom accent 200",
+   "#D0DFC3"
+  ],
+  [
+   "cashloom accent 300",
+   "#B4CA9F"
+  ],
+  [
+   "cashloom accent 400",
+   "#91AC76"
+  ],
+  [
+   "cashloom accent 500",
+   "#749155"
+  ],
+  [
+   "cashloom accent 600",
+   "#648045"
+  ],
+  [
+   "cashloom accent 700",
+   "#465E2A"
+  ],
+  [
+   "cashloom accent 800",
+   "#364A1E"
+  ],
+  [
+   "cashloom accent 900",
+   "#263614"
+  ],
+  [
+   "cashloom accent 950",
+   "#162108"
+  ],
+  [
+   "cashloom neutral 50",
+   "#F5F7F6"
+  ],
+  [
+   "cashloom neutral 100",
+   "#E8ECEA"
+  ],
+  [
+   "cashloom neutral 200",
+   "#D3DCD6"
+  ],
+  [
+   "cashloom neutral 300",
+   "#B8C5BD"
+  ],
+  [
+   "cashloom neutral 400",
+   "#96A69C"
+  ],
+  [
+   "cashloom neutral 500",
+   "#798B81"
+  ],
+  [
+   "cashloom neutral 600",
+   "#57685E"
+  ],
+  [
+   "cashloom neutral 700",
+   "#4A5A51"
+  ],
+  [
+   "cashloom neutral 800",
+   "#39463E"
+  ],
+  [
+   "cashloom neutral 900",
+   "#29332D"
+  ],
+  [
+   "cashloom neutral 950",
+   "#181F1B"
+  ]
+ ],
+ "motion": false,
+ "files": [
+  "brand.vectorcraft",
+  "BRAND.md",
+  "index.html",
+  "kit.json",
+  "source/brand.json",
+  "logo/mark.svg",
+  "logo/mark.png",
+  "logo/mark@2x.png",
+  "logo/mark-mono-black.svg",
+  "logo/mark-mono-black.png",
+  "logo/mark-mono-black@2x.png",
+  "logo/mark-mono-white.svg",
+  "logo/mark-mono-white.png",
+  "logo/mark-mono-white@2x.png",
+  "logo/wordmark.svg",
+  "logo/wordmark.png",
+  "logo/wordmark@2x.png",
+  "logo/wordmark-reversed.svg",
+  "logo/wordmark-reversed.png",
+  "logo/wordmark-reversed@2x.png",
+  "logo/lockup-horizontal.svg",
+  "logo/lockup-horizontal.png",
+  "logo/lockup-horizontal@2x.png",
+  "logo/lockup-horizontal-reversed.svg",
+  "logo/lockup-horizontal-reversed.png",
+  "logo/lockup-horizontal-reversed@2x.png",
+  "logo/lockup-stacked.svg",
+  "logo/lockup-stacked.png",
+  "logo/lockup-stacked@2x.png",
+  "logo/lockup-stacked-reversed.svg",
+  "logo/lockup-stacked-reversed.png",
+  "logo/lockup-stacked-reversed@2x.png",
+  "logo/mark.pdf",
+  "logo/lockup-horizontal.pdf",
+  "logo/on-light/lockup-horizontal@2x.png",
+  "logo/on-light/lockup-stacked@2x.png",
+  "logo/on-light/wordmark@2x.png",
+  "logo/on-light/mark@2x.png",
+  "logo/on-dark/lockup-horizontal@2x.png",
+  "logo/on-dark/lockup-stacked@2x.png",
+  "logo/on-dark/wordmark@2x.png",
+  "logo/on-dark/mark@2x.png",
+  "web/favicon.ico",
+  "web/favicon.svg",
+  "web/favicon-16.png",
+  "web/favicon-32.png",
+  "web/apple-touch-icon.png",
+  "web/icon-192.png",
+  "web/icon-512.png",
+  "web/icon-maskable-512.png",
+  "web/site.webmanifest",
+  "web/head-snippet.html",
+  "web/head-home.html",
+  "web/og.jpg",
+  "web/og.png",
+  "social/avatar-1024.png",
+  "social/avatar-400.png",
+  "colour/palette.json",
+  "colour/tokens.json",
+  "colour/tokens.css",
+  "colour/tailwind.theme.css",
+  "colour/tailwind.colors.js",
+  "colour/contrast.md",
+  "colour/swatches.ase",
+  "colour/swatches.gpl",
+  "colour/swatches.css",
+  "colour/colour-sheet.svg",
+  "colour/colour-sheet.png",
+  "colour/colour-sheet@2x.png"
+ ],
+ "og_alt": "CashLoom card: the “c” monogram in a dark teal rounded square beside the headline “Your money. Your direction.” on a very light grey background.",
+ "page_alts": {}
+}

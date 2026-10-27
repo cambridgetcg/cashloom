@@ -1,0 +1,47 @@
+GIMP Palette
+Name: CashLoom
+Columns: 0
+#
+# Group: cashloom brand
+ 37  91  70	cashloom primary
+100 128  69	cashloom accent
+ 87 104  94	cashloom neutral
+# Group: cashloom ground
+247 248 242	cashloom ground light
+ 24  58  48	cashloom ground dark
+# Group: cashloom primary scale
+242 249 245	cashloom primary 50
+225 239 232	cashloom primary 100
+199 224 212	cashloom primary 200
+165 203 185	cashloom primary 300
+125 174 152	cashloom primary 400
+ 94 147 124	cashloom primary 500
+ 67 120  98	cashloom primary 600
+ 37  91  70	cashloom primary 700
+ 35  76  59	cashloom primary 800
+ 24  55  43	cashloom primary 900
+ 11  34  25	cashloom primary 950
+# Group: cashloom accent scale
+244 248 241	cashloom accent 50
+230 238 223	cashloom accent 100
+208 223 195	cashloom accent 200
+180 202 159	cashloom accent 300
+145 172 118	cashloom accent 400
+116 145  85	cashloom accent 500
+100 128  69	cashloom accent 600
+ 70  94  42	cashloom accent 700
+ 54  74  30	cashloom accent 800
+ 38  54  20	cashloom accent 900
+ 22  33   8	cashloom accent 950
+# Group: cashloom neutral scale
+245 247 246	cashloom neutral 50
+232 236 234	cashloom neutral 100
+211 220 214	cashloom neutral 200
+184 197 189	cashloom neutral 300
+150 166 156	cashloom neutral 400
+121 139 129	cashloom neutral 500
+ 87 104  94	cashloom neutral 600
+ 74  90  81	cashloom neutral 700
+ 57  70  62	cashloom neutral 800
+ 41  51  45	cashloom neutral 900
+ 24  31  27	cashloom neutral 950

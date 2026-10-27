@@ -1,0 +1,46 @@
+/* CashLoom */
+:root {
+  /* cashloom brand */
+  --cashloom-primary: #255b46;
+  --cashloom-accent: #648045;
+  --cashloom-neutral: #57685e;
+  /* cashloom ground */
+  --cashloom-ground-light: #f7f8f2;
+  --cashloom-ground-dark: #183a30;
+  /* cashloom primary scale */
+  --cashloom-primary-50: #f2f9f5;
+  --cashloom-primary-100: #e1efe8;
+  --cashloom-primary-200: #c7e0d4;
+  --cashloom-primary-300: #a5cbb9;
+  --cashloom-primary-400: #7dae98;
+  --cashloom-primary-500: #5e937c;
+  --cashloom-primary-600: #437862;
+  --cashloom-primary-700: #255b46;
+  --cashloom-primary-800: #234c3b;
+  --cashloom-primary-900: #18372b;
+  --cashloom-primary-950: #0b2219;
+  /* cashloom accent scale */
+  --cashloom-accent-50: #f4f8f1;
+  --cashloom-accent-100: #e6eedf;
+  --cashloom-accent-200: #d0dfc3;
+  --cashloom-accent-300: #b4ca9f;
+  --cashloom-accent-400: #91ac76;
+  --cashloom-accent-500: #749155;
+  --cashloom-accent-600: #648045;
+  --cashloom-accent-700: #465e2a;
+  --cashloom-accent-800: #364a1e;
+  --cashloom-accent-900: #263614;
+  --cashloom-accent-950: #162108;
+  /* cashloom neutral scale */
+  --cashloom-neutral-50: #f5f7f6;
+  --cashloom-neutral-100: #e8ecea;
+  --cashloom-neutral-200: #d3dcd6;
+  --cashloom-neutral-300: #b8c5bd;
+  --cashloom-neutral-400: #96a69c;
+  --cashloom-neutral-500: #798b81;
+  --cashloom-neutral-600: #57685e;
+  --cashloom-neutral-700: #4a5a51;
+  --cashloom-neutral-800: #39463e;
+  --cashloom-neutral-900: #29332d;
+  --cashloom-neutral-950: #181f1b;
+}

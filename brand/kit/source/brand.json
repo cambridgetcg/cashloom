@@ -1,0 +1,46 @@
+{
+  "name": "CashLoom",
+  "short_name": "CashLoom",
+  "slug": "cashloom",
+  "url": "https://cashloom.io/",
+  "description": "Make a money plan, keep your records together, and understand your options. Practical tools for individuals, households, independent work, and shared projects.",
+  "lang": "en",
+  "colours": {
+    "primary": "#255B46",
+    "accent": "#648045",
+    "neutral": "#57685E"
+  },
+  "ground": {
+    "light": "#F7F8F2",
+    "dark": "#183A30"
+  },
+  "mark": {
+    "monogram": "c",
+    "font": "Source Serif 4",
+    "style": "Regular",
+    "shape": "rounded"
+  },
+  "wordmark": {
+    "text": "CashLoom",
+    "font": "Inter",
+    "style": "SemiBold",
+    "tracking": -33,
+    "colour": "#183A30"
+  },
+  "icon": {
+    "tile": "primary",
+    "ink": "#DCEBB9",
+    "padding": 0.2,
+    "radius": 0.28
+  },
+  "og": {
+    "title": "Your money. Your direction.",
+    "subtitle": "Make a money plan, keep your records together, and understand your options.",
+    "theme": "light"
+  },
+  "app": {
+    "display": "browser",
+    "theme": "light",
+    "color_scheme": "light"
+  }
+}

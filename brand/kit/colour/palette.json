@@ -1,0 +1,95 @@
+{
+  "name": "CashLoom",
+  "palette": {
+    "primary": {
+      "base": "#255B46",
+      "base_step": 700,
+      "50": "#F2F9F5",
+      "100": "#E1EFE8",
+      "200": "#C7E0D4",
+      "300": "#A5CBB9",
+      "400": "#7DAE98",
+      "500": "#5E937C",
+      "600": "#437862",
+      "700": "#255B46",
+      "800": "#234C3B",
+      "900": "#18372B",
+      "950": "#0B2219"
+    },
+    "accent": {
+      "base": "#648045",
+      "base_step": 600,
+      "50": "#F4F8F1",
+      "100": "#E6EEDF",
+      "200": "#D0DFC3",
+      "300": "#B4CA9F",
+      "400": "#91AC76",
+      "500": "#749155",
+      "600": "#648045",
+      "700": "#465E2A",
+      "800": "#364A1E",
+      "900": "#263614",
+      "950": "#162108"
+    },
+    "neutral": {
+      "base": "#57685E",
+      "base_step": 600,
+      "50": "#F5F7F6",
+      "100": "#E8ECEA",
+      "200": "#D3DCD6",
+      "300": "#B8C5BD",
+      "400": "#96A69C",
+      "500": "#798B81",
+      "600": "#57685E",
+      "700": "#4A5A51",
+      "800": "#39463E",
+      "900": "#29332D",
+      "950": "#181F1B"
+    }
+  },
+  "roles": {
+    "light": {
+      "bg": "#F7F8F2",
+      "surface": "#E1E4E2",
+      "border": "#CBD4CE",
+      "text": "#181F1B",
+      "text-muted": "#57685E",
+      "primary": "#255B46",
+      "on-primary": "#FFFFFF",
+      "primary-text": "#255B46",
+      "primary-ui": "#255B46",
+      "accent": "#648045",
+      "on-accent": "#000000",
+      "accent-text": "#465E2A",
+      "accent-ui": "#648045",
+      "focus": "#255B46"
+    },
+    "dark": {
+      "bg": "#183A30",
+      "surface": "#2D4F45",
+      "border": "#416358",
+      "text": "#F5F7F6",
+      "text-muted": "#96A69C",
+      "primary": "#5E937C",
+      "on-primary": "#181F1B",
+      "primary-text": "#7DAE98",
+      "primary-ui": "#5E937C",
+      "accent": "#648045",
+      "on-accent": "#000000",
+      "accent-text": "#91AC76",
+      "accent-ui": "#749155",
+      "focus": "#5E937C"
+    }
+  },
+  "lifted": {
+    "dark": {
+      "primary": {
+        "from": "#255B46",
+        "to": "#5E937C",
+        "step": "primary 500",
+        "ratio_from": 1.58,
+        "ratio_to": 3.52
+      }
+    }
+  }
+}
