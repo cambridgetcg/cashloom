@@ -224,6 +224,42 @@ describe("CashLoom Pages public threshold", () => {
     expect(next).toHaveBeenCalledOnce();
   });
 
+  it("marks HTML pages no-transform so the edge adds no analytics beacon", async () => {
+    const next = vi.fn(async () => new Response("<!doctype html><title>CashLoom</title>", {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        ETag: '"shell"',
+      },
+    }));
+    const response = await onRequest(context(new Request("https://cashloom.io/onchain", {
+      headers: { Accept: "text/html" },
+    }), next));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=0, must-revalidate, no-transform");
+    expect(response.headers.get("ETag")).toBe('"shell"');
+    expect(await response.text()).toBe("<!doctype html><title>CashLoom</title>");
+  });
+
+  it("marks proxied HTML too, but leaves other types and existing marks alone", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<p>upstream</p>", {
+      headers: { "Content-Type": "text/html" },
+    }));
+    const proxied = await onRequest(context(new Request("https://cashloom.io/v1/orientation")));
+    expect(proxied.headers.get("Cache-Control")).toBe("no-transform");
+
+    const asset = await onRequest(context(new Request("https://cashloom.io/favicon.svg"), vi.fn(async () => (
+      new Response("<svg/>", { headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=0" } })
+    ))));
+    expect(asset.headers.get("Cache-Control")).toBe("public, max-age=0");
+
+    const marked = await onRequest(context(new Request("https://cashloom.io/"), vi.fn(async () => (
+      new Response("spa", { headers: { "Content-Type": "text/html", "Cache-Control": "no-cache, No-Transform" } })
+    ))));
+    expect(marked.headers.get("Cache-Control")).toBe("no-cache, No-Transform");
+  });
+
   it("turns an upstream network failure into a typed, retryable 502", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     const response = await onRequest(context(new Request(

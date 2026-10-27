@@ -72,6 +72,22 @@ function xeniaProblem(origin: string, status: 404 | 405 | 502, detail: string): 
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+// Cloudflare Web Analytics adds a third-party beacon script to HTML served on
+// cashloom.io unless the response says no-transform. CashLoom's pages collect
+// nothing, so every HTML response says it. Assets keep edge compression.
+function withoutEdgeInjection(response: Response): Response {
+  if (!response.headers.get("Content-Type")?.toLowerCase().startsWith("text/html")) return response;
+  const cacheControl = response.headers.get("Cache-Control");
+  if (cacheControl && /(^|,)\s*no-transform\s*(,|$)/i.test(cacheControl)) return response;
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", cacheControl ? `${cacheControl}, no-transform` : "no-transform");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function proxyRead(request: Request): Promise<Response> {
   const incoming = new URL(request.url);
   const target = new URL(`${incoming.pathname}${incoming.search}`, INFO_ORIGIN);
@@ -141,7 +157,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         "CashLoom's hosted information surface accepts GET, HEAD, and OPTIONS only; it cannot sign or broadcast a transaction.",
       );
     }
-    return proxyRead(request);
+    return withoutEdgeInjection(await proxyRead(request));
   }
 
   // Pages' human-route fallback is intentional for browsers. An agent asking
@@ -155,5 +171,5 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     );
   }
 
-  return context.next();
+  return withoutEdgeInjection(await context.next());
 }
