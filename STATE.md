@@ -9,10 +9,10 @@ runs-on: this machine
 phase: active
 health: browser and optional WalletConnect phone address selection published; public guide deployed; public INFO serves Capital flows with partial coverage
 release-branch: release/service-workspace-20260929
-published-source-snapshot: 193806035e65d0b4cb134f6ec959697bfe605434
-production-deployment: 35b86287-ea80-46df-a715-2674e0dbec8c at https://cashloom.io
-verified-preview: https://2b8a4292.cashloom-atlas.pages.dev
-delivery-checks: preview and production each 31 passed with no gaps; www returned 308; HTML and seven entry, planner, guide and Connections asset hashes matched the verified build
+published-source-snapshot: 02690a90f5c5392549aae83446d1cdcd350d9185
+production-deployment: eb4eddb0-4608-47aa-81c1-2fd3834469c2 at https://cashloom.io (rollback: e39965c0-40bd-474e-aa43-f8d7a2f0d8ba, source 419ccd7)
+verified-preview: https://77bcc6c3.cashloom-atlas.pages.dev
+delivery-checks: release smoke on the preview and on https://cashloom.io each 31 passed with no failures or gaps; www returned 308; served HTML and all 27 assets matched the verified build; the 8 brand-kit files (icons, manifest, og.jpg) matched brand/kit/web byte for byte with image and manifest content types
 source-access: existing private cambridgetcg/cashloom repository; repository access required
 original-development-branch: feature/capital-flows-20260909, preserved with its original worktree and local edits
 original-development-base: e421a1ac4a3e397d0afb8ae65efe2cb5580a515c
@@ -24,7 +24,7 @@ crypto: local address-only Base watch; explicit finalized ETH/native-USDC checks
 wallet-standards: EIP-6963/EIP-1193 browser selection and temporary WalletConnect Base address pairing; 229 UI tests, nine actual-SDK scenarios and seven actual-node phone groups passed with synthetic transport; no signing methods
 phone-pairing-gap: local Reown project configuration required; no live relay authorization or real-phone approval verified
 agent-layer: selected-account local MCP reads, saved finalized Base holdings, and owner-reviewed category proposals; no hosted model or autonomous financial actions
-freshness: manually verified 2026-09-30
+freshness: manually verified 2026-09-30; release, deployment and delivery fields 2026-10-27
 
 ## knows
 - CashLoom
