@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { onRequest } from "../functions/_middleware.ts";
 
@@ -273,5 +274,32 @@ describe("CashLoom Pages public threshold", () => {
       code: "upstream_unavailable",
       retryable: true,
     });
+  });
+
+  it("serves a plain allow-all robots.txt with no crawl rule of its own", () => {
+    const robots = readFileSync(new URL("../public/robots.txt", import.meta.url), "utf8");
+    expect(robots).toBe("User-agent: *\nAllow: /\n");
+  });
+
+  it("answers 404 at /manifest.json instead of the shell, pointing to /site.webmanifest", async () => {
+    const response = await onRequest(context(new Request("https://cashloom.io/manifest.json")));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Content-Type")).toMatch(/^application\/problem\+json/);
+    expect(await response.json()).toMatchObject({
+      code: "route_not_found",
+      detail: expect.stringContaining("/site.webmanifest"),
+    });
+
+    const head = await onRequest(context(new Request("https://cashloom.io/manifest.json", { method: "HEAD" })));
+    expect(head.status).toBe(404);
+    expect(await head.text()).toBe("");
+  });
+
+  it("passes a published /manifest.json through untouched", async () => {
+    const file = new Response("{}", { headers: { "Content-Type": "application/json" } });
+    const response = await onRequest(context(new Request("https://cashloom.io/manifest.json"), async () => file));
+
+    expect(response).toBe(file);
   });
 });

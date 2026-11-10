@@ -37,6 +37,14 @@ function isInfoPath(pathname: string): boolean {
     || pathname.startsWith("/.well-known/");
 }
 
+// Pages answers every path it has no file for with the human-route shell (dist
+// has no 404.html). The web manifest is /site.webmanifest, which index.html
+// links; nothing links /manifest.json, so that name must not get the shell.
+function isAppShell(response: Response): boolean {
+  const type = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+  return response.status === 200 && type.startsWith("text/html");
+}
+
 function xeniaProblem(origin: string, status: 404 | 405 | 502, detail: string): Response {
   const routeMissing = status === 404;
   const body = {
@@ -169,6 +177,17 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       404,
       "Use the discovery manifest to find CashLoom's public read resources.",
     );
+  }
+
+  if (url.pathname === "/manifest.json" && (request.method === "GET" || request.method === "HEAD")) {
+    const response = await context.next();
+    if (!isAppShell(response)) return withoutEdgeInjection(response);
+    const missing = xeniaProblem(
+      url.origin,
+      404,
+      "No file is published at this path. CashLoom's web app manifest is /site.webmanifest.",
+    );
+    return request.method === "HEAD" ? new Response(null, { status: 404, headers: missing.headers }) : missing;
   }
 
   return withoutEdgeInjection(await context.next());
