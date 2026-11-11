@@ -9,10 +9,10 @@ runs-on: this machine
 phase: active
 health: browser and optional WalletConnect phone address selection published; public guide deployed; public INFO serves Capital flows with partial coverage
 release-branch: release/service-workspace-20260929
-published-source-snapshot: 02690a90f5c5392549aae83446d1cdcd350d9185
-production-deployment: eb4eddb0-4608-47aa-81c1-2fd3834469c2 at https://cashloom.io (rollback: e39965c0-40bd-474e-aa43-f8d7a2f0d8ba, source 419ccd7)
-verified-preview: https://77bcc6c3.cashloom-atlas.pages.dev
-delivery-checks: release smoke on the preview and on https://cashloom.io each 31 passed with no failures or gaps; www returned 308; served HTML and all 27 assets matched the verified build; the 8 brand-kit files (icons, manifest, og.jpg) matched brand/kit/web byte for byte with image and manifest content types
+published-source-snapshot: 158d5201d59d96adaec034ef0a70f72a8c894431
+production-deployment: 525c44dc-3bb0-48cf-821b-2c02e76fbd29 at https://cashloom.io (rollback: eb4eddb0-4608-47aa-81c1-2fd3834469c2, source 02690a9)
+verified-preview: https://a9949173.cashloom-atlas.pages.dev
+delivery-checks: release smoke on the preview and on https://cashloom.io each 31 passed with no failures or gaps; www returned 308; served HTML, all 27 assets and the 8 brand-kit files matched the verified build and the bytes served before the deploy; /robots.txt serves the new text/plain file and GET /manifest.json answers 404 problem+json naming /site.webmanifest; the 8 brand-kit files matched brand/kit/web byte for byte with image and manifest content types
 source-access: existing private cambridgetcg/cashloom repository; repository access required
 original-development-branch: feature/capital-flows-20260909, preserved with its original worktree and local edits
 original-development-base: e421a1ac4a3e397d0afb8ae65efe2cb5580a515c
@@ -24,7 +24,7 @@ crypto: local address-only Base watch; explicit finalized ETH/native-USDC checks
 wallet-standards: EIP-6963/EIP-1193 browser selection and temporary WalletConnect Base address pairing; 229 UI tests, nine actual-SDK scenarios and seven actual-node phone groups passed with synthetic transport; no signing methods
 phone-pairing-gap: local Reown project configuration required; no live relay authorization or real-phone approval verified
 agent-layer: selected-account local MCP reads, saved finalized Base holdings, and owner-reviewed category proposals; no hosted model or autonomous financial actions
-freshness: manually verified 2026-09-30; release, deployment and delivery fields 2026-10-27
+freshness: manually verified 2026-09-30; release, deployment and delivery fields 2026-11-11
 
 ## knows
 - CashLoom
