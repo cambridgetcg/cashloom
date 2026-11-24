@@ -12,7 +12,7 @@ Georgia's licence keeps its outlines out of served files. The wordmark is Inter 
 draw the site's Spline Sans.
 
 - **Who chose it:** an agent, Claude Code session dd025d89, on 2026-10-27, under Yu's delegation. Yu's word that
-  day was "yes, go ahead and wire the kits into the sites", for a kit from each site's current look.
+  day covered adding a kit made from each site's current look.
 - **Where it is recorded:** cashloom PR #23, section "Look decisions" (merge 02690a9), and ledger item
   `artcraft-estate-wiring`.
 - **Where the site's look came from:** the 2026-09-29 service rebuild (`ui/theme.css`, commit 71066a5 by "Beta").
